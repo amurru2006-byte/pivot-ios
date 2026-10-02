@@ -105,8 +105,12 @@ struct EventDetailView: View {
         return store.change { data in data.records[event.id] = record; data.rules[event.id] = rule }
     }
     private func choose(_ suggestion: RecoverySuggestion, sync: Bool) {
-        let source = calendar.events.first(where: { $0.id == event.id }) ?? event
+        calendar.refresh(settings: store.data.settings)
+        guard let source = calendar.events.first(where: { $0.id == event.id }) else {
+            message = "L'evento è cambiato o non è più disponibile. Aggiorna la giornata."; return
+        }
         let move = PlanMove(source: source, proposedStart: suggestion.start, proposedEnd: suggestion.end)
+        guard slotIsAvailable(move) else { message = "Questo spazio non è più libero. Cerca una nuova proposta."; return }
         if sync { pendingMove = move; calendarApproval = true }
         else {
             if store.change({ $0.moves.append(move) }) { message = "Proposta approvata solo in Pivot. Il Calendario non è cambiato."; suggestions = [] }
@@ -118,13 +122,7 @@ struct EventDetailView: View {
         do {
             // Validate the chosen slot against a fresh calendar view before writing.
             calendar.refresh(settings: store.data.settings)
-            let overlaps = Planner.effectiveEvents(calendar.events, data: store.data).contains { item in
-                guard item.id != event.id, !item.isAllDay else { return false }
-                let other = store.rule(for: item)
-                return item.start.addingTimeInterval(-Double(other.travelBeforeMinutes) * 60) < move.proposedEnd.addingTimeInterval(Double(rule.travelAfterMinutes) * 60)
-                    && item.end.addingTimeInterval(Double(other.travelAfterMinutes) * 60) > move.proposedStart.addingTimeInterval(-Double(rule.travelBeforeMinutes) * 60)
-            }
-            guard !overlaps else { message = "Questo spazio non è più libero. Cerca una nuova proposta."; return }
+            guard slotIsAvailable(move) else { message = "Questo spazio non è più libero. Cerca una nuova proposta."; return }
             try calendar.apply(move)
             move.syncedToCalendar = true
             if !store.change({ $0.moves.append(move) }) {
@@ -135,5 +133,17 @@ struct EventDetailView: View {
             suggestions = []
         } catch { message = error.localizedDescription }
         pendingMove = nil
+    }
+    private func slotIsAvailable(_ move: PlanMove) -> Bool {
+        guard rule.travelConfirmed, move.proposedStart > Date() else { return false }
+        let occupiedStart = move.proposedStart.addingTimeInterval(-Double(rule.travelBeforeMinutes) * 60)
+        let occupiedEnd = move.proposedEnd.addingTimeInterval(Double(rule.travelAfterMinutes) * 60)
+        return !Planner.effectiveEvents(calendar.events, data: store.data).contains { item in
+            guard item.id != event.id, !item.isAllDay else { return false }
+            let other = store.rule(for: item)
+            if !item.location.isEmpty && !other.travelConfirmed && PivotDate.key(item.start) == PivotDate.key(move.proposedStart) { return true }
+            return item.start.addingTimeInterval(-Double(other.travelBeforeMinutes) * 60) < occupiedEnd
+                && item.end.addingTimeInterval(Double(other.travelAfterMinutes) * 60) > occupiedStart
+        }
     }
 }
