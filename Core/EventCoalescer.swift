@@ -16,7 +16,12 @@ enum EventCoalescer {
             return a.eventIdentifier == b.eventIdentifier && sameTimes
         }
         // Different appointments in the same account must not collapse just because their names match.
-        if let first = a.sourceIdentifier, let second = b.sourceIdentifier, first == second { return false }
+        if let first = a.sourceIdentifier, let second = b.sourceIdentifier {
+            if first == second { return false }
+        } else {
+            // Old snapshots without account metadata need a shared UID, not just matching names.
+            guard a.externalIdentifier != nil && a.externalIdentifier == b.externalIdentifier else { return false }
+        }
         if !a.location.isEmpty && !b.location.isEmpty && normalized(a.location) != normalized(b.location) { return false }
         if sameTimes { return true }
         // A stale all-day import must not override a matching timed appointment.

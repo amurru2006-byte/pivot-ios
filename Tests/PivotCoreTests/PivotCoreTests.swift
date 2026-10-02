@@ -193,8 +193,11 @@ final class PivotCoreTests: XCTestCase {
     func testMatchingNamesDoNotEraseDifferentAppointments() {
         var a = event("a", start: "2026-10-03T11:00:00+02:00", end: "2026-10-03T12:00:00+02:00", kind: .tutoring)
         a.calendarTitle = "Lavoro"; a.calendarIdentifier = "work-a"; a.sourceIdentifier = "google"
-        var b = a; b.id = "b"; b.eventIdentifier = "b"; b.calendarIdentifier = "work-b"
+        var b = a; b.id = "b"; b.eventIdentifier = "b"; b.externalIdentifier = "b"; b.calendarIdentifier = "work-b"
         XCTAssertEqual(EventCoalescer.unique([a, b], data: AppData()).count, 2)
+        var snapshot = a; snapshot.sourceIdentifier = nil
+        var data = AppData(); data.records[a.id] = EventRecord(id: a.id, snapshot: snapshot)
+        XCTAssertEqual(Set(EventCoalescer.unique([a, b], data: data).map(\.id)), Set(["a", "b"]))
         b.sourceIdentifier = "icloud"; b.location = "Altro luogo"; a.location = "Luogo uno"
         XCTAssertEqual(EventCoalescer.unique([a, b], data: AppData()).count, 2)
         b.location = a.location; b.start = date("2026-10-10T11:00:00+02:00"); b.end = date("2026-10-10T12:00:00+02:00"); b.externalIdentifier = a.externalIdentifier
