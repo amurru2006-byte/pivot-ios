@@ -25,6 +25,14 @@ enum Report {
                 lines.append("Tempo registrato: \(r.activeMinutes) minuti")
                 if !r.reason.isEmpty { lines.append("Motivo: \(r.reason)") }
                 if !r.notes.isEmpty { lines.append("Note: \(r.notes)") }
+                if let details = r.reflection {
+                    if !details.focus.isEmpty { lines.append("Attività svolta: \(details.focus)") }
+                    if !details.result.isEmpty { lines.append("Risultato: \(details.result)") }
+                    if !details.nextStep.isEmpty { lines.append("Prossimo passo: \(details.nextStep)") }
+                }
+                if event.kind == .tutoring && [.completed, .partial].contains(r.status) && r.tutoringAnswered != true && r.incomeID == nil {
+                    missing += 1; lines.append("Manca il compenso della ripetizione.")
+                }
                 if event.kind == .meal {
                     lines.append("Fame prima/dopo: \(r.hungerBefore.map(String.init) ?? "—") / \(r.hungerAfter.map(String.init) ?? "—")")
                     lines.append("Piano alimentare rispettato: \(r.followedMeal.map { $0 ? "sì" : "no" } ?? "non indicato")")

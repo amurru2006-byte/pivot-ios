@@ -228,4 +228,93 @@ final class PivotCoreTests: XCTestCase {
         XCTAssertEqual(restored.records[old.id]?.notes, record.notes)
         XCTAssertEqual(restored.income.count, data.income.count)
     }
+    func testAnnualOpeningAndNewYearNeverEraseHistoricalMoney() throws {
+        var ledger = AnnualLedger()
+        let lessonID = UUID()
+        let old = Payment(incomeID: lessonID, clientName: "Test", date: date("2026-12-31T23:59:00+01:00"), amountCents: 1800)
+        let new = Payment(incomeID: lessonID, clientName: "Test", date: date("2027-01-01T00:01:00+01:00"), amountCents: 1200)
+        ledger.setOpeningTotal(23000, year: 2026, payments: [old])
+        XCTAssertEqual(ledger.total(year: 2026, payments: [old, new]), 23000)
+        XCTAssertEqual(ledger.total(year: 2027, payments: [old, new]), 1200)
+        ledger.setOpeningTotal(23000, year: 2026, payments: [old])
+        XCTAssertEqual(ledger.total(year: 2026, payments: [old]), 23000)
+        XCTAssertEqual(ledger.total(year: 2028, payments: [old, new]), 0)
+    }
+    func testIncomeWarningBoundariesAndProgress() {
+        let ledger = AnnualLedger()
+        XCTAssertNil(ledger.warningProgress(total: 449999))
+        XCTAssertEqual(ledger.warningProgress(total: 450000), 0)
+        XCTAssertEqual(ledger.warningProgress(total: 475000), 0.5)
+        XCTAssertEqual(ledger.warningProgress(total: 500000), 1)
+        XCTAssertEqual(ledger.warningProgress(total: 530000), 1)
+        XCTAssertEqual(ledger.band(total: 450000), "approaching")
+        XCTAssertEqual(ledger.band(total: 500000), "reference")
+    }
+    func testTutoringPaymentSavedOnceAndOnlyCashCounts() throws {
+        let item = event("tutor", start: "2026-10-03T11:00:00+02:00", end: "2026-10-03T12:00:00+02:00", kind: .tutoring)
+        var data = AppData(); data.ledger = AnnualLedger()
+        let client = Client(name: "Test", rateCents: 1800)
+        var record = EventRecord(id: item.id, snapshot: item); record.status = .completed
+        let first = TutoringLedger.register(event: item, record: &record, client: client, amountCents: 1800, collectedCents: 800, paymentDate: item.end, data: &data)
+        data.records[item.id] = record
+        let second = TutoringLedger.register(event: item, record: &record, client: client, amountCents: 1800, collectedCents: 1800, paymentDate: item.end, data: &data)
+        XCTAssertEqual(first, second); XCTAssertEqual(data.income.count, 1); XCTAssertEqual(data.payments.count, 1)
+        XCTAssertEqual(data.income[0].outstandingCents, 1000)
+        XCTAssertEqual(data.ledger?.total(year: 2026, payments: data.payments), 800)
+        let restored = try BackupCodec.decode(BackupCodec.encode(data))
+        XCTAssertEqual(restored.records[item.id]?.incomeID, first)
+        XCTAssertEqual(restored.income[0].calendarEventID, item.id)
+    }
+    func testTutoringZeroAndUnpaidDoNotCreditAccount() {
+        let item = event("tutor", start: "2026-10-03T11:00:00+02:00", end: "2026-10-03T12:00:00+02:00", kind: .tutoring)
+        var data = AppData(); let client = Client(name: "Test", rateCents: 1800)
+        var record = EventRecord(id: item.id, snapshot: item)
+        TutoringLedger.register(event: item, record: &record, client: client, amountCents: 0, collectedCents: 0, paymentDate: item.end, data: &data)
+        XCTAssertTrue(data.income.isEmpty); XCTAssertEqual(record.tutoringAnswered, true)
+        XCTAssertNil(TutoringLedger.register(event: item, record: &record, client: client, amountCents: 1000, collectedCents: 1200, paymentDate: item.end, data: &data))
+        XCTAssertTrue(data.payments.isEmpty)
+        TutoringLedger.register(event: item, record: &record, client: client, amountCents: 1800, collectedCents: 0, paymentDate: item.end, data: &data)
+        XCTAssertEqual(data.income[0].outstandingCents, 1800); XCTAssertTrue(data.payments.isEmpty)
+    }
+    func testLegacyBackupWithoutNewFieldsAndLedgerValidation() throws {
+        let bytes = try BackupCodec.encode(AppData())
+        let old = try BackupCodec.decode(bytes)
+        XCTAssertNil(old.ledger)
+        var data = old; data.ledger = AnnualLedger(); data.ledger?.openingCents["2026"] = -1
+        XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encode(data)))
+    }
+    func testExactCalendarColorSurvivesImportedCopies() {
+        var cloud = event("cloud", start: "2026-10-03T11:00:00+02:00", end: "2026-10-03T12:00:00+02:00")
+        cloud.sourceIdentifier = "cloud"; cloud.sourceTitle = "iCloud"; cloud.colorHex = "#D02D68"
+        var google = cloud; google.id = "google"; google.calendarIdentifier = "google"; google.sourceIdentifier = "google"; google.sourceTitle = "Google"; google.colorHex = "#791A3D"
+        XCTAssertEqual(EventCoalescer.unique([cloud, google], data: AppData())[0].colorHex, "#D02D68")
+    }
+    func testCalendarTimeAndTitleChangesKeepAnswerAndAvoidStaleLocalMove() {
+        let old = event("old", start: "2026-10-03T11:00:00+02:00", end: "2026-10-03T12:00:00+02:00")
+        var current = old; current.id = "new"; current.title = "Titolo aggiornato"; current.start = date("2026-10-03T13:00:00+02:00"); current.end = date("2026-10-03T14:00:00+02:00")
+        var data = AppData(); var record = EventRecord(id: old.id, snapshot: old); record.notes = "Salvato"; data.records[old.id] = record
+        data.moves.append(.init(source: old, proposedStart: date("2026-10-03T17:00:00+02:00"), proposedEnd: date("2026-10-03T18:00:00+02:00")))
+        let item = Planner.effectiveEvents([current], data: data)[0]
+        XCTAssertEqual(item.id, old.id); XCTAssertEqual(item.title, current.title); XCTAssertEqual(item.start, current.start)
+        XCTAssertEqual(data.records[item.id]?.notes, "Salvato")
+    }
+    func testExcelWorkbookUsesActualPaymentsAndLiteralUserText() throws {
+        var data = AppData(); data.ledger = AnnualLedger()
+        let client = Client(name: "=1+1 & <test>", rateCents: 1800)
+        let entry = IncomeEntry(clientID: client.id, clientName: client.name, date: date("2025-12-31T11:00:00+01:00"), minutes: 60, amountCents: 1800, paidCents: 1800, notes: "=HYPERLINK(\"example\")")
+        data.clients = [client]; data.income = [entry]
+        data.payments = [.init(incomeID: entry.id, clientName: client.name, date: date("2026-01-02T11:00:00+01:00"), amountCents: 1800)]
+        data.ledger?.openingCents["2026"] = 10000
+        let bytes = LedgerExcel.make(data: data, year: 2026)
+        XCTAssertEqual(Array(bytes.prefix(4)), [0x50,0x4b,0x03,0x04])
+        let text = String(decoding: bytes, as: UTF8.self)
+        XCTAssertTrue(text.contains("=1+1 &amp; &lt;test&gt;")); XCTAssertFalse(text.contains("<f>"))
+        XCTAssertTrue(text.contains("118.00")); XCTAssertTrue(text.contains("2025-12-31")); XCTAssertTrue(text.contains("2026-01-02"))
+        if let path = ProcessInfo.processInfo.environment["PIVOT_TEST_EXPORT_PATH"] {
+            let url = URL(fileURLWithPath: path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try bytes.write(to: url)
+        }
+    }
+
 }

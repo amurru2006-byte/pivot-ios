@@ -3,7 +3,9 @@ import Foundation
 import Combine
 
 @MainActor
-final class NotificationService: ObservableObject {
+final class NotificationService: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
+    override init() { super.init(); UNUserNotificationCenter.current().delegate = self }
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions { [.banner, .list, .sound] }
     @Published private(set) var status = "Notifiche non configurate"
     private var generation = 0
     func requestAccess() async {
@@ -21,7 +23,9 @@ final class NotificationService: ObservableObject {
         guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else {
             status = "Notifiche non autorizzate"; return
         }
-        center.removeAllPendingNotificationRequests()
+        let pending = await center.pendingNotificationRequests()
+        guard token == generation else { return }
+        center.removePendingNotificationRequests(withIdentifiers: pending.filter { !$0.identifier.hasPrefix("income-") }.map(\.identifier))
         let now = Date()
         let horizon = now.addingTimeInterval(48 * 3600)
         let calendar = PivotDate.calendar
@@ -34,7 +38,9 @@ final class NotificationService: ObservableObject {
         }
         for event in events where !event.isAllDay {
             let record = data.records[event.id]
-            guard record?.status != .completed && record?.status != .partial && record?.status != .skipped else { continue }
+            let missingCompensation = event.kind == .tutoring && [Completion.completed, .partial].contains(record?.status ?? .pending)
+                && record?.tutoringAnswered != true && !data.income.contains(where: { $0.calendarEventID == event.id || $0.id == record?.incomeID })
+            guard missingCompensation || (record?.status != .completed && record?.status != .partial && record?.status != .skipped) else { continue }
             if event.kind == .meal {
                 for minutes in [30, 10] {
                     add(event.start.addingTimeInterval(-Double(minutes) * 60), "meal-\(event.id)-\(minutes)", event.title, "Tra \(minutes) minuti. Apri Pivot per le indicazioni del pasto.")
@@ -74,6 +80,24 @@ final class NotificationService: ObservableObject {
             do { try await center.add(.init(identifier: request.1, content: content, trigger: trigger)); count += 1 }
             catch { status = "Alcuni avvisi non sono stati programmati: \(error.localizedDescription)"; return }
         }
+        await incomeWarning(data: data, center: center)
         status = "\(count) avvisi programmati, fino a 48 ore. Apri Pivot ogni giorno per aggiornarli. Full immersion e impostazioni di iOS possono ritardare o silenziare gli avvisi."
     }
+    private func incomeWarning(data: AppData, center: UNUserNotificationCenter) async {
+        let ledger = data.ledger ?? AnnualLedger()
+        let year = PivotDate.calendar.component(.year, from: Date())
+        let total = ledger.total(year: year, payments: data.payments)
+        guard let band = ledger.band(total: total) else { return }
+        let key = "income-\(year)-\(ledger.referenceCents)-\(band)"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        let content = UNMutableNotificationContent()
+        content.title = band == "reference" ? "Incassi: riferimento INPS raggiunto" : "Incassi: ti avvicini al riferimento INPS"
+        content.body = "\(Money.display(total)) incassati nel \(year). I 5.000 € non sono un limite esente da tasse. Verifica gli adempimenti e l'inquadramento delle ripetizioni."
+        content.sound = .default
+        do {
+            try await center.add(.init(identifier: key, content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)))
+            UserDefaults.standard.set(true, forKey: key)
+        } catch { status = "Avviso incassi non programmato: \(error.localizedDescription)" }
+    }
+
 }

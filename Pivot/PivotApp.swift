@@ -27,10 +27,14 @@ struct RootView: View {
     @Environment(\.scenePhase) var scene
     @State private var selectedTab = PreviewMode.enabled ? PreviewMode.tab : 0
     @State private var previewReady = !PreviewMode.enabled
+    private let refreshClock = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
     var body: some View {
         Group {
             if !previewReady {
                 ProgressView("Anteprima…")
+            } else if PreviewMode.enabled && PreviewMode.screen == "launch" { PivotLaunchView()
+            } else if PreviewMode.enabled && PreviewMode.screen == "tutoring", let event = calendar.events.first(where: { $0.kind == .tutoring }) {
+                NavigationStack { EventDetailView(event: event, initial: store.record(for: event), rule: store.rule(for: event)) }
             } else if PreviewMode.enabled && PreviewMode.screen == "detail", let event = calendar.events.first(where: { $0.id == "study" }) {
                 NavigationStack { EventDetailView(event: event, initial: store.record(for: event), rule: store.rule(for: event)) }
             } else if PreviewMode.enabled && PreviewMode.screen == "client" {
@@ -61,6 +65,7 @@ struct RootView: View {
             }
             else { await refresh() }
         }
+        .onReceive(refreshClock) { _ in if scene == .active { Task { await refresh() } } }
         .onChange(of: scene) { _, value in if value == .active { Task { await refresh() } } }
         .onChange(of: store.data.updatedAt) { _, _ in Task { await refresh() } }
         .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in Task { await refresh() } }
@@ -82,5 +87,15 @@ struct RootView: View {
         guard !PreviewMode.enabled else { return }
         calendar.refresh(settings: store.data.settings)
         await notifications.schedule(events: Planner.plannedEvents(calendar.events, data: store.data), data: store.data)
+    }
+}
+
+struct PivotLaunchView: View {
+    var body: some View {
+        VStack(spacing: 18) {
+            Image("PivotMonogramV3").resizable().scaledToFit().frame(width: 128, height: 128)
+            Text("Pivot").font(.system(size: 36, weight: .bold))
+            Text("Trova il tuo ritmo.").font(.system(size: 17)).foregroundStyle(PivotTheme.muted)
+        }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.black.ignoresSafeArea())
     }
 }

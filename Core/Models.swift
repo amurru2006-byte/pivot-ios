@@ -124,7 +124,16 @@ struct EventRecord: Codable, Identifiable {
     var hungerAfter: Int? = nil
     var energy: Int? = nil
     var followedMeal: Bool? = nil
+    var reflection: ActivityReflection? = nil
+    var incomeID: UUID? = nil
+    var tutoringAnswered: Bool? = nil
     var updatedAt: Date = Date()
+}
+
+struct ActivityReflection: Codable {
+    var focus: String = ""
+    var result: String = ""
+    var nextStep: String = ""
 }
 
 struct EventRule: Codable {
@@ -173,6 +182,7 @@ struct IncomeEntry: Codable, Identifiable {
     var amountCents: Int
     var paidCents: Int = 0
     var notes: String = ""
+    var calendarEventID: String? = nil
     var outstandingCents: Int { max(0, amountCents - paidCents) }
 }
 
@@ -219,6 +229,7 @@ struct AppData: Codable {
     var payments: [Payment] = []
     var moves: [PlanMove] = []
     var settings = Settings()
+    var ledger: AnnualLedger? = nil
 }
 
 enum PivotDate {
