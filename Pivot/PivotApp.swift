@@ -41,6 +41,8 @@ struct RootView: View {
                 NavigationStack { IncomeDetailView(entryID: entry.id) }
             } else if PreviewMode.enabled && PreviewMode.screen == "checkin" {
                 NavigationStack { DayCheckInView(day: Date(), initial: store.data.checkIns[PivotDate.key(Date())]) }
+            } else if PreviewMode.enabled && ["friends", "partner", "allday"].contains(PreviewMode.screen), let event = calendar.events.first(where: { $0.id == PreviewMode.screen }) {
+                NavigationStack { EventDetailView(event: event, initial: store.record(for: event), rule: store.rule(for: event)) }
             } else { tabs }
         }
         .task {
@@ -69,6 +71,6 @@ struct RootView: View {
     private func refresh() async {
         guard !PreviewMode.enabled else { return }
         calendar.refresh(settings: store.data.settings)
-        await notifications.schedule(events: Planner.effectiveEvents(calendar.events, data: store.data), data: store.data)
+        await notifications.schedule(events: Planner.plannedEvents(calendar.events, data: store.data), data: store.data)
     }
 }

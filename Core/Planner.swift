@@ -18,7 +18,7 @@ enum Planner {
         guard duration > 0 else { return [] }
         let before = Double(targetRule.travelBeforeMinutes) * 60
         let after = Double(targetRule.travelAfterMinutes) * 60
-        let effective = effectiveEvents(events, data: data)
+        let effective = plannedEvents(events, data: data)
         let horizon = calendar.date(byAdding: .day, value: max(1, min(days, 7)), to: calendar.startOfDay(for: now))!
         // An unconfigured journey around another out-of-home event is not a zero-minute journey.
         guard !effective.contains(where: { item in
@@ -59,7 +59,9 @@ enum Planner {
         }
     }
     static func preferredEvent(_ events: [CalendarItem], data: AppData, now: Date) -> CalendarItem? {
-        let relevant = events.filter { !$0.isAllDay && PivotDate.calendar.isDate($0.start, inSameDayAs: now) }
+        let relevant = plannedEvents(events, data: data).filter {
+            !$0.isAllDay && $0.occurs(on: now) && ![Completion.completed, .partial, .skipped].contains(data.records[$0.id]?.status ?? .pending)
+        }
         if let running = relevant.first(where: { data.records[$0.id]?.status == .running }) { return running }
         if let current = relevant.first(where: { $0.start <= now && $0.end > now && data.records[$0.id]?.status != .completed }) { return current }
         return relevant.filter { $0.end <= now && (data.records[$0.id] == nil || data.records[$0.id]?.status == .pending) }.max { $0.end < $1.end }
@@ -67,5 +69,28 @@ enum Planner {
     }
     static func isStudyPriority(_ data: AppData, now: Date) -> Bool {
         data.settings.studyMustTakePriority && (data.settings.studyPriorityFrom.map { now >= $0 } ?? true)
+    }
+    static let universityOffNote = "Università: oggi non frequento le lezioni."
+    static func universityAttendance(on day: Date, events: [CalendarItem], data: AppData) -> Bool? {
+        if let answer = data.checkIns[PivotDate.key(day)]?.universityAttendance { return answer }
+        // An explicit instruction in the day's routine is not an inferred cancellation.
+        if events.contains(where: { $0.kind == .routine && PivotDate.key($0.start) == PivotDate.key(day) && $0.notes.components(separatedBy: .newlines).contains(where: { $0.trimmingCharacters(in: .whitespacesAndNewlines) == universityOffNote }) }) { return false }
+        return nil
+    }
+    static func plannedEvents(_ events: [CalendarItem], data: AppData) -> [CalendarItem] {
+        effectiveEvents(events, data: data).filter {
+            $0.kind != .university || universityAttendance(on: $0.start, events: events, data: data) != false
+        }
+    }
+    static func overlaps(on day: Date, events: [CalendarItem], data: AppData) -> [(CalendarItem, CalendarItem)] {
+        let items = plannedEvents(events, data: data).filter { !$0.isAllDay && $0.occurs(on: day) }.sorted { $0.start < $1.start }
+        var pairs: [(CalendarItem, CalendarItem)] = []
+        for i in items.indices {
+            for j in items.indices where j > i {
+                if items[j].start >= items[i].end { break }
+                if items[i].start < items[j].end { pairs.append((items[i], items[j])) }
+            }
+        }
+        return pairs
     }
 }

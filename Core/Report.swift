@@ -3,7 +3,7 @@ import Foundation
 enum Report {
     static func day(_ date: Date, events: [CalendarItem], data: AppData) -> String {
         let key = PivotDate.key(date)
-        let items = events.filter { PivotDate.calendar.isDate($0.start, inSameDayAs: date) && !$0.isAllDay }
+        let items = Planner.plannedEvents(events, data: data).filter { $0.occurs(on: date) && !$0.isAllDay }
         var lines = ["PIVOT — Resoconto \(key)"]
         if let check = data.checkIns[key] {
             lines += ["Sveglia reale: \(check.wakeTime.map(PivotDate.time) ?? "non registrata")",
@@ -11,6 +11,9 @@ enum Report {
                       "Umore mattina/sera: \(check.moodMorning.map(String.init) ?? "—") / \(check.moodEvening.map(String.init) ?? "—")",
                       "Note giornata: \(check.notes)"]
         } else { lines.append("Mancano sveglia reale, energia e umore.") }
+        if Planner.universityAttendance(on: date, events: events, data: data) == false {
+            lines.append("Lezioni universitarie: non previste oggi, per scelta esplicita. Gli esami restano in programma.")
+        }
         var missing = 0
         for event in items.sorted(by: { $0.start < $1.start }) {
             let record = data.records[event.id]

@@ -1,7 +1,8 @@
 import Foundation
 
 enum EventKind: String, Codable, CaseIterable {
-    case routine, meal, study, workout, university, tutoring, social, exam, other
+    // Keep `social` so existing backups remain readable.
+    case routine, meal, study, workout, university, tutoring, social, partner, friends, exam, other
     var label: String {
         switch self {
         case .routine: return "Routine"
@@ -10,21 +11,29 @@ enum EventKind: String, Codable, CaseIterable {
         case .workout: return "Palestra / cardio"
         case .university: return "Università"
         case .tutoring: return "Ripetizioni"
-        case .social: return "Des e amici"
+        case .social: return "Sociale"
+        case .partner: return "Des"
+        case .friends: return "Amici"
         case .exam: return "Esame"
         case .other: return "Altro"
         }
     }
     static func classify(title: String, calendar: String) -> EventKind {
         let t = title.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-        let c = calendar.lowercased()
+        let c = calendar.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        let calendarWords = c.components(separatedBy: CharacterSet.alphanumerics.inverted)
+        // A dedicated calendar is authoritative; never infer a partner from "destinazione".
+        if calendarWords.contains("amici") { return .friends }
+        if calendarWords.contains("des") || calendarWords.contains("desiree") { return .partner }
         if t.contains("esame") || t.contains("compitino") { return .exam }
         if ["colazione", "pranzo", "merenda", "cena", "spuntino"].contains(where: t.contains) { return .meal }
         if t.contains("studio") || t.contains("ripasso") || t.contains("simulazione") { return .study }
         if t.contains("palestra") || t.contains("cardio") || c.contains("palestra") { return .workout }
         if c.contains("lavoro") || t.contains("ripetizioni") || t.contains("lezione mamma") { return .tutoring }
         if c.contains("unimi") || t.contains("laboratorio") { return .university }
-        if c.contains("des") || c.contains("amici") || t.contains("des e amici") { return .social }
+        let titleWords = t.components(separatedBy: CharacterSet.alphanumerics.inverted)
+        if titleWords.contains("amici") { return .friends }
+        if titleWords.contains("des") || titleWords.contains("desiree") { return .partner }
         if ["sveglia", "sonno", "preparo domani", "relax"].contains(where: t.contains) { return .routine }
         return .other
     }
@@ -58,6 +67,23 @@ struct CalendarItem: Codable, Identifiable, Equatable {
     var writable: Bool
     var kind: EventKind
     var durationMinutes: Int { max(1, Int(end.timeIntervalSince(start) / 60)) }
+    func occurs(on day: Date) -> Bool {
+        let from = PivotDate.calendar.startOfDay(for: day)
+        let to = PivotDate.calendar.date(byAdding: .day, value: 1, to: from)!
+        return start < to && end > from
+    }
+    var timeSummary: String {
+        let calendar = PivotDate.calendar
+        if isAllDay {
+            let finalDay = end.addingTimeInterval(-1)
+            if calendar.isDate(start, inSameDayAs: finalDay) { return "Tutto il giorno" }
+            return "\(PivotDate.shortDate(start)) – \(PivotDate.shortDate(finalDay)) · tutto il giorno"
+        }
+        if !calendar.isDate(start, inSameDayAs: end) {
+            return "\(PivotDate.shortDate(start)) \(PivotDate.time(start)) – \(PivotDate.shortDate(end)) \(PivotDate.time(end))"
+        }
+        return "\(PivotDate.time(start)) – \(PivotDate.time(end)) · \(durationMinutes) min"
+    }
 }
 
 enum Completion: String, Codable, CaseIterable {
@@ -116,6 +142,8 @@ struct DayCheckIn: Codable, Identifiable {
     var moodMorning: Int? = nil
     var moodEvening: Int? = nil
     var notes: String = ""
+    // Optional so backups from 0.2 decode without this field.
+    var universityAttendance: Bool? = nil
 }
 
 struct Client: Codable, Identifiable {
@@ -196,6 +224,13 @@ enum PivotDate {
         f.locale = Locale(identifier: "it_IT")
         f.timeZone = calendar.timeZone
         f.dateFormat = "HH:mm"
+        return f.string(from: date)
+    }
+    static func shortDate(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "it_IT")
+        f.timeZone = calendar.timeZone
+        f.dateFormat = "d MMM"
         return f.string(from: date)
     }
 }

@@ -61,15 +61,16 @@ struct EventDetailView: View {
                 Spacer(); StatusPill(status: record.status)
             }
             Text(event.title).font(.system(.title2, design: .rounded, weight: .bold)).fixedSize(horizontal: false, vertical: true)
-            Label("\(PivotDate.time(event.start)) – \(PivotDate.time(event.end)) · \(event.durationMinutes) min", systemImage: "clock").font(.subheadline).foregroundStyle(PivotTheme.muted)
+            Label(event.timeSummary, systemImage: "clock").font(.subheadline).foregroundStyle(PivotTheme.muted)
             Text(event.calendarTitle).font(.caption).foregroundStyle(PivotTheme.muted)
             if !event.location.isEmpty { Label(event.location, systemImage: "mappin.and.ellipse").font(.caption).foregroundStyle(PivotTheme.muted) }
-            Button {
+            if !event.isAllDay { Button {
                 if record.status == .running { record.actualEnd = Date(); record.status = .completed; updateMinutes() }
                 else { record.actualStart = Date(); record.actualEnd = nil; record.status = .running }
                 save()
             } label: { Label(record.status == .running ? "Termina attività" : "Inizia attività", systemImage: record.status == .running ? "stop.fill" : "play.fill") }
-                .buttonStyle(PivotPrimaryButton()).disabled(event.isAllDay || store.locked)
+                .buttonStyle(PivotPrimaryButton()).disabled(store.locked)
+            }
             if let start = record.actualStart { Text("Inizio reale \(PivotDate.time(start))" + (record.actualEnd.map { " · fine \(PivotDate.time($0))" } ?? "")).font(.caption).foregroundStyle(PivotTheme.muted) }
         }
     }

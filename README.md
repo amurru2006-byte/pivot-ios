@@ -1,7 +1,15 @@
 # Pivot — La tua giornata, riadattata
 
-App iOS nativa personale, SwiftUI, iOS 17 o successivo. Versione 0.2: interfaccia rinnovata.
+App iOS nativa personale, SwiftUI, iOS 17 o successivo. Versione 0.2.1: interfaccia rinnovata, categorie e agenda corrette.
 Il repository contiene soltanto codice. Nessun calendario, cliente, pagamento o backup reale.
+
+## Aggiornamento 0.2.1
+
+- Calendari Des e Amici distinti, con cuore e gruppo e i colori originali.
+- Scelta giornaliera della frequenza universitaria: le lezioni non previste restano consultabili ma non entrano nel programma, nelle richieste di resoconto o nei recuperi. Gli esami rimangono protetti.
+- Un'indicazione esplicita nelle note della routine (`Università: oggi non frequento le lezioni.`) applica la scelta del giorno; la scelta manuale in Pivot può modificarla.
+- Le sovrapposizioni sono segnalate, senza cancellare o spostare automaticamente impegni.
+- Icona nativa e schermata di avvio, eventi di più giorni con date leggibili e backup 0.2 compatibili.
 
 ## Cosa funziona nella prima versione
 

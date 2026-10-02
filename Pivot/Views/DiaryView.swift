@@ -10,7 +10,7 @@ struct DiaryView: View {
         for item in Planner.effectiveEvents(calendar.events, data: store.data) { map[item.id] = item }
         return Array(map.values)
     }
-    var items: [CalendarItem] { history.filter { PivotDate.calendar.isDate($0.start, inSameDayAs: day) }.sorted { $0.start < $1.start } }
+    var items: [CalendarItem] { Planner.plannedEvents(history, data: store.data).filter { $0.occurs(on: day) }.sorted { $0.start < $1.start } }
     var answered: Int { items.filter { [.completed, .partial, .skipped].contains(store.data.records[$0.id]?.status ?? .pending) }.count }
     var completed: Int { items.filter { store.data.records[$0.id]?.status == .completed }.count }
     var check: DayCheckIn? { store.data.checkIns[PivotDate.key(day)] }
