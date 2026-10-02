@@ -44,7 +44,7 @@ struct IncomeView: View {
                 }
                 if !outstanding.isEmpty {
                     VStack(alignment: .leading, spacing: 14) {
-                        SectionHeading(title: "Da incassare", detail: "\(outstanding.count) lezioni")
+                        SectionHeading(title: "Da incassare", detail: "\(outstanding.count) \(outstanding.count == 1 ? "lezione" : "lezioni")")
                         ForEach(outstanding) { entry in
                             NavigationLink { IncomeDetailView(entryID: entry.id) } label: {
                                 PivotCard(tint: PivotTheme.amber) {
@@ -115,15 +115,23 @@ struct ClientForm: View {
     @State private var rate = ""
     var body: some View {
         NavigationStack {
-            Form {
-                TextField("Nome studente", text: $name)
-                TextField("Tariffa oraria in euro", text: $rate).keyboardType(.decimalPad)
-                Button("Salva") {
+            PivotScreen {
+                PivotHeader(title: "Nuovo studente", subtitle: "Nome e tariffa: poi sei pronto a registrare le lezioni.")
+                PivotCard {
+                    Label("Studente", systemImage: "person.fill").font(.headline).foregroundStyle(PivotTheme.blue)
+                    TextField("Nome", text: $name).textContentType(.name).padding(14).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
+                    Label("Tariffa all'ora", systemImage: "eurosign.circle").font(.subheadline.weight(.semibold))
+                    HStack {
+                        TextField("Ad esempio 18", text: $rate).keyboardType(.decimalPad)
+                        Text("€/h").foregroundStyle(PivotTheme.muted)
+                    }.padding(14).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
+                }
+                Button("Aggiungi studente") {
                     guard let cents = Money.cents(from: rate), cents > 0 else { return }
                     let client = Client(name: name.trimmingCharacters(in: .whitespacesAndNewlines), rateCents: cents)
                     if store.change({ $0.clients.append(client) }) { dismiss() }
-                }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (Money.cents(from: rate) ?? 0) <= 0)
-            }.pivotForm().navigationTitle("Nuovo studente")
+                }.buttonStyle(PivotPrimaryButton()).disabled(store.locked || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (Money.cents(from: rate) ?? 0) <= 0)
+            }.navigationTitle("Studente")
                 .toolbar { Button("Annulla") { dismiss() } }
         }
     }
@@ -145,23 +153,31 @@ struct LessonForm: View {
     var finalAmount: Int? { amount.isEmpty ? calculated : Money.cents(from: amount) }
     var body: some View {
         NavigationStack {
-            Form {
-                Picker("Studente", selection: $clientID) { ForEach(clients) { Text($0.name).tag($0.id) } }
-                DatePicker("Data della lezione", selection: $date)
-                Stepper("Durata: \(minutes) min", value: $minutes, in: 5...480, step: 5)
-                Text("Importo calcolato: \(Money.display(calculated))")
-                TextField("Importo diverso (facoltativo)", text: $amount).keyboardType(.decimalPad)
-                Toggle("Già pagata", isOn: $alreadyPaid)
-                TextField("Note", text: $notes, axis: .vertical)
-                Button("Registra") {
+            PivotScreen {
+                PivotHeader(title: "Una lezione in più", subtitle: "Registra il lavoro fatto e tieni traccia del pagamento.")
+                PivotCard {
+                    Picker("Studente", selection: $clientID) { ForEach(clients) { Text($0.name).tag($0.id) } }
+                    DatePicker("Data della lezione", selection: $date)
+                    Stepper("Durata: \(minutes) min", value: $minutes, in: 5...480, step: 5)
+                }
+                PivotCard(tint: PivotTheme.accent) {
+                    Text("Importo della lezione").font(.subheadline).foregroundStyle(PivotTheme.muted)
+                    Text(Money.display(finalAmount ?? 0)).font(.system(.largeTitle, design: .rounded, weight: .bold)).foregroundStyle(PivotTheme.accent)
+                    Text("Calcolato dalla tariffa: \(Money.display(calculated))").font(.caption).foregroundStyle(PivotTheme.muted)
+                    TextField("Importo diverso in euro, se serve", text: $amount).keyboardType(.decimalPad).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
+                    Toggle("Già pagata", isOn: $alreadyPaid)
+                    if alreadyPaid { Text("L'incasso verrà registrato con la data di oggi.").font(.caption).foregroundStyle(PivotTheme.muted) }
+                }
+                PivotCard { TextField("Note della lezione…", text: $notes, axis: .vertical).lineLimit(3...6) }
+                Button("Registra lezione") {
                     guard let client = selected, let cents = finalAmount, cents > 0 else { return }
                     let entry = IncomeEntry(clientID: client.id, clientName: client.name, date: date, minutes: minutes, amountCents: cents, paidCents: alreadyPaid ? cents : 0, notes: notes)
                     if store.change({ data in
                         data.income.append(entry)
                         if alreadyPaid { data.payments.append(.init(incomeID: entry.id, clientName: client.name, date: Date(), amountCents: cents)) }
                     }) { dismiss() }
-                }.disabled((finalAmount ?? 0) <= 0 || selected == nil)
-            }.pivotForm().navigationTitle("Registra lezione")
+                }.buttonStyle(PivotPrimaryButton()).disabled(store.locked || (finalAmount ?? 0) <= 0 || selected == nil)
+            }.navigationTitle("Lezione")
                 .toolbar { Button("Annulla") { dismiss() } }
         }
     }
@@ -175,32 +191,34 @@ struct IncomeDetailView: View {
     @State private var message: String?
     var entry: IncomeEntry? { store.data.income.first { $0.id == entryID } }
     var body: some View {
-        Form {
+        PivotScreen {
             if let entry {
-                Section("Lezione") {
-                    Text(entry.clientName).font(.headline)
-                    Text("\(PivotDate.key(entry.date)) · \(entry.minutes) min")
-                    Text("Totale: \(Money.display(entry.amountCents))")
-                    Text("Pagato: \(Money.display(entry.paidCents))")
-                    Text("Da pagare: \(Money.display(entry.outstandingCents))").foregroundStyle(.orange)
-                    if !entry.notes.isEmpty { Text(entry.notes) }
+                PivotHeader(title: entry.clientName, subtitle: "\(DisplayDate.label(entry.date, format: "d MMMM yyyy")) · \(entry.minutes) minuti di lezione")
+                PivotCard(tint: entry.outstandingCents > 0 ? PivotTheme.amber : PivotTheme.accent) {
+                    Text(entry.outstandingCents > 0 ? "Da incassare" : "Lezione saldata").font(.subheadline).foregroundStyle(PivotTheme.muted)
+                    Text(Money.display(entry.outstandingCents > 0 ? entry.outstandingCents : entry.amountCents)).font(.system(.largeTitle, design: .rounded, weight: .bold)).foregroundStyle(entry.outstandingCents > 0 ? PivotTheme.amber : PivotTheme.accent)
+                    HStack { Text("Totale \(Money.display(entry.amountCents))"); Spacer(); Text("Ricevuto \(Money.display(entry.paidCents))") }.font(.caption).foregroundStyle(PivotTheme.muted)
+                    if !entry.notes.isEmpty { Text(entry.notes).font(.subheadline) }
                 }
                 if entry.outstandingCents > 0 {
-                    Section("Registra incasso") {
+                    PivotCard {
+                        SectionHeading(title: "Registra un pagamento")
                         DatePicker("Data pagamento", selection: $paymentDate)
-                        TextField("Importo ricevuto in euro", text: $payment).keyboardType(.decimalPad)
-                        Button("Registra importo") { collect(entry, cents: Money.cents(from: payment) ?? 0) }
-                        Button("Registra il saldo completo") { collect(entry, cents: entry.outstandingCents) }
+                        TextField("Importo ricevuto in euro", text: $payment).keyboardType(.decimalPad).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
+                        Button("Registra importo") { collect(entry, cents: Money.cents(from: payment) ?? 0) }.buttonStyle(PivotPrimaryButton()).disabled(store.locked || (Money.cents(from: payment) ?? 0) <= 0)
+                        Button("Registra il saldo completo") { collect(entry, cents: entry.outstandingCents) }.buttonStyle(PivotSecondaryButton()).disabled(store.locked)
                     }
                 }
-                Section("Pagamenti ricevuti") {
-                    ForEach(store.data.payments.filter { $0.incomeID == entry.id }) { p in
-                        Text("\(PivotDate.key(p.date)) · \(Money.display(p.amountCents))")
+                let payments = store.data.payments.filter { $0.incomeID == entry.id }.sorted { $0.date > $1.date }
+                if !payments.isEmpty {
+                    PivotCard {
+                        SectionHeading(title: "Pagamenti ricevuti")
+                        ForEach(payments) { p in HStack { Text(DisplayDate.label(p.date, format: "d MMM yyyy")).foregroundStyle(PivotTheme.muted); Spacer(); Text("+ \(Money.display(p.amountCents))").foregroundStyle(PivotTheme.accent) }.font(.subheadline) }
                     }
                 }
-            }
-            if let message { Text(message).foregroundStyle(.orange) }
-        }.pivotForm().navigationTitle("Dettaglio pagamento")
+            } else { EmptyCard(title: "Lezione non disponibile", message: "Torna alle entrate per scegliere una lezione.", icon: "eurosign.circle") }
+            if let message { Label(message, systemImage: "info.circle").font(.subheadline).foregroundStyle(PivotTheme.amber) }
+        }.navigationTitle("Pagamento")
     }
     private func collect(_ entry: IncomeEntry, cents: Int) {
         guard cents > 0 && cents <= entry.outstandingCents else { message = "Inserisci un importo positivo, non superiore al saldo mancante."; return }
@@ -215,16 +233,29 @@ struct IncomeDetailView: View {
 struct ClientDetailView: View {
     @EnvironmentObject var store: PivotStore
     let client: Client
+    var entries: [IncomeEntry] { store.data.income.filter { $0.clientID == client.id }.sorted { $0.date > $1.date } }
     var body: some View {
-        List {
-            ForEach(store.data.income.filter { $0.clientID == client.id }.sorted { $0.date > $1.date }) { entry in
-                NavigationLink { IncomeDetailView(entryID: entry.id) } label: {
-                    VStack(alignment: .leading) {
-                        Text("\(PivotDate.key(entry.date)) · \(entry.minutes) minuti")
-                        Text(entry.outstandingCents == 0 ? "Pagata · \(Money.display(entry.amountCents))" : "Da pagare · \(Money.display(entry.outstandingCents))").font(.caption)
-                    }
-                }
+        PivotScreen {
+            PivotHeader(title: client.name, subtitle: "\(Money.display(client.rateCents)) all'ora · \(entries.count) lezioni registrate")
+            HStack(spacing: 10) {
+                MetricTile(title: "Ricevuto", value: Money.display(entries.reduce(0) { $0 + $1.paidCents }), icon: "checkmark.circle.fill")
+                MetricTile(title: "Da incassare", value: Money.display(entries.reduce(0) { $0 + $1.outstandingCents }), icon: "clock.fill", color: PivotTheme.amber)
             }
-        }.pivotForm().navigationTitle(client.name)
+            SectionHeading(title: "Le lezioni")
+            if entries.isEmpty { EmptyCard(title: "Pronto per la prima lezione", message: "Registra una lezione dalla schermata Entrate.", icon: "person.2.fill") }
+            ForEach(entries) { entry in
+                NavigationLink { IncomeDetailView(entryID: entry.id) } label: {
+                    PivotCard {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("\(DisplayDate.label(entry.date, format: "d MMM yyyy")) · \(entry.minutes) min").font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.text)
+                                Text(entry.outstandingCents == 0 ? "Pagata · \(Money.display(entry.amountCents))" : "Da incassare · \(Money.display(entry.outstandingCents))").font(.caption).foregroundStyle(entry.outstandingCents == 0 ? PivotTheme.accent : PivotTheme.amber)
+                            }
+                            Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(PivotTheme.muted)
+                        }
+                    }
+                }.buttonStyle(.plain)
+            }
+        }.navigationTitle("Studente")
     }
 }

@@ -33,7 +33,7 @@ struct TodayView: View {
                     focusCard(preferred)
                 }
                 NavigationLink { DayCheckInView(day: day, initial: check) } label: {
-                    PivotCard { ActionRow(title: "Come stai oggi?", subtitle: check?.wakeTime == nil ? "Segna la sveglia, l'energia e l'umore." : "Sveglia alle \(PivotDate.time(check!.wakeTime!)) · aggiorna il tuo check-in", icon: "sun.max.fill") }
+                    PivotCard { ActionRow(title: "Come stai oggi?", subtitle: check?.wakeTime.map { "Sveglia alle \(PivotDate.time($0)) · aggiorna il tuo check-in" } ?? "Segna la sveglia, l'energia e l'umore.", icon: "sun.max.fill") }
                 }.buttonStyle(.plain)
                 VStack(alignment: .leading, spacing: 14) {
                     SectionHeading(title: "La tua agenda", detail: "\(items.count) attività")

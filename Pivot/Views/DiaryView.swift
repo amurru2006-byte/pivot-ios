@@ -75,7 +75,7 @@ struct DiaryView: View {
                 }.frame(width: 78, height: 78).accessibilityLabel("\(answered) attività compilate su \(items.count)")
                 VStack(alignment: .leading, spacing: 7) {
                     Text("La tua giornata raccontata").font(.headline)
-                    Text("\(completed) completate · \(items.count - answered) da compilare").font(.subheadline).foregroundStyle(PivotTheme.muted)
+                    Text("\(completed) \(completed == 1 ? "completata" : "completate") · \(items.count - answered) da compilare").font(.subheadline).foregroundStyle(PivotTheme.muted)
                     Text("Anche ciò che salta ci aiuta a capire.").font(.caption).foregroundStyle(PivotTheme.muted)
                 }
             }
