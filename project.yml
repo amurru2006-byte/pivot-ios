@@ -21,11 +21,14 @@ targets:
       path: build/Info.plist
       properties:
         CFBundleDisplayName: Pivot
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleIdentifier: app.pivot.personal
         UILaunchScreen: {}
         UIUserInterfaceStyle: Dark
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         NSCalendarsFullAccessUsageDescription: Pivot legge i calendari e modifica solo gli eventi che approvi esplicitamente.
