@@ -9,6 +9,13 @@ enum EventCoalescer {
     }
     static func matches(_ a: CalendarItem, _ b: CalendarItem) -> Bool {
         if a.id == b.id { return true }
+        // Shared external UID is authoritative for one-off events, even after a rename/move.
+        // Recurring instances additionally require their original occurrence anchor.
+        if a.calendarIdentifier != b.calendarIdentifier, a.sourceIdentifier != b.sourceIdentifier,
+           a.externalIdentifier != nil, a.externalIdentifier == b.externalIdentifier {
+            if a.recurring == false && b.recurring == false { return true }
+            if let anchor = a.occurrenceAnchor, anchor == b.occurrenceAnchor { return true }
+        }
         guard !normalized(a.title).isEmpty, normalized(a.title) == normalized(b.title),
               normalized(a.calendarTitle) == normalized(b.calendarTitle) else { return false }
         let sameTimes = abs(a.start.timeIntervalSince(b.start)) < 1 && abs(a.end.timeIntervalSince(b.end)) < 1
@@ -37,7 +44,9 @@ enum EventCoalescer {
         if matches(snapshot, current) { return true }
         return snapshot.calendarIdentifier == current.calendarIdentifier
             && snapshot.eventIdentifier == current.eventIdentifier
-            && PivotDate.key(snapshot.start) == PivotDate.key(current.start)
+            && ((current.recurring == false && snapshot.recurring != true)
+                || (snapshot.occurrenceAnchor != nil && snapshot.occurrenceAnchor == current.occurrenceAnchor)
+                || PivotDate.key(snapshot.start) == PivotDate.key(current.start))
     }
     private static func prefer(_ a: CalendarItem, over b: CalendarItem) -> Bool {
         if a.isAllDay != b.isAllDay { return !a.isAllDay }
@@ -45,10 +54,10 @@ enum EventCoalescer {
             let name = item.sourceTitle?.lowercased() ?? ""
             return name.contains("google") || name.contains("gmail")
         }
-        if google(a) != google(b) { return google(a) }
-        if a.calendarModifiedAt != b.calendarModifiedAt {
-            return (a.calendarModifiedAt ?? .distantPast) > (b.calendarModifiedAt ?? .distantPast)
+        if let first = a.calendarModifiedAt, let second = b.calendarModifiedAt, first != second {
+            return first > second
         }
+        if google(a) != google(b) { return google(a) }
         if a.writable != b.writable { return a.writable }
         return a.id < b.id
     }
