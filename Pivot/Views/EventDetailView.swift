@@ -18,71 +18,31 @@ struct EventDetailView: View {
         _rule = State(initialValue: rule)
     }
     var body: some View {
-        Form {
-            Section {
-                Text(event.title).font(.title2.bold())
-                Text("\(PivotDate.time(event.start)) – \(PivotDate.time(event.end)) · \(event.calendarTitle)")
-                if !event.location.isEmpty { Text(event.location) }
-                if !event.notes.isEmpty { Text(event.notes).font(.callout).textSelection(.enabled) }
-            }
-            Section("Registrazione") {
-                Text("Stato: \(record.status.label)")
-                if let start = record.actualStart { Text("Inizio reale: \(PivotDate.time(start))") }
-                if let end = record.actualEnd { Text("Fine reale: \(PivotDate.time(end))") }
-                Button(record.status == .running ? "Termina" : "Inizia") {
-                    if record.status == .running { record.actualEnd = Date(); record.status = .completed; updateMinutes() }
-                    else { record.actualStart = Date(); record.actualEnd = nil; record.status = .running }
-                    save()
-                }.disabled(event.isAllDay || store.locked)
-                Picker("Esito", selection: $record.status) {
-                    ForEach(Completion.allCases, id: \.self) { Text($0.label).tag($0) }
-                }
-                Stepper("Tempo registrato: \(record.activeMinutes) min", value: $record.activeMinutes, in: 0...1440, step: 5)
-                Text("Il pulsante misura il tempo trascorso. Correggilo se ci sono state pause.").font(.caption).foregroundStyle(.secondary)
-                if record.status == .partial || record.status == .skipped {
-                    TextField("Perché? Cosa ti ha fermato?", text: $record.reason, axis: .vertical)
-                }
-                TextField("Note extra", text: $record.notes, axis: .vertical).lineLimit(3...8)
-                RatingField(title: "Energia", value: $record.energy)
-            }
-            if event.kind == .meal {
-                Section("Pasto") {
-                    RatingField(title: "Fame prima", value: $record.hungerBefore)
-                    RatingField(title: "Fame dopo", value: $record.hungerAfter)
-                    Picker("Piano rispettato", selection: Binding(get: { record.followedMeal.map { $0 ? 1 : 2 } ?? 0 }, set: { record.followedMeal = $0 == 0 ? nil : $0 == 1 })) {
-                        Text("Non indicato").tag(0); Text("Sì").tag(1); Text("No").tag(2)
-                    }
+        PivotScreen {
+            hero
+            if !event.notes.isEmpty {
+                PivotCard {
+                    DisclosureGroup { Text(event.notes).font(.subheadline).foregroundStyle(PivotTheme.muted).textSelection(.enabled).padding(.top, 10) } label: { Label("Il programma di questa attività", systemImage: "list.bullet.clipboard").font(.subheadline.weight(.semibold)) }
                 }
             }
-            Section("Regole e tragitto") {
-                Picker("Gestione", selection: $rule.flexibility) {
-                    ForEach(EventFlexibility.allCases, id: \.self) { Text($0.label).tag($0) }
-                }
-                Stepper("Minimo: \(rule.minimumMinutes) min", value: $rule.minimumMinutes, in: 5...300, step: 5)
-                Stepper("Tragitto prima: \(rule.travelBeforeMinutes) min", value: $rule.travelBeforeMinutes, in: 0...240, step: 5)
-                Stepper("Tragitto dopo: \(rule.travelAfterMinutes) min", value: $rule.travelAfterMinutes, in: 0...240, step: 5)
-                Toggle("Ho verificato questi tempi (anche se zero)", isOn: $rule.travelConfirmed)
-                Text("La durata dell'evento palestra include allenamento, cambio e doccia. Qui inserisci solo i tragitti. Nessuna riduzione o rinuncia è applicata automaticamente.").font(.caption)
+            registration
+            if event.kind == .meal { meal }
+            PivotCard {
+                DisclosureGroup { rules.padding(.top, 12) } label: { Label("Regole e tragitto", systemImage: "arrow.triangle.branch").font(.subheadline.weight(.semibold)) }
             }
-            Section {
-                Button("Salva registrazione e regole") { save() }
-                if rule.flexibility != .fixed && !event.isAllDay {
-                    Button("Trova uno spazio per recuperare") {
-                        guard rule.travelConfirmed else { message = "Prima conferma i tempi di tragitto. Non posso supporre che siano zero."; return }
-                        guard save() else { return }
-                        suggestions = Planner.recover(event, events: calendar.events, data: store.data, now: Date())
-                        if suggestions.isEmpty { message = "Nessuna proposta sicura nei prossimi tre giorni. Controlla i tragitti degli altri eventi fuori casa, oppure la disponibilità di uno spazio completo. Non ho tagliato altri eventi. Confrontiamoci su cosa puoi accorciare o rimandare; lo studio si riduce solo se recuperabile." }
-                    }
-                }
+            if let message { Label(message, systemImage: "info.circle").font(.subheadline).foregroundStyle(PivotTheme.amber) }
+            Button { if save() { message = "Registrazione salvata." } } label: { Label("Salva registrazione", systemImage: "checkmark.circle.fill") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
+            if rule.flexibility != .fixed && !event.isAllDay {
+                Button { findRecovery() } label: { Label("Trova uno spazio per recuperare", systemImage: "arrow.triangle.2.circlepath") }.buttonStyle(PivotSecondaryButton()).disabled(store.locked)
             }
             ForEach(suggestions) { suggestion in
-                Section("\(PivotDate.key(suggestion.start)) · \(PivotDate.time(suggestion.start))–\(PivotDate.time(suggestion.end))") {
-                    Text(suggestion.explanation)
-                    Button("Usa questo spazio solo in Pivot") { choose(suggestion, sync: false) }
-                    Button("Approva modifica anche nel Calendario") { choose(suggestion, sync: true) }.disabled(!event.writable)
+                PivotCard(tint: PivotTheme.blue) {
+                    Label("\(DisplayDate.label(suggestion.start, format: "EEE d MMM")) · \(PivotDate.time(suggestion.start))–\(PivotDate.time(suggestion.end))", systemImage: "calendar.badge.clock").font(.headline)
+                    Text(suggestion.explanation).font(.subheadline).foregroundStyle(PivotTheme.muted)
+                    Button("Usa questo spazio solo in Pivot") { choose(suggestion, sync: false) }.buttonStyle(PivotPrimaryButton())
+                    Button("Modifica anche il Calendario…") { choose(suggestion, sync: true) }.buttonStyle(PivotSecondaryButton()).disabled(!event.writable)
                 }
             }
-            if let message { Text(message).foregroundStyle(.orange) }
         }
         .navigationTitle("Attività")
         .alert("Modificare il Calendario?", isPresented: $calendarApproval) {
@@ -93,6 +53,80 @@ struct EventDetailView: View {
                 Text("\(event.title)\nDa: \(PivotDate.key(move.source.start)) \(PivotDate.time(move.source.start))–\(PivotDate.time(move.source.end))\nA: \(PivotDate.key(move.proposedStart)) \(PivotDate.time(move.proposedStart))–\(PivotDate.time(move.proposedEnd))\nSi modifica solo questa occorrenza. La modifica si sincronizza agli altri dispositivi.")
             }
         }
+    }
+    private var hero: some View {
+        PivotCard(tint: Color(pivotHex: event.colorHex)) {
+            HStack {
+                Label(event.kind.label, systemImage: event.kind.icon).font(.subheadline.weight(.semibold)).foregroundStyle(Color(pivotHex: event.colorHex))
+                Spacer(); StatusPill(status: record.status)
+            }
+            Text(event.title).font(.system(.title2, design: .rounded, weight: .bold)).fixedSize(horizontal: false, vertical: true)
+            Label("\(PivotDate.time(event.start)) – \(PivotDate.time(event.end)) · \(event.durationMinutes) min", systemImage: "clock").font(.subheadline).foregroundStyle(PivotTheme.muted)
+            Text(event.calendarTitle).font(.caption).foregroundStyle(PivotTheme.muted)
+            if !event.location.isEmpty { Label(event.location, systemImage: "mappin.and.ellipse").font(.caption).foregroundStyle(PivotTheme.muted) }
+            Button {
+                if record.status == .running { record.actualEnd = Date(); record.status = .completed; updateMinutes() }
+                else { record.actualStart = Date(); record.actualEnd = nil; record.status = .running }
+                save()
+            } label: { Label(record.status == .running ? "Termina attività" : "Inizia attività", systemImage: record.status == .running ? "stop.fill" : "play.fill") }
+                .buttonStyle(PivotPrimaryButton()).disabled(event.isAllDay || store.locked)
+            if let start = record.actualStart { Text("Inizio reale \(PivotDate.time(start))" + (record.actualEnd.map { " · fine \(PivotDate.time($0))" } ?? "")).font(.caption).foregroundStyle(PivotTheme.muted) }
+        }
+    }
+    private var registration: some View {
+        PivotCard {
+            SectionHeading(title: "Come è andata?")
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) { outcomeButtons }
+                VStack(spacing: 8) { outcomeButtons }
+            }
+            Picker("Stato attività", selection: $record.status) { ForEach(Completion.allCases, id: \.self) { Text($0.label).tag($0) } }
+                .font(.subheadline).tint(PivotTheme.accent)
+            Divider()
+            Stepper("\(record.activeMinutes) minuti registrati", value: $record.activeMinutes, in: 0...1440, step: 5).font(.subheadline.weight(.semibold))
+            Text("Il timer conta il tempo trascorso. Se hai fatto pause, correggi qui i minuti effettivi.").font(.caption).foregroundStyle(PivotTheme.muted)
+            if record.status == .partial || record.status == .skipped {
+                TextField("Cosa ti ha fermato?", text: $record.reason, axis: .vertical).lineLimit(2...5).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
+                Text("Racconta il motivo: ci aiuta ad adattare il programma.").font(.caption).foregroundStyle(PivotTheme.amber)
+            }
+            TextField("Note extra, difficoltà o progressi…", text: $record.notes, axis: .vertical).lineLimit(3...8).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
+            RatingField(title: "Energia", value: $record.energy)
+        }
+    }
+    private var outcomeButtons: some View {
+        ForEach([Completion.completed, .partial, .skipped], id: \.self) { status in
+            Button { record.status = status } label: {
+                Text(status.label).font(.subheadline.weight(.semibold)).padding(.vertical, 12).frame(maxWidth: .infinity)
+                    .foregroundStyle(record.status == status ? PivotTheme.background : PivotTheme.muted)
+                    .background(record.status == status ? PivotTheme.accent : PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
+            }.buttonStyle(.plain).accessibilityAddTraits(record.status == status ? .isSelected : [])
+        }
+    }
+    private var meal: some View {
+        PivotCard(tint: PivotTheme.amber) {
+            Label("Il tuo pasto", systemImage: "fork.knife").font(.headline).foregroundStyle(PivotTheme.amber)
+            RatingField(title: "Fame prima", value: $record.hungerBefore)
+            RatingField(title: "Fame dopo", value: $record.hungerAfter)
+            Picker("Piano rispettato", selection: Binding(get: { record.followedMeal.map { $0 ? 1 : 2 } ?? 0 }, set: { record.followedMeal = $0 == 0 ? nil : $0 == 1 })) {
+                Text("Non indicato").tag(0); Text("Sì").tag(1); Text("No").tag(2)
+            }
+        }
+    }
+    private var rules: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Picker("Gestione", selection: $rule.flexibility) { ForEach(EventFlexibility.allCases, id: \.self) { Text($0.label).tag($0) } }
+            Stepper("Minimo: \(rule.minimumMinutes) min", value: $rule.minimumMinutes, in: 5...300, step: 5)
+            Stepper("Tragitto prima: \(rule.travelBeforeMinutes) min", value: $rule.travelBeforeMinutes, in: 0...240, step: 5)
+            Stepper("Tragitto dopo: \(rule.travelAfterMinutes) min", value: $rule.travelAfterMinutes, in: 0...240, step: 5)
+            Toggle("Tempi di tragitto verificati", isOn: $rule.travelConfirmed)
+            Text("Conferma anche quando il tragitto è zero. In palestra, cambio e doccia fanno parte dell'attività. Riduzioni e spostamenti richiedono la tua conferma.").font(.caption).foregroundStyle(PivotTheme.muted)
+        }.font(.subheadline)
+    }
+    private func findRecovery() {
+        guard rule.travelConfirmed else { message = "Prima conferma i tempi di tragitto. Non posso supporre che siano zero."; return }
+        guard save() else { return }
+        suggestions = Planner.recover(event, events: calendar.events, data: store.data, now: Date())
+        if suggestions.isEmpty { message = "Non ho trovato uno spazio completo nei prossimi tre giorni. Verifica i tragitti e confrontiamoci su cosa puoi rimandare. Non ho tagliato altri eventi." }
     }
     private func updateMinutes() {
         if let start = record.actualStart, let end = record.actualEnd { record.activeMinutes = max(0, Int(end.timeIntervalSince(start) / 60)) }
