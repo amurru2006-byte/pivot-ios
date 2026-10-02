@@ -3,6 +3,7 @@ import SwiftUI
 struct TodayView: View {
     @EnvironmentObject var store: PivotStore
     @EnvironmentObject var calendar: CalendarService
+    @State private var finishedTutoring: CalendarItem?
     @State private var day = PreviewMode.enabled && PreviewMode.screen == "overnight" ? PivotDate.calendar.date(byAdding: .day, value: 1, to: Date())! : Date()
     var effective: [CalendarItem] { Planner.effectiveEvents(calendar.events, data: store.data) }
     var dayEvents: [CalendarItem] { effective.filter { $0.occurs(on: day) }.sorted { $0.start < $1.start } }
@@ -70,6 +71,7 @@ struct TodayView: View {
             .navigationTitle("Pivot")
             .toolbar { Button { calendar.refresh(settings: store.data.settings) } label: { Image(systemName: "arrow.clockwise") }.accessibilityLabel("Aggiorna calendari") }
             .refreshable { calendar.refresh(settings: store.data.settings) }
+            .sheet(item: $finishedTutoring) { event in NavigationStack { detail(event) } }
         }
     }
     private var universityCard: some View {
@@ -123,7 +125,7 @@ struct TodayView: View {
             if let start = record.actualStart { record.activeMinutes = max(0, Int(Date().timeIntervalSince(start) / 60)) }
         } else { record.actualStart = Date(); record.actualEnd = nil; record.status = .running }
         record.updatedAt = Date()
-        store.change { $0.records[event.id] = record }
+        if store.change({ $0.records[event.id] = record }), event.kind == .tutoring && record.status == .completed { finishedTutoring = event }
     }
     private func detail(_ event: CalendarItem) -> some View {
         EventDetailView(event: event, initial: store.record(for: event), rule: store.rule(for: event))
