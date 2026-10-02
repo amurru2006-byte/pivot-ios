@@ -1,0 +1,16 @@
+.build/
+DerivedData/
+build/
+*.xcodeproj/
+*.xcworkspace/
+*.ipa
+*.mobileprovision
+*.p12
+*.key
+*.pem
+*.env
+*Backup*.json
+*backup*.json
+*pivot-data*.json
+.DS_Store
+xcuserdata/
