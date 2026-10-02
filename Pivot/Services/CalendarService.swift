@@ -80,7 +80,7 @@ private actor CalendarWorker {
         let hasAccess = EKEventStore.authorizationStatus(for: .event) == .fullAccess
         guard hasAccess else { return CalendarSnapshot(hasAccess: false, choices: [], events: []) }
         let calendars = eventStore.calendars(for: .event)
-        let choices = calendars.map { c in .init(id: c.calendarIdentifier, title: c.title, colorHex: Self.hex(c.cgColor), holiday: Self.isHoliday(c.title)) }
+        let choices = calendars.map { c in CalendarChoice(id: c.calendarIdentifier, title: c.title, colorHex: Self.hex(c.cgColor), holiday: Self.isHoliday(c.title)) }
         let selected = calendars.filter { c in
             !settings.excludedCalendarIDs.contains(c.calendarIdentifier) && !settings.excludedCalendarTitles.contains(c.title) && !(settings.excludeHolidays && Self.isHoliday(c.title))
         }
