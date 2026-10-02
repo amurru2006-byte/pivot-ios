@@ -20,6 +20,7 @@ struct PivotApp: App {
     }
 }
 
+@MainActor
 struct RootView: View {
     @EnvironmentObject var store: PivotStore
     @EnvironmentObject var calendar: CalendarService
@@ -27,6 +28,7 @@ struct RootView: View {
     @Environment(\.scenePhase) var scene
     @State private var selectedTab = PreviewMode.enabled ? PreviewMode.tab : 0
     @State private var previewReady = !PreviewMode.enabled
+    @State private var refreshGate = RefreshGate()
     private let refreshClock = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
     var body: some View {
         Group {
@@ -63,12 +65,22 @@ struct RootView: View {
             if PreviewMode.enabled {
                 if !previewReady { PreviewMode.prepare(store: store, calendar: calendar); previewReady = true }
             }
-            else { await refresh() }
+            else {
+                requestRefresh()
+                #if DEBUG && targetEnvironment(simulator)
+                if ProcessInfo.processInfo.arguments.contains("--interaction-test") {
+                    Task {
+                        try? await Task.sleep(nanoseconds: 600_000_000)
+                        for _ in 0..<25 { NotificationCenter.default.post(name: .EKEventStoreChanged, object: nil) }
+                    }
+                }
+                #endif
+            }
         }
-        .onReceive(refreshClock) { _ in if scene == .active { Task { await refresh() } } }
-        .onChange(of: scene) { _, value in if value == .active { Task { await refresh() } } }
-        .onChange(of: store.data.updatedAt) { _, _ in Task { await refresh() } }
-        .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in Task { await refresh() } }
+        .onReceive(refreshClock) { _ in if scene == .active { requestRefresh() } }
+        .onChange(of: scene) { _, value in if value == .active { requestRefresh() } }
+        .onChange(of: store.data.updatedAt) { _, _ in requestRefresh() }
+        .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged).debounce(for: .milliseconds(400), scheduler: RunLoop.main)) { _ in requestRefresh() }
         .alert("Pivot", isPresented: Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })) {
             Button("OK") { store.error = nil }
         } message: { Text(store.error ?? "") }
@@ -83,9 +95,13 @@ struct RootView: View {
         .toolbarBackground(PivotTheme.surface, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
     }
+    private func requestRefresh() {
+        guard !PreviewMode.enabled else { return }
+        refreshGate.request { await refresh() }
+    }
     private func refresh() async {
         guard !PreviewMode.enabled else { return }
-        calendar.refresh(settings: store.data.settings)
+        await calendar.refresh(settings: store.data.settings)
         await notifications.schedule(events: Planner.plannedEvents(calendar.events, data: store.data), data: store.data)
     }
 }

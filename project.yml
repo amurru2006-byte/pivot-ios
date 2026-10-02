@@ -8,8 +8,8 @@ settings:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "1,2"
     CODE_SIGNING_ALLOWED: NO
-    MARKETING_VERSION: "0.2.3"
-    CURRENT_PROJECT_VERSION: "5"
+    MARKETING_VERSION: "0.2.4"
+    CURRENT_PROJECT_VERSION: "6"
 targets:
   Pivot:
     type: application
@@ -40,8 +40,22 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.pivot.personal
         GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  PivotUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: Pivot
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.pivot.interaction-tests
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   Pivot:
     build:
       targets:
         Pivot: all
+    test:
+      targets:
+        - PivotUITests

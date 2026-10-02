@@ -5,20 +5,23 @@ struct TodayView: View {
     @EnvironmentObject var calendar: CalendarService
     @State private var finishedTutoring: CalendarItem?
     @State private var day = PreviewMode.enabled && PreviewMode.screen == "overnight" ? PivotDate.calendar.date(byAdding: .day, value: 1, to: Date())! : Date()
-    var effective: [CalendarItem] { Planner.effectiveEvents(calendar.events, data: store.data) }
-    var dayEvents: [CalendarItem] { effective.filter { $0.occurs(on: day) }.sorted { $0.start < $1.start } }
-    var items: [CalendarItem] { Planner.plannedEvents(effective, data: store.data).filter { $0.occurs(on: day) }.sorted { $0.start < $1.start } }
-    var attendance: Bool? { Planner.universityAttendance(on: day, events: effective, data: store.data) }
-    var conflicts: [(CalendarItem, CalendarItem)] { Planner.overlaps(on: day, events: effective, data: store.data) }
     var check: DayCheckIn? { store.data.checkIns[PivotDate.key(day)] }
-    var completed: Int { items.filter { store.data.records[$0.id]?.status == .completed }.count }
-    var minutes: Int { items.reduce(0) { $0 + (store.data.records[$1.id]?.activeMinutes ?? 0) } }
     var body: some View {
+        let effective = Planner.effectiveEvents(calendar.events, data: store.data)
+        let dayEvents = effective.filter { $0.occurs(on: day) }
+        let items = Planner.plannedEffectiveEvents(effective, data: store.data).filter { $0.occurs(on: day) }
+        let attendance = Planner.universityAttendance(on: day, events: effective, data: store.data)
+        let conflicts = Planner.overlapsInPlannedEvents(on: day, events: items)
+        let completed = items.filter { store.data.records[$0.id]?.status == .completed }.count
+        let minutes = items.reduce(0) { $0 + (store.data.records[$1.id]?.activeMinutes ?? 0) }
         NavigationStack {
             PivotScreen {
                 PivotHeader(title: "La tua giornata", subtitle: DisplayDate.label(day).capitalized)
                 if let sync = calendar.lastRefresh {
-                    Label("Calendario aggiornato alle \(PivotDate.time(sync))", systemImage: "arrow.triangle.2.circlepath").font(.caption).foregroundStyle(PivotTheme.muted)
+                    Label("Calendario aggiornato alle \(PivotDate.time(sync))", systemImage: "arrow.triangle.2.circlepath").font(.caption).foregroundStyle(PivotTheme.muted).accessibilityIdentifier("calendar-updated")
+                }
+                if calendar.isRefreshing {
+                    Label("Aggiornamento calendario…", systemImage: "arrow.triangle.2.circlepath").font(.caption).foregroundStyle(PivotTheme.muted).accessibilityIdentifier("calendar-loading")
                 }
                 DaySelector(day: $day)
                 HStack(alignment: .top, spacing: 9) {
@@ -32,7 +35,7 @@ struct TodayView: View {
                 if !calendar.hasAccess {
                     PivotCard {
                         ActionRow(title: "Collega la tua giornata", subtitle: "Leggi gli eventi dell'app Calendario, anche quelli Google.", icon: "calendar.badge.plus")
-                        Button("Collega calendari") { Task { await calendar.requestAccess(); calendar.refresh(settings: store.data.settings) } }.buttonStyle(PivotPrimaryButton())
+                        Button("Collega calendari") { Task { await calendar.requestAccess(); await calendar.refresh(settings: store.data.settings) } }.buttonStyle(PivotPrimaryButton())
                         if let error = calendar.error { Text(error).font(.caption).foregroundStyle(PivotTheme.amber) }
                     }
                 }
@@ -42,7 +45,7 @@ struct TodayView: View {
                 NavigationLink { DayCheckInView(day: day, initial: check) } label: {
                     PivotCard { ActionRow(title: "Come stai oggi?", subtitle: check?.wakeTime.map { "Sveglia alle \(PivotDate.time($0)) · aggiorna il tuo check-in" } ?? "Segna la sveglia, l'energia e l'umore.", icon: "sun.max.fill") }
                 }.buttonStyle(.plain)
-                if dayEvents.contains(where: { $0.kind == .university }) { universityCard }
+                if dayEvents.contains(where: { $0.kind == .university }) { universityCard(dayEvents: dayEvents, attendance: attendance) }
                 if !conflicts.isEmpty {
                     PivotCard(tint: PivotTheme.amber) {
                         Label("Orari da chiarire", systemImage: "exclamationmark.triangle.fill").font(.headline).foregroundStyle(PivotTheme.amber)
@@ -69,12 +72,12 @@ struct TodayView: View {
                 }
             }
             .navigationTitle("Pivot")
-            .toolbar { Button { calendar.refresh(settings: store.data.settings) } label: { Image(systemName: "arrow.clockwise") }.accessibilityLabel("Aggiorna calendari") }
-            .refreshable { calendar.refresh(settings: store.data.settings) }
+            .toolbar { Button { Task { await calendar.refresh(settings: store.data.settings) } } label: { Image(systemName: "arrow.clockwise") }.accessibilityLabel("Aggiorna calendari") }
+            .refreshable { await calendar.refresh(settings: store.data.settings) }
             .sheet(item: $finishedTutoring) { event in NavigationStack { detail(event) } }
         }
     }
-    private var universityCard: some View {
+    private func universityCard(dayEvents: [CalendarItem], attendance: Bool?) -> some View {
         PivotCard(tint: PivotTheme.blue) {
             Label("Università oggi", systemImage: "graduationcap.fill").font(.headline).foregroundStyle(PivotTheme.blue)
             Text(attendance == false ? "Oggi non frequenti: le lezioni restano consultabili, fuori dalle attività da fare." : "Le lezioni del calendario vanno distinte da quelle che hai deciso di seguire.").font(.subheadline).foregroundStyle(PivotTheme.muted)

@@ -50,7 +50,7 @@ struct SettingsView: View {
                                     })) { Label(choice.title, systemImage: "circle.fill").foregroundStyle(Color(pivotHex: choice.colorHex)) }
                                 }
                             }
-                            Button("Consenti / aggiorna calendari") { Task { await calendar.requestAccess(); calendar.refresh(settings: settings) } }.buttonStyle(PivotSecondaryButton())
+                            Button("Consenti / aggiorna calendari") { Task { await calendar.requestAccess(); await calendar.refresh(settings: settings) } }.buttonStyle(PivotSecondaryButton())
                         }.padding(.top, 12)
                     }.font(.subheadline)
                 }
@@ -77,7 +77,7 @@ struct SettingsView: View {
                         Text("Gli impegni fissi restano protetti. Accorciamenti e rinunce si concordano prima di applicarli.").font(.caption).foregroundStyle(PivotTheme.muted)
                     }
                 }
-                Button { saveSettings() } label: { Label("Salva impostazioni", systemImage: "checkmark.circle.fill") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
+                Button { Task { await saveSettings() } } label: { Label("Salva impostazioni", systemImage: "checkmark.circle.fill") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
                 if let message { Label(message, systemImage: "info.circle").font(.subheadline).foregroundStyle(PivotTheme.amber) }
                 HStack {
                     Text("PIVOT").font(.system(.caption, design: .rounded, weight: .bold)).tracking(3)
@@ -102,7 +102,7 @@ struct SettingsView: View {
                 } message: { Text("Il backup sostituirà i dati attuali. Pivot conserva una copia locale dei dati precedenti; un file non valido non verrà applicato.") }
         }
     }
-    private func saveSettings() {
-        if store.change({ $0.settings = settings }) { calendar.refresh(settings: settings); message = "Impostazioni salvate." }
+    private func saveSettings() async {
+        if store.change({ $0.settings = settings }) { await calendar.refresh(settings: settings); message = "Impostazioni salvate." }
     }
 }

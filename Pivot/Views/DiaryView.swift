@@ -10,17 +10,17 @@ struct DiaryView: View {
         for item in Planner.effectiveEvents(calendar.events, data: store.data) { map[item.id] = item }
         return Array(map.values)
     }
-    var items: [CalendarItem] { Planner.plannedEvents(history, data: store.data).filter { $0.occurs(on: day) }.sorted { $0.start < $1.start } }
-    var answered: Int { items.filter { [.completed, .partial, .skipped].contains(store.data.records[$0.id]?.status ?? .pending) }.count }
-    var completed: Int { items.filter { store.data.records[$0.id]?.status == .completed }.count }
     var check: DayCheckIn? { store.data.checkIns[PivotDate.key(day)] }
     var report: String { Report.day(day, events: history, data: store.data) }
     var body: some View {
+        let items = Planner.plannedEvents(history, data: store.data).filter { $0.occurs(on: day) }.sorted { $0.start < $1.start }
+        let answered = items.filter { [.completed, .partial, .skipped].contains(store.data.records[$0.id]?.status ?? .pending) }.count
+        let completed = items.filter { store.data.records[$0.id]?.status == .completed }.count
         NavigationStack {
             PivotScreen {
                 PivotHeader(title: "Il tuo ritmo", subtitle: "Una giornata alla volta, anche quando cambia il piano.")
                 DaySelector(day: $day)
-                summary
+                summary(items: items, answered: answered, completed: completed)
                 HStack(alignment: .top, spacing: 9) {
                     MetricTile(title: "Sveglia", value: check?.wakeTime.map(PivotDate.time) ?? "—", icon: "sun.max.fill", color: PivotTheme.amber)
                     MetricTile(title: "Energia sera", value: check?.energyEvening.map { "\($0)/10" } ?? "—", icon: "bolt.fill", color: PivotTheme.blue)
@@ -65,7 +65,7 @@ struct DiaryView: View {
                 .sheet(isPresented: $sharing) { ShareSheet(items: [report]) }
         }
     }
-    private var summary: some View {
+    private func summary(items: [CalendarItem], answered: Int, completed: Int) -> some View {
         PivotCard(tint: PivotTheme.accent) {
             HStack(spacing: 20) {
                 ZStack {

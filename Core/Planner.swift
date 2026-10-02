@@ -79,12 +79,18 @@ enum Planner {
         return nil
     }
     static func plannedEvents(_ events: [CalendarItem], data: AppData) -> [CalendarItem] {
-        effectiveEvents(events, data: data).filter {
+        plannedEffectiveEvents(effectiveEvents(events, data: data), data: data)
+    }
+    static func plannedEffectiveEvents(_ events: [CalendarItem], data: AppData) -> [CalendarItem] {
+        events.filter {
             $0.kind != .university || universityAttendance(on: $0.start, events: events, data: data) != false
         }
     }
     static func overlaps(on day: Date, events: [CalendarItem], data: AppData) -> [(CalendarItem, CalendarItem)] {
-        let items = plannedEvents(events, data: data).filter { !$0.isAllDay && $0.occurs(on: day) }.sorted { $0.start < $1.start }
+        overlapsInPlannedEvents(on: day, events: plannedEvents(events, data: data))
+    }
+    static func overlapsInPlannedEvents(on day: Date, events: [CalendarItem]) -> [(CalendarItem, CalendarItem)] {
+        let items = events.filter { !$0.isAllDay && $0.occurs(on: day) }.sorted { $0.start < $1.start }
         var pairs: [(CalendarItem, CalendarItem)] = []
         for i in items.indices {
             for j in items.indices where j > i {
