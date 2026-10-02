@@ -50,7 +50,7 @@ enum Planner {
         return Array(results.prefix(3))
     }
     static func effectiveEvents(_ events: [CalendarItem], data: AppData) -> [CalendarItem] {
-        events.map { item in
+        EventCoalescer.unique(events, data: data).map { item in
             guard let move = data.moves.last(where: { $0.source.id == item.id && !$0.syncedToCalendar }) else { return item }
             var changed = item
             changed.start = move.proposedStart

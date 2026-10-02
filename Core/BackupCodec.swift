@@ -26,9 +26,9 @@ enum BackupCodec {
         var data = try decoder.decode(AppData.self, from: bytes)
         // Reclassify only legacy social snapshots; preserve IDs, answers and money.
         for id in Array(data.records.keys) {
-            if var record = data.records[id], record.snapshot.kind == .social {
+            if var record = data.records[id], record.snapshot.kind == .social || EventCoalescer.normalized(record.snapshot.calendarTitle) == "lavoro" {
                 let kind = EventKind.classify(title: record.snapshot.title, calendar: record.snapshot.calendarTitle)
-                if kind == .partner || kind == .friends { record.snapshot.kind = kind; data.records[id] = record }
+                if kind == .partner || kind == .friends || kind == .tutoring { record.snapshot.kind = kind; data.records[id] = record }
             }
         }
         for index in data.moves.indices where data.moves[index].source.kind == .social {

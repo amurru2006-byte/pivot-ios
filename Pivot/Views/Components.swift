@@ -256,11 +256,12 @@ struct FolderPicker: UIViewControllerRepresentable {
 struct EventRow: View {
     let event: CalendarItem
     let record: EventRecord?
+    var day: Date = Date()
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 5) {
-                Text(event.isAllDay ? "Oggi" : PivotDate.time(event.start)).font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.text)
-                if !event.isAllDay { Text(PivotDate.time(event.end)).font(.caption).foregroundStyle(PivotTheme.muted) }
+                Text(event.agendaStart(on: day)).font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.text)
+                if !event.isAllDay { Text(event.agendaEnd(on: day)).font(.caption).foregroundStyle(PivotTheme.muted) }
             }.frame(width: 47, alignment: .leading).padding(.top, 4)
             VStack(alignment: .leading, spacing: 9) {
                 HStack {
@@ -269,6 +270,9 @@ struct EventRow: View {
                     StatusPill(status: record?.status ?? .pending)
                 }
                 Text(event.title).font(.system(.subheadline, design: .rounded, weight: .semibold)).foregroundStyle(PivotTheme.text).fixedSize(horizontal: false, vertical: true)
+                if !event.isAllDay && !PivotDate.calendar.isDate(event.start, inSameDayAs: event.end) {
+                    Text(event.timeSummary).font(.caption).foregroundStyle(PivotTheme.muted)
+                }
                 HStack {
                     Text(event.calendarTitle).font(.caption).foregroundStyle(PivotTheme.muted)
                     Spacer()

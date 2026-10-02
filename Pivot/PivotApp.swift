@@ -41,7 +41,17 @@ struct RootView: View {
                 NavigationStack { IncomeDetailView(entryID: entry.id) }
             } else if PreviewMode.enabled && PreviewMode.screen == "checkin" {
                 NavigationStack { DayCheckInView(day: Date(), initial: store.data.checkIns[PivotDate.key(Date())]) }
-            } else if PreviewMode.enabled && ["friends", "partner", "allday"].contains(PreviewMode.screen), let event = calendar.events.first(where: { $0.id == PreviewMode.screen }) {
+            } else if PreviewMode.enabled && ["duplicates", "overnight"].contains(PreviewMode.screen) {
+                NavigationStack {
+                    PivotScreen {
+                        let day = PreviewMode.screen == "overnight" ? PivotDate.calendar.date(byAdding: .day, value: 1, to: Date())! : Date()
+                        PivotHeader(title: "La tua agenda", subtitle: DisplayDate.label(day).capitalized)
+                        ForEach(Planner.plannedEvents(calendar.events, data: store.data).filter { $0.occurs(on: day) }) { event in
+                            EventRow(event: event, record: store.data.records[event.id], day: day)
+                        }
+                    }.navigationTitle("Pivot")
+                }
+            } else if PreviewMode.enabled && ["friends", "partner", "allday", "birthday"].contains(PreviewMode.screen), let event = Planner.effectiveEvents(calendar.events, data: store.data).first(where: { $0.id == PreviewMode.screen }) {
                 NavigationStack { EventDetailView(event: event, initial: store.record(for: event), rule: store.rule(for: event)) }
             } else { tabs }
         }

@@ -25,11 +25,11 @@ enum EventKind: String, Codable, CaseIterable {
         // A dedicated calendar is authoritative; never infer a partner from "destinazione".
         if calendarWords.contains("amici") { return .friends }
         if calendarWords.contains("des") || calendarWords.contains("desiree") { return .partner }
+        if calendarWords.contains("lavoro") || t.contains("ripetizioni") || t.contains("lezione mamma") { return .tutoring }
         if t.contains("esame") || t.contains("compitino") { return .exam }
         if ["colazione", "pranzo", "merenda", "cena", "spuntino"].contains(where: t.contains) { return .meal }
         if t.contains("studio") || t.contains("ripasso") || t.contains("simulazione") { return .study }
         if t.contains("palestra") || t.contains("cardio") || c.contains("palestra") { return .workout }
-        if c.contains("lavoro") || t.contains("ripetizioni") || t.contains("lezione mamma") { return .tutoring }
         if c.contains("unimi") || t.contains("laboratorio") { return .university }
         let titleWords = t.components(separatedBy: CharacterSet.alphanumerics.inverted)
         if titleWords.contains("amici") { return .friends }
@@ -66,7 +66,19 @@ struct CalendarItem: Codable, Identifiable, Equatable {
     var isAllDay: Bool
     var writable: Bool
     var kind: EventKind
+    // Optional metadata keeps previous backups compatible.
+    var sourceIdentifier: String? = nil
+    var sourceTitle: String? = nil
+    var calendarModifiedAt: Date? = nil
     var durationMinutes: Int { max(1, Int(end.timeIntervalSince(start) / 60)) }
+    func agendaStart(on day: Date) -> String {
+        if isAllDay { return "Oggi" }
+        return start < PivotDate.calendar.startOfDay(for: day) ? "In corso" : PivotDate.time(start)
+    }
+    func agendaEnd(on day: Date) -> String {
+        if isAllDay { return "" }
+        return PivotDate.calendar.isDate(end, inSameDayAs: day) ? PivotDate.time(end) : "→ \(PivotDate.time(end))"
+    }
     func occurs(on day: Date) -> Bool {
         let from = PivotDate.calendar.startOfDay(for: day)
         let to = PivotDate.calendar.date(byAdding: .day, value: 1, to: from)!

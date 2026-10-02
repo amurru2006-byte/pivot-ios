@@ -1,6 +1,13 @@
 # Pivot — La tua giornata, riadattata
 
-App iOS nativa personale, SwiftUI, iOS 17 o successivo. Versione 0.2.1: interfaccia rinnovata, categorie e agenda corrette.
+### Novità 0.2.2
+- Icona e schermata iniziale con il monogramma bianco e viola.
+- Copie dello stesso appuntamento importate da account diversi riunite in una scheda, preservando le risposte già salvate.
+- Gli eventi con orario hanno precedenza sulle loro vecchie copie a giornata intera. Le occorrenze ricorrenti restano separate.
+- Il calendario Lavoro identifica le ripetizioni anche quando il titolo contiene studio, laboratorio o esame.
+- Per gli eventi che proseguono il giorno dopo vengono mostrate le date e la continuazione, senza cambiare l’orario finale.
+
+App iOS nativa personale, SwiftUI, iOS 17 o successivo. Versione 0.2.2: interfaccia rinnovata, categorie e agenda corrette.
 Il repository contiene soltanto codice. Nessun calendario, cliente, pagamento o backup reale.
 
 ## Aggiornamento 0.2.1
