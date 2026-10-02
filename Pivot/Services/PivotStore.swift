@@ -25,6 +25,16 @@ final class PivotStore: ObservableObject {
             locked = true
             self.error = "Non riesco a leggere lo storico. Non lo sovrascriverò. Esporta il file dall'app File o ripristina un backup valido. Dettaglio: \(error.localizedDescription)"
         }
+        if !locked {
+            let cents = Bundle.main.object(forInfoDictionaryKey: "PivotInitialIncomeCents") as? Int
+            let year = Bundle.main.object(forInfoDictionaryKey: "PivotInitialIncomeYear") as? Int
+            var ledger = data.ledger ?? AnnualLedger()
+            let missingOpening = year.map { ledger.openingCents[String($0)] == nil } ?? false
+            if let cents, let year, missingOpening, cents >= 0, (1900...9999).contains(year) {
+                ledger.setOpeningTotal(cents, year: year, payments: data.payments)
+            }
+            if data.ledger == nil || missingOpening { change { $0.ledger = ledger } }
+        }
         lastExternalBackup = UserDefaults.standard.object(forKey: lastBackupKey) as? Date
         if UserDefaults.standard.data(forKey: bookmarkKey) != nil {
             backupStatus = "Cartella configurata; verifica della copia alla prossima modifica"
@@ -132,6 +142,12 @@ final class PivotStore: ObservableObject {
             error = nil
             writeExternal(bytes)
         } catch { self.error = "Ripristino non eseguito: \(error.localizedDescription)" }
+    }
+
+    func incomeExcelURL(year: Int) throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Registro-Pivot-\(year).xlsx")
+        try LedgerExcel.make(data: data, year: year).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        return url
     }
 
     func record(for event: CalendarItem) -> EventRecord {

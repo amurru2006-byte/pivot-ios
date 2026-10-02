@@ -8,8 +8,8 @@ settings:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "1,2"
     CODE_SIGNING_ALLOWED: NO
-    MARKETING_VERSION: "0.2.2"
-    CURRENT_PROJECT_VERSION: "4"
+    MARKETING_VERSION: "0.2.3"
+    CURRENT_PROJECT_VERSION: "5"
 targets:
   Pivot:
     type: application
@@ -24,7 +24,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleIdentifier: app.pivot.personal
-        UILaunchStoryboardName: LaunchScreen
+        UILaunchStoryboardName: PivotLaunchV3
         UIUserInterfaceStyle: Dark
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

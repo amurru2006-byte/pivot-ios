@@ -13,7 +13,7 @@ enum PreviewMode {
         ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--screen=") })?.replacingOccurrences(of: "--screen=", with: "") ?? "today"
     }
     static var tab: Int {
-        switch screen { case "diary": return 1; case "income": return 2; case "settings": return 3; default: return 0 }
+        switch screen { case "diary": return 1; case "income", "income-warning", "income-red": return 2; case "settings": return 3; default: return 0 }
     }
     @MainActor static func prepare(store: PivotStore, calendar: CalendarService) {
         #if DEBUG && targetEnvironment(simulator)
@@ -46,9 +46,14 @@ enum PreviewMode {
             var timed = old; timed.id = "birthday"; timed.eventIdentifier = "birthday"; timed.calendarIdentifier = "google-friends"; timed.sourceIdentifier = "google"; timed.sourceTitle = "Google"; timed.isAllDay = false; timed.start = at(15); timed.end = PivotDate.calendar.date(byAdding: .day, value: 1, to: at(10))!
             events = [cloud, google, old, timed]
         }
+        if screen == "tutoring" { events.append(item("tutor", "Ripetizioni di chimica", .tutoring, at(16), 60, "D02D68")) }
         calendar.loadPreview(events)
         store.change { data in
             data = AppData()
+            data.ledger = AnnualLedger()
+            if ["income-warning", "income-red"].contains(screen) {
+                data.ledger?.openingCents[String(PivotDate.calendar.component(.year, from: now))] = screen == "income-warning" ? 470_000 : 510_000
+            }
             if ["duplicates", "birthday", "overnight"].contains(screen) { return }
             var breakfast = EventRecord(id: events[0].id, snapshot: events[0]); breakfast.status = .completed; breakfast.activeMinutes = 25
             var gym = EventRecord(id: events[1].id, snapshot: events[1]); gym.status = .partial; gym.activeMinutes = 75; gym.reason = "Avevo meno tempo: ho completato la prima parte."; gym.notes = "Buona energia durante gli esercizi."

@@ -36,7 +36,14 @@ enum BackupCodec {
             let kind = EventKind.classify(title: item.title, calendar: item.calendarTitle)
             if kind == .partner || kind == .friends { data.moves[index].source.kind = kind }
         }
-        guard data.records.allSatisfy({ $0.key == $0.value.id }),
+        if let ledger = data.ledger {
+            guard ledger.referenceCents == 500_000, ledger.warningMarginCents == 50_000,
+                  ledger.openingCents.allSatisfy({ pair in (Int(pair.key).map { (1900...9999).contains($0) } ?? false) && pair.value >= 0 }) else { throw BackupError.invalidData }
+        }
+        guard Set(data.income.map(\.id)).count == data.income.count,
+              Set(data.payments.map(\.id)).count == data.payments.count,
+              Set(data.clients.map(\.id)).count == data.clients.count,
+              data.records.allSatisfy({ $0.key == $0.value.id }),
               data.income.allSatisfy({ $0.amountCents >= 0 && $0.paidCents >= 0 && $0.paidCents <= $0.amountCents && $0.minutes > 0 }),
               data.moves.allSatisfy({ $0.proposedEnd > $0.proposedStart }),
               data.payments.allSatisfy({ payment in payment.amountCents > 0 && data.income.contains(where: { entry in entry.id == payment.incomeID }) }),

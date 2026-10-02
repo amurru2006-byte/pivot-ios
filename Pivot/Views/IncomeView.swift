@@ -4,9 +4,21 @@ struct IncomeView: View {
     @EnvironmentObject var store: PivotStore
     @State private var addingClient = false
     @State private var addingLesson = false
+    @State private var selectedYear: Int? = nil
+    @State private var exportFile: URL?
+    @State private var exporting = false
+    @State private var editingOpening = false
+    var currentYear: Int { PivotDate.calendar.component(.year, from: Date()) }
+    var year: Int { selectedYear ?? currentYear }
+    var ledger: AnnualLedger { store.data.ledger ?? AnnualLedger() }
+    var annualTotal: Int { ledger.total(year: year, payments: store.data.payments) }
+    var years: [Int] { Array(Set([currentYear] + store.data.payments.map { PivotDate.calendar.component(.year, from: $0.date) } + ledger.openingCents.keys.compactMap(Int.init))).sorted(by: >) }
+    var balanceColor: Color {
+        guard let progress = ledger.warningProgress(total: annualTotal) else { return PivotTheme.accent }
+        return Color(red: 1, green: 0.82 * (1 - progress) + 0.12 * progress, blue: 0.1 * (1 - progress) + 0.18 * progress)
+    }
     var monthPayments: [Payment] {
-        let interval = PivotDate.calendar.dateInterval(of: .month, for: Date())!
-        return store.data.payments.filter { $0.date >= interval.start && $0.date < interval.end }.sorted { $0.date > $1.date }
+        return store.data.payments.filter { PivotDate.calendar.component(.year, from: $0.date) == year }.sorted { $0.date > $1.date }
     }
     var outstanding: [IncomeEntry] { store.data.income.filter { $0.outstandingCents > 0 }.sorted { $0.date < $1.date } }
     var body: some View {
@@ -14,6 +26,20 @@ struct IncomeView: View {
             PivotScreen {
                 PivotHeader(title: "Le tue entrate", subtitle: "Ripetizioni, incassi e pagamenti da ricordare.")
                 balance
+                HStack {
+                    Button { editingOpening = true } label: { Label("Importo pregresso", systemImage: "slider.horizontal.3") }.buttonStyle(PivotSecondaryButton()).disabled(store.locked)
+                    Button {
+                        do { exportFile = try store.incomeExcelURL(year: year); exporting = true }
+                        catch { store.error = "Esportazione non riuscita: \(error.localizedDescription)" }
+                    } label: { Label("Esporta in Excel", systemImage: "square.and.arrow.up") }.buttonStyle(PivotSecondaryButton()).disabled(store.locked)
+                }
+                PivotCard(tint: PivotTheme.amber) {
+                    DisclosureGroup {
+                        Text(AnnualLedger.fiscalExplanation).font(.caption).foregroundStyle(PivotTheme.muted).padding(.top, 8)
+                        Link("Leggi la fonte INPS", destination: URL(string: AnnualLedger.sourceURL)!).font(.subheadline)
+                    } label: { Label("Fiscalità: verifica anche sotto 5.000 €", systemImage: "info.circle").font(.subheadline.weight(.semibold)) }
+                    Text("Se fai ripetizioni regolarmente, verifica l'inquadramento adesso: la cifra da sola non determina gli obblighi.").font(.caption).foregroundStyle(PivotTheme.muted)
+                }
                 if store.data.clients.isEmpty {
                     PivotCard {
                         ActionRow(title: "Parti dal primo studente", subtitle: "Imposta la tariffa e registra le lezioni.", icon: "person.badge.plus")
@@ -23,7 +49,7 @@ struct IncomeView: View {
                     Button { addingLesson = true } label: { Label("Registra una lezione", systemImage: "plus.circle.fill") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
                 }
                 VStack(alignment: .leading, spacing: 14) {
-                    SectionHeading(title: "Ultimi incassi", detail: DisplayDate.label(Date(), format: "MMMM").capitalized)
+                    SectionHeading(title: "Ultimi incassi", detail: String(year))
                     if monthPayments.isEmpty { EmptyCard(title: "I tuoi incassi, tutti qui", message: "Quando registri un pagamento, lo ritrovi in questa lista.", icon: "eurosign.arrow.circlepath") }
                     else {
                         PivotCard {
@@ -84,20 +110,27 @@ struct IncomeView: View {
             }.navigationTitle("Entrate")
                 .sheet(isPresented: $addingClient) { ClientForm() }
                 .sheet(isPresented: $addingLesson) { LessonForm(clients: store.data.clients) }
+                .sheet(isPresented: $exporting) { if let exportFile { ShareSheet(items: [exportFile]) } }
+                .sheet(isPresented: $editingOpening) { OpeningIncomeForm(year: year) }
         }
     }
     private var balance: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
-                Label("Incassato questo mese", systemImage: "eurosign.circle.fill").font(.subheadline)
-                Spacer(); Image(systemName: "chart.line.uptrend.xyaxis").font(.title2)
+                Label("Incassato nell’anno", systemImage: "eurosign.circle.fill").font(.subheadline)
+                Spacer()
+                Picker("Anno", selection: Binding(get: { year }, set: { selectedYear = $0 == currentYear ? nil : $0 })) { ForEach(years, id: \.self) { Text(String($0)).tag($0) } }.pickerStyle(.menu)
             }.foregroundStyle(PivotTheme.accent)
-            Text(Money.display(monthPayments.reduce(0) { $0 + $1.amountCents })).font(.system(size: 42, weight: .bold, design: .rounded)).minimumScaleFactor(0.6).lineLimit(1)
+            Text(Money.display(annualTotal)).foregroundStyle(balanceColor).font(.system(size: 42, weight: .bold, design: .rounded)).minimumScaleFactor(0.6).lineLimit(1)
             HStack {
-                Text(DisplayDate.label(Date(), format: "MMMM yyyy").capitalized).font(.caption).foregroundStyle(PivotTheme.muted)
+                Text("1 gennaio – 31 dicembre \(year)").font(.caption).foregroundStyle(PivotTheme.muted)
                 Spacer()
                 Text("Da incassare \(Money.display(outstanding.reduce(0) { $0 + $1.outstandingCents }))").font(.caption.weight(.semibold)).foregroundStyle(PivotTheme.amber)
             }
+            if let progress = ledger.warningProgress(total: annualTotal) {
+                Label(progress >= 1 ? "Riferimento INPS raggiunto: verifica gli adempimenti" : "Ti avvicini al riferimento INPS: \(Money.display(max(0, ledger.referenceCents - annualTotal))) rimanenti", systemImage: "exclamationmark.triangle.fill").font(.caption.weight(.semibold)).foregroundStyle(balanceColor)
+            }
+            Text("Riferimento INPS 5.000 € · avviso da 4.500 €. Non è un limite esente da tasse. Il nuovo anno riparte da zero, senza cancellare lo storico.").font(.caption).foregroundStyle(PivotTheme.muted)
         }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
             .background(LinearGradient(colors: [Color(pivotHex: "22493F"), Color(pivotHex: "1C2C41"), PivotTheme.surface], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 26))
             .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(PivotTheme.accent.opacity(0.18)))
@@ -261,5 +294,29 @@ struct ClientDetailView: View {
                 }.buttonStyle(.plain)
             }
         }.navigationTitle("Studente")
+    }
+}
+
+struct OpeningIncomeForm: View {
+    @EnvironmentObject var store: PivotStore
+    @Environment(\.dismiss) var dismiss
+    let year: Int
+    @State private var total = ""
+    var recorded: Int { store.data.payments.filter { PivotDate.calendar.component(.year, from: $0.date) == year }.reduce(0) { $0 + $1.amountCents } }
+    var body: some View {
+        NavigationStack {
+            PivotScreen {
+                PivotHeader(title: "Incassi già ricevuti", subtitle: "Anno \(year). Imposta il totale prima di iniziare a usare il registro.")
+                PivotCard {
+                    TextField("Totale già incassato in euro", text: $total).keyboardType(.decimalPad).padding(14).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
+                    Text("Include i pagamenti già registrati (\(Money.display(recorded))). Li sottraggo dall'importo pregresso per evitare doppioni. Non creo ricevute o studenti fittizi.").font(.caption).foregroundStyle(PivotTheme.muted)
+                }
+                Button("Salva totale iniziale") {
+                    guard let cents = Money.cents(from: total), cents >= recorded else { return }
+                    if store.change({ data in var ledger = data.ledger ?? AnnualLedger(); ledger.setOpeningTotal(cents, year: year, payments: data.payments); data.ledger = ledger }) { dismiss() }
+                }.buttonStyle(PivotPrimaryButton()).disabled(store.locked || (Money.cents(from: total) ?? -1) < recorded)
+            }.navigationTitle("Importo pregresso").toolbar { Button("Annulla") { dismiss() } }
+                .onAppear { total = String(Double((store.data.ledger ?? AnnualLedger()).total(year: year, payments: store.data.payments)) / 100) }
+        }
     }
 }

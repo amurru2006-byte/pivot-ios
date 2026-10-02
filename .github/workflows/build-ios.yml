@@ -20,7 +20,7 @@ jobs:
           xcodebuild -version
           swift --version
       - name: Test dati, pagamenti, backup e pianificazione
-        run: swift test
+        run: PIVOT_TEST_EXPORT_PATH=build/export-validation.xlsx swift test
       - name: Installa generatore progetto
         run: brew install xcodegen
       - name: Genera progetto Xcode
@@ -62,4 +62,5 @@ jobs:
           path: |
             build/build.log
             build/preview-build.log
+            build/export-validation.xlsx
           if-no-files-found: ignore

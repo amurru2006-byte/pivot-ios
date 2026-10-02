@@ -1,3 +1,17 @@
+# Pivot iOS
+
+## Novità 0.2.3
+
+- Monogramma aggiornato anche nella schermata nativa di avvio, con risorse rinominate.
+- Per copie Google/iCloud della stessa attività, mantiene il colore del calendario iCloud originale.
+- Calendari riletti al ritorno nell’app, alle modifiche, ogni minuto durante l’uso e manualmente. Le modifiche esterne di titolo/orario nello stesso giorno conservano le risposte; un piano locale obsoleto non prevale sul Calendario.
+- Domande diverse per studio, pasti, allenamento, università, ripetizioni, routine e uscite.
+- Guadagno collegato alla ripetizione: importo concordato e importo ricevuto distinti, senza doppio incasso al secondo salvataggio.
+- Totale annuale per data di pagamento, importo pregresso aggregato modificabile, storico per anno ed esportazione Excel .xlsx con riepilogo, incassi e lezioni.
+- Il nuovo anno non cancella pagamenti, lezioni non saldate o storico.
+- Avviso giallo da 4.500 €, progressione fino al rosso a 5.000 € e notifica per ciascuna soglia/anno. È un riferimento INPS per lavoro realmente occasionale, non un tetto legale o un’esenzione fiscale. L’app non determina il regime fiscale individuale.
+- Un eventuale importo iniziale privato può essere fornito nel pacchetto di installazione attraverso le chiavi Info.plist PivotInitialIncomeCents e PivotInitialIncomeYear. Nessun dato finanziario personale è incluso nel repository.
+
 # Pivot — La tua giornata, riadattata
 
 ### Novità 0.2.2

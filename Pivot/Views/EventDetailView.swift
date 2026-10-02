@@ -3,17 +3,28 @@ import SwiftUI
 struct EventDetailView: View {
     @EnvironmentObject var store: PivotStore
     @EnvironmentObject var calendar: CalendarService
-    let event: CalendarItem
+    private let sourceEvent: CalendarItem
+    var event: CalendarItem {
+        Planner.effectiveEvents(calendar.events, data: store.data).first { $0.id == sourceEvent.id || EventCoalescer.savedOccurrence(sourceEvent, $0) } ?? sourceEvent
+    }
     @State private var record: EventRecord
     @State private var rule: EventRule
     @State private var message: String?
     @State private var suggestions: [RecoverySuggestion] = []
     @State private var pendingMove: PlanMove?
     @State private var calendarApproval = false
+    @State private var studentName = ""
+    @State private var selectedClientID: UUID? = nil
+    @State private var lessonAmount = ""
+    @State private var receivedAmount = ""
+    @State private var received = false
+    @State private var receiptDate = Date()
+    var linkedIncome: IncomeEntry? { store.data.income.first { $0.id == record.incomeID || $0.calendarEventID == event.id } }
+    var selectedClient: Client? { store.data.clients.first { $0.id == selectedClientID } }
     @Environment(\.dismiss) private var dismiss
 
     init(event: CalendarItem, initial: EventRecord, rule: EventRule) {
-        self.event = event
+        self.sourceEvent = event
         _record = State(initialValue: initial)
         _rule = State(initialValue: rule)
     }
@@ -27,6 +38,8 @@ struct EventDetailView: View {
             }
             registration
             if event.kind == .meal { meal }
+            if event.kind == .tutoring { tutoring }
+            reflection
             PivotCard {
                 DisclosureGroup { rules.padding(.top, 12) } label: { Label("Regole e tragitto", systemImage: "arrow.triangle.branch").font(.subheadline.weight(.semibold)) }
             }
@@ -114,6 +127,56 @@ struct EventDetailView: View {
             }
         }
     }
+    private var reflection: some View {
+        let labels: (String, String, String) = {
+            switch event.kind {
+            case .study: return ("Quali argomenti hai studiato?", "Esercizi riusciti, errori o dubbi", "Da cosa riparti la prossima volta?")
+            case .workout: return ("Allenamento o cardio svolto", "Esercizi, durata e sensazioni", "Cosa adatti la prossima volta?")
+            case .university, .exam: return ("Argomenti affrontati", "Cosa hai capito e cosa manca?", "Cosa devi ripassare?")
+            case .tutoring: return ("Argomenti della ripetizione", "Come è andata allo studente?", "Cosa preparare per la prossima lezione?")
+            case .meal: return ("Cosa hai mangiato?", "Quantità e variazioni rispetto al piano", "Cosa ti aiuta per il prossimo pasto?")
+            case .routine: return ("Cosa hai fatto nella routine?", "Minuti e ostacoli", "Cosa prepari per domani?")
+            case .partner, .friends, .social: return ("Com'è andata l'uscita?", "Tempi reali e cambi di programma", "Vuoi ricordarti qualcosa?")
+            default: return ("Cosa hai fatto?", "Risultato o cose rimaste da fare", "Prossimo passo")
+            }
+        }()
+        return PivotCard {
+            DisclosureGroup {
+                TextField(labels.0, text: reflectionBinding(\.focus), axis: .vertical).lineLimit(2...4)
+                TextField(labels.1, text: reflectionBinding(\.result), axis: .vertical).lineLimit(2...4)
+                TextField(labels.2, text: reflectionBinding(\.nextStep), axis: .vertical).lineLimit(2...4)
+            } label: { Label("Dettagli della tua \(event.kind.label.lowercased())", systemImage: "text.bubble").font(.subheadline.weight(.semibold)) }
+        }
+    }
+    private func reflectionBinding(_ path: WritableKeyPath<ActivityReflection, String>) -> Binding<String> {
+        Binding(get: { (record.reflection ?? ActivityReflection())[keyPath: path] }, set: { value in
+            var details = record.reflection ?? ActivityReflection(); details[keyPath: path] = value; record.reflection = details
+        })
+    }
+    private var tutoring: some View {
+        PivotCard(tint: PivotTheme.accent) {
+            Label("Quanto hai guadagnato?", systemImage: "eurosign.circle.fill").font(.headline)
+            if let entry = linkedIncome {
+                Text("Lezione registrata: \(Money.display(entry.amountCents))").font(.subheadline)
+                NavigationLink { IncomeDetailView(entryID: entry.id) } label: { Label(entry.outstandingCents > 0 ? "Registra il pagamento mancante" : "Vedi il pagamento", systemImage: "arrow.right.circle") }
+                Text("Salvare ancora questa attività non aggiunge un secondo incasso.").font(.caption).foregroundStyle(PivotTheme.muted)
+            } else {
+                Picker("Studente", selection: $selectedClientID) {
+                    Text("Inserisci il nome").tag(nil as UUID?)
+                    ForEach(store.data.clients) { Text($0.name).tag(Optional($0.id)) }
+                }
+                if selectedClient == nil { TextField("Nome dello studente", text: $studentName).textContentType(.name) }
+                TextField("Importo concordato in euro (anche 0)", text: $lessonAmount).keyboardType(.decimalPad)
+                Toggle("Ho già ricevuto un pagamento", isOn: $received)
+                if received {
+                    TextField("Euro ricevuti", text: $receivedAmount).keyboardType(.decimalPad)
+                    DatePicker("Data incasso", selection: $receiptDate)
+                }
+                Text("Il conto sale solo per i soldi ricevuti. La parte non pagata resta in ‘Da incassare’. Salva quando hai indicato l'esito della lezione.").font(.caption).foregroundStyle(PivotTheme.muted)
+                if record.tutoringAnswered == true { Text("Nessun compenso registrato per questa attività.").font(.caption) }
+            }
+        }
+    }
     private var rules: some View {
         VStack(alignment: .leading, spacing: 16) {
             Picker("Gestione", selection: $rule.flexibility) { ForEach(EventFlexibility.allCases, id: \.self) { Text($0.label).tag($0) } }
@@ -137,8 +200,33 @@ struct EventDetailView: View {
         if (record.status == .partial || record.status == .skipped) && record.reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             message = "Scrivi il motivo dell'attività parziale o saltata."; return false
         }
+        let isLessonDone = event.kind == .tutoring && [.completed, .partial].contains(record.status)
+        var client: Client?
+        var cents: Int?
+        var collected = 0
+        if isLessonDone && linkedIncome == nil && !lessonAmount.isEmpty {
+            guard let amount = Money.cents(from: lessonAmount) else { message = "Inserisci un importo valido."; return false }
+            cents = amount
+            let name = selectedClient?.name ?? studentName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard amount == 0 || !name.isEmpty else { message = "Indica lo studente per registrare il guadagno."; return false }
+            client = selectedClient ?? Client(name: name, rateCents: 0)
+            if received {
+                guard let paid = Money.cents(from: receivedAmount), paid > 0, paid <= amount else { message = "L'incasso deve essere positivo e non superiore all'importo della lezione."; return false }
+                collected = paid
+            }
+        }
         record.updatedAt = Date()
-        return store.change { data in data.records[event.id] = record; data.rules[event.id] = rule }
+        record.snapshot = event
+        var saved = record
+        let ok = store.change { data in
+            if let client, let cents { TutoringLedger.register(event: event, record: &saved, client: client, amountCents: cents, collectedCents: collected, paymentDate: receiptDate, data: &data) }
+            data.records[event.id] = saved; data.rules[event.id] = rule
+        }
+        if ok {
+            record = saved
+            if isLessonDone && saved.tutoringAnswered != true && linkedIncome == nil { message = "Attività salvata. Completa anche il compenso della ripetizione." }
+        }
+        return ok
     }
     private func choose(_ suggestion: RecoverySuggestion, sync: Bool) {
         calendar.refresh(settings: store.data.settings)

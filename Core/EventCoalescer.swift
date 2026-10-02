@@ -33,6 +33,12 @@ enum EventCoalescer {
         return a.externalIdentifier != nil && a.externalIdentifier == b.externalIdentifier
             && PivotDate.key(a.start) == PivotDate.key(b.start) && a.start < b.end && b.start < a.end
     }
+    static func savedOccurrence(_ snapshot: CalendarItem, _ current: CalendarItem) -> Bool {
+        if matches(snapshot, current) { return true }
+        return snapshot.calendarIdentifier == current.calendarIdentifier
+            && snapshot.eventIdentifier == current.eventIdentifier
+            && PivotDate.key(snapshot.start) == PivotDate.key(current.start)
+    }
     private static func prefer(_ a: CalendarItem, over b: CalendarItem) -> Bool {
         if a.isAllDay != b.isAllDay { return !a.isAllDay }
         func google(_ item: CalendarItem) -> Bool {
@@ -55,8 +61,12 @@ enum EventCoalescer {
         }
         return groups.map { group in
             var chosen = group.sorted { prefer($0, over: $1) }[0]
+            // Use the original iCloud calendar's exact color when a Google import differs.
+            if let original = group.first(where: { ($0.sourceTitle ?? "").lowercased().contains("icloud") }) {
+                chosen.colorHex = original.colorHex
+            }
             // Keep an existing answer/timer under its original ID, while displaying current calendar metadata.
-            let records = data.records.values.filter { record in group.contains(where: { matches(record.snapshot, $0) }) }
+            let records = data.records.values.filter { record in group.contains(where: { savedOccurrence(record.snapshot, $0) }) }
             if let saved = records.sorted(by: { a, b in
                 if (a.status == .running) != (b.status == .running) { return a.status == .running }
                 if (a.status != .pending) != (b.status != .pending) { return a.status != .pending }

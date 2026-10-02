@@ -16,6 +16,9 @@ struct TodayView: View {
         NavigationStack {
             PivotScreen {
                 PivotHeader(title: "La tua giornata", subtitle: DisplayDate.label(day).capitalized)
+                if let sync = calendar.lastRefresh {
+                    Label("Calendario aggiornato alle \(PivotDate.time(sync))", systemImage: "arrow.triangle.2.circlepath").font(.caption).foregroundStyle(PivotTheme.muted)
+                }
                 DaySelector(day: $day)
                 HStack(alignment: .top, spacing: 9) {
                     MetricTile(title: "Completati", value: "\(completed)/\(items.count)", icon: "checkmark.circle.fill")
