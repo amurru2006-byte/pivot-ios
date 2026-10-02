@@ -74,7 +74,7 @@ enum Planner {
     static func universityAttendance(on day: Date, events: [CalendarItem], data: AppData) -> Bool? {
         if let answer = data.checkIns[PivotDate.key(day)]?.universityAttendance { return answer }
         // An explicit instruction in the day's routine is not an inferred cancellation.
-        if events.contains(where: { $0.kind == .routine && PivotDate.key($0.start) == PivotDate.key(day) && $0.notes.components(separatedBy: .newlines).contains(where: { $0.trimmingCharacters(in: .whitespacesAndNewlines) == universityOffNote }) }) { return false }
+        if events.contains(where: { $0.kind == .routine && PivotDate.key($0.start) == PivotDate.key(day) && $0.notes.contains(universityOffNote) }) { return false }
         return nil
     }
     static func plannedEvents(_ events: [CalendarItem], data: AppData) -> [CalendarItem] {
