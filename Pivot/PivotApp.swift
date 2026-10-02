@@ -26,9 +26,12 @@ struct RootView: View {
     @EnvironmentObject var notifications: NotificationService
     @Environment(\.scenePhase) var scene
     @State private var selectedTab = PreviewMode.enabled ? PreviewMode.tab : 0
+    @State private var previewReady = !PreviewMode.enabled
     var body: some View {
         Group {
-            if PreviewMode.enabled && PreviewMode.screen == "detail", let event = calendar.events.first(where: { $0.id == "study" }) {
+            if !previewReady {
+                ProgressView("Anteprima…")
+            } else if PreviewMode.enabled && PreviewMode.screen == "detail", let event = calendar.events.first(where: { $0.id == "study" }) {
                 NavigationStack { EventDetailView(event: event, initial: store.record(for: event), rule: store.rule(for: event)) }
             } else if PreviewMode.enabled && PreviewMode.screen == "client" {
                 ClientForm()
@@ -41,7 +44,9 @@ struct RootView: View {
             } else { tabs }
         }
         .task {
-            if PreviewMode.enabled { PreviewMode.prepare(store: store, calendar: calendar) }
+            if PreviewMode.enabled {
+                if !previewReady { PreviewMode.prepare(store: store, calendar: calendar); previewReady = true }
+            }
             else { await refresh() }
         }
         .onChange(of: scene) { _, value in if value == .active { Task { await refresh() } } }
