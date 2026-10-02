@@ -326,4 +326,22 @@ final class PivotCoreTests: XCTestCase {
         XCTAssertFalse(Report.day(item.start, events: [item], data: data).contains("Manca il compenso"))
     }
 
+    func testExternalCalendarEditsPreferNewestCopyWithRenamedEvent() {
+        var google = event("google", start: "2026-10-03T11:00:00+02:00", end: "2026-10-03T12:00:00+02:00")
+        google.externalIdentifier = "shared"; google.sourceIdentifier = "google"; google.sourceTitle = "Google"; google.recurring = false; google.calendarModifiedAt = date("2026-10-02T10:00:00+02:00")
+        var cloud = google; cloud.id = "cloud"; cloud.calendarIdentifier = "cloud"; cloud.sourceIdentifier = "cloud"; cloud.sourceTitle = "iCloud"; cloud.title = "Titolo nuovo"; cloud.start = date("2026-10-04T15:00:00+02:00"); cloud.end = date("2026-10-04T16:00:00+02:00"); cloud.notes = "Nuove indicazioni"; cloud.location = "Nuovo luogo"; cloud.calendarModifiedAt = date("2026-10-03T10:00:00+02:00")
+        let items = EventCoalescer.unique([google, cloud], data: AppData())
+        XCTAssertEqual(items.count, 1); XCTAssertEqual(items[0].title, cloud.title); XCTAssertEqual(items[0].start, cloud.start); XCTAssertEqual(items[0].notes, cloud.notes); XCTAssertEqual(items[0].location, cloud.location)
+    }
+    func testOneOffDateChangeKeepsAnswersAndRecurringInstancesStaySeparate() {
+        var old = event("old", start: "2026-10-03T11:00:00+02:00", end: "2026-10-03T12:00:00+02:00")
+        old.recurring = false
+        var current = old; current.id = "new"; current.start = date("2026-10-05T15:00:00+02:00"); current.end = date("2026-10-05T16:00:00+02:00")
+        var data = AppData(); var record = EventRecord(id: old.id, snapshot: old); record.notes = "Risposta"; data.records[old.id] = record
+        XCTAssertEqual(EventCoalescer.unique([current], data: data)[0].id, old.id)
+        XCTAssertTrue(Planner.plannedEvents([], data: data).isEmpty)
+        old.recurring = true; old.occurrenceAnchor = old.start; current.recurring = true; current.occurrenceAnchor = current.start
+        XCTAssertFalse(EventCoalescer.savedOccurrence(old, current))
+    }
+
 }

@@ -70,6 +70,8 @@ struct CalendarItem: Codable, Identifiable, Equatable {
     var sourceIdentifier: String? = nil
     var sourceTitle: String? = nil
     var calendarModifiedAt: Date? = nil
+    var recurring: Bool? = nil
+    var occurrenceAnchor: Date? = nil
     var durationMinutes: Int { max(1, Int(end.timeIntervalSince(start) / 60)) }
     func agendaStart(on day: Date) -> String {
         if isAllDay { return "Oggi" }

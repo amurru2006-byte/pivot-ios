@@ -145,7 +145,7 @@ struct EventDetailView: View {
                 TextField(labels.0, text: reflectionBinding(\.focus), axis: .vertical).lineLimit(2...4)
                 TextField(labels.1, text: reflectionBinding(\.result), axis: .vertical).lineLimit(2...4)
                 TextField(labels.2, text: reflectionBinding(\.nextStep), axis: .vertical).lineLimit(2...4)
-            } label: { Label("Dettagli della tua \(event.kind.label.lowercased())", systemImage: "text.bubble").font(.subheadline.weight(.semibold)) }
+            } label: { Label("Dettagli: \(event.kind.label)", systemImage: "text.bubble").font(.subheadline.weight(.semibold)) }
         }
     }
     private func reflectionBinding(_ path: WritableKeyPath<ActivityReflection, String>) -> Binding<String> {

@@ -46,14 +46,17 @@ final class CalendarService: ObservableObject {
             let external = event.calendarItemExternalIdentifier
             let eventID = event.eventIdentifier ?? event.calendarItemIdentifier
             // Include the calendar to separate copies imported into distinct calendars.
-            let key = "\(event.calendar.calendarIdentifier)|\(external ?? eventID)|\(PivotDate.key(event.startDate))"
+            let recurring = event.hasRecurrenceRules
+            let anchor = recurring ? event.occurrenceDate : nil
+            let suffix = recurring ? "|\(Int((anchor ?? event.startDate).timeIntervalSince1970))" : ""
+            let key = "\(event.calendar.calendarIdentifier)|\(external ?? eventID)\(suffix)"
             return CalendarItem(id: key, eventIdentifier: eventID, externalIdentifier: external,
                 calendarIdentifier: event.calendar.calendarIdentifier, calendarTitle: event.calendar.title,
                 title: event.title ?? "Evento", start: event.startDate, end: event.endDate,
                 location: event.location ?? "", notes: Self.plainText(event.notes ?? ""),
                 colorHex: Self.hex(event.calendar.cgColor), isAllDay: event.isAllDay,
                 writable: event.calendar.allowsContentModifications, kind: .classify(title: event.title ?? "", calendar: event.calendar.title),
-                sourceIdentifier: event.calendar.source.sourceIdentifier, sourceTitle: event.calendar.source.title, calendarModifiedAt: event.lastModifiedDate)
+                sourceIdentifier: event.calendar.source.sourceIdentifier, sourceTitle: event.calendar.source.title, calendarModifiedAt: event.lastModifiedDate, recurring: recurring, occurrenceAnchor: anchor)
         }.sorted { $0.start < $1.start }
         lastRefresh = Date()
     }
