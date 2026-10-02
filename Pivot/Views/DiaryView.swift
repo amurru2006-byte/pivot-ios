@@ -35,7 +35,7 @@ struct DiaryView: View {
                     ForEach(items) { item in
                         NavigationLink { EventDetailView(event: item, initial: store.record(for: item), rule: store.rule(for: item)) } label: {
                             VStack(alignment: .leading, spacing: 6) {
-                                EventRow(event: item, record: store.data.records[item.id])
+                                EventRow(event: item, record: store.data.records[item.id], day: day)
                                 if let record = store.data.records[item.id] {
                                     if !record.reason.isEmpty { Text(record.reason).font(.caption).foregroundStyle(PivotTheme.amber).padding(.leading, 59) }
                                     if !record.notes.isEmpty { Text(record.notes).font(.caption).foregroundStyle(PivotTheme.muted).lineLimit(3).padding(.leading, 59) }

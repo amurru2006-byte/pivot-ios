@@ -152,4 +152,77 @@ final class PivotCoreTests: XCTestCase {
         XCTAssertFalse(birthday.timeSummary.contains("2880"))
         XCTAssertFalse(birthday.timeSummary.contains("4 ott"))
     }
+    func testWorkCalendarDoesNotBecomeUniversityOrPersonalStudy() {
+        XCTAssertEqual(EventKind.classify(title: "laboratorio chimica con uno studente", calendar: "Lavoro"), .tutoring)
+        XCTAssertEqual(EventKind.classify(title: "studio matematica", calendar: "Lavoro"), .tutoring)
+        XCTAssertEqual(EventKind.classify(title: "preparazione esame", calendar: "Lavoro"), .tutoring)
+        XCTAssertEqual(EventKind.classify(title: "Chimica generale", calendar: "Unimi-L27"), .university)
+        XCTAssertEqual(EventKind.classify(title: "studio matematica", calendar: "Unimi-L27"), .study)
+    }
+    func testImportedLessonAppearsOnceWithItsExistingAnswer() {
+        var cloud = event("cloud", start: "2026-10-03T11:00:00+02:00", end: "2026-10-03T12:00:00+02:00", kind: .tutoring)
+        cloud.title = "lezione studente "; cloud.calendarTitle = "Lavoro"; cloud.calendarIdentifier = "icloud-work"; cloud.sourceIdentifier = "icloud"; cloud.sourceTitle = "iCloud"
+        var google = cloud; google.id = "google"; google.eventIdentifier = "google"; google.calendarIdentifier = "google-work"; google.sourceIdentifier = "google"; google.sourceTitle = "Google"; google.notes = "Indicazioni aggiornate"
+        var data = AppData(); var record = EventRecord(id: cloud.id, snapshot: cloud); record.status = .completed; record.activeMinutes = 60; record.notes = "Argomenti affrontati"; data.records[cloud.id] = record
+        let items = Planner.plannedEvents([cloud, google], data: data)
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items[0].id, cloud.id)
+        XCTAssertEqual(items[0].notes, google.notes)
+        XCTAssertEqual(items[0].calendarIdentifier, google.calendarIdentifier)
+        XCTAssertEqual(data.records[items[0].id]?.activeMinutes, 60)
+        XCTAssertEqual(data.records[items[0].id]?.notes, "Argomenti affrontati")
+        XCTAssertEqual(Planner.plannedEvents(items, data: data), items)
+        XCTAssertTrue(Planner.overlaps(on: cloud.start, events: [cloud, google], data: data).isEmpty)
+        XCTAssertTrue(Report.day(cloud.start, events: [cloud, google], data: data).contains("Eventi da compilare: 0"))
+    }
+    func testTimedBirthdayWinsOverItsStaleAllDayImport() {
+        var allDay = event("all-day", start: "2026-10-03T00:00:00+02:00", end: "2026-10-05T00:00:00+02:00", kind: .friends)
+        allDay.isAllDay = true; allDay.title = "compleanno"; allDay.calendarTitle = "Amici"; allDay.calendarIdentifier = "icloud-friends"; allDay.sourceIdentifier = "icloud"
+        var timed = allDay; timed.id = "timed"; timed.eventIdentifier = "timed"; timed.calendarIdentifier = "google-friends"; timed.sourceIdentifier = "google"; timed.sourceTitle = "Google"; timed.isAllDay = false; timed.start = date("2026-10-03T15:00:00+02:00"); timed.end = date("2026-10-04T10:00:00+02:00")
+        let items = Planner.plannedEvents([allDay, timed], data: AppData())
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items[0].start, timed.start)
+        XCTAssertEqual(items[0].end, timed.end)
+        XCTAssertFalse(items[0].isAllDay)
+        XCTAssertEqual(items[0].agendaStart(on: timed.start), "15:00")
+        XCTAssertEqual(items[0].agendaStart(on: timed.end), "In corso")
+        XCTAssertEqual(items[0].agendaEnd(on: timed.end), "10:00")
+        XCTAssertTrue(items[0].occurs(on: timed.end))
+        XCTAssertFalse(items[0].occurs(on: date("2026-10-05T00:00:00+02:00")))
+    }
+    func testMatchingNamesDoNotEraseDifferentAppointments() {
+        var a = event("a", start: "2026-10-03T11:00:00+02:00", end: "2026-10-03T12:00:00+02:00", kind: .tutoring)
+        a.calendarTitle = "Lavoro"; a.calendarIdentifier = "work-a"; a.sourceIdentifier = "google"
+        var b = a; b.id = "b"; b.eventIdentifier = "b"; b.calendarIdentifier = "work-b"
+        XCTAssertEqual(EventCoalescer.unique([a, b], data: AppData()).count, 2)
+        b.sourceIdentifier = "icloud"; b.location = "Altro luogo"; a.location = "Luogo uno"
+        XCTAssertEqual(EventCoalescer.unique([a, b], data: AppData()).count, 2)
+        b.location = a.location; b.start = date("2026-10-10T11:00:00+02:00"); b.end = date("2026-10-10T12:00:00+02:00"); b.externalIdentifier = a.externalIdentifier
+        XCTAssertEqual(EventCoalescer.unique([a, b], data: AppData()).count, 2)
+    }
+    func testSameEventReturnedTwiceIsCollapsed() {
+        let item = event("same", start: "2026-10-03T11:00:00+02:00", end: "2026-10-03T12:00:00+02:00")
+        XCTAssertEqual(EventCoalescer.unique([item, item], data: AppData()), [item])
+    }
+    func testRecoveryMoveSurvivesImportedDuplicate() {
+        var a = event("a", start: "2026-10-03T11:00:00+02:00", end: "2026-10-03T12:00:00+02:00")
+        a.calendarTitle = "Unimi-L27"; a.calendarIdentifier = "icloud-uni"; a.sourceIdentifier = "icloud"
+        var b = a; b.id = "b"; b.eventIdentifier = "b"; b.calendarIdentifier = "google-uni"; b.sourceIdentifier = "google"; b.sourceTitle = "Google"
+        var data = AppData(); let start = date("2026-10-03T17:00:00+02:00"); let end = date("2026-10-03T18:00:00+02:00")
+        data.moves = [.init(source: a, proposedStart: start, proposedEnd: end)]
+        let items = Planner.plannedEvents([a, b], data: data)
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items[0].id, a.id)
+        XCTAssertEqual(items[0].start, start)
+        XCTAssertEqual(items[0].end, end)
+    }
+    func testOlderWorkSnapshotMigratesWithoutChangingMoneyOrAnswers() throws {
+        var old = event("old", start: "2026-10-03T11:00:00+02:00", end: "2026-10-03T12:00:00+02:00", kind: .university)
+        old.title = "laboratorio chimica"; old.calendarTitle = "Lavoro"
+        var data = AppData(); var record = EventRecord(id: old.id, snapshot: old); record.notes = "Risposte salvate"; data.records[old.id] = record
+        let restored = try BackupCodec.decode(BackupCodec.encode(data))
+        XCTAssertEqual(restored.records[old.id]?.snapshot.kind, .tutoring)
+        XCTAssertEqual(restored.records[old.id]?.notes, record.notes)
+        XCTAssertEqual(restored.income.count, data.income.count)
+    }
 }

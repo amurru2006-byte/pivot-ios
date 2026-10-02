@@ -50,7 +50,8 @@ final class CalendarService: ObservableObject {
                 title: event.title ?? "Evento", start: event.startDate, end: event.endDate,
                 location: event.location ?? "", notes: Self.plainText(event.notes ?? ""),
                 colorHex: Self.hex(event.calendar.cgColor), isAllDay: event.isAllDay,
-                writable: event.calendar.allowsContentModifications, kind: .classify(title: event.title ?? "", calendar: event.calendar.title))
+                writable: event.calendar.allowsContentModifications, kind: .classify(title: event.title ?? "", calendar: event.calendar.title),
+                sourceIdentifier: event.calendar.source.sourceIdentifier, sourceTitle: event.calendar.source.title, calendarModifiedAt: event.lastModifiedDate)
         }.sorted { $0.start < $1.start }
     }
     func apply(_ move: PlanMove) throws {

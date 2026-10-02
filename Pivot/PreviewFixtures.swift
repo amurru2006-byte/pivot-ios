@@ -37,9 +37,19 @@ enum PreviewMode {
             birthday.isAllDay = true
             events.append(birthday)
         }
+        if ["duplicates", "birthday", "overnight"].contains(screen) {
+            var cloud = item("cloud-lesson", "Ripetizioni di chimica", .tutoring, at(11), 60, "D02D68")
+            cloud.calendarTitle = "Lavoro"; cloud.calendarIdentifier = "cloud-work"; cloud.sourceIdentifier = "cloud"; cloud.sourceTitle = "iCloud"
+            var google = cloud; google.id = "google-lesson"; google.eventIdentifier = "google-lesson"; google.calendarIdentifier = "google-work"; google.sourceIdentifier = "google"; google.sourceTitle = "Google"; google.colorHex = "791A3D"
+            var old = item("cloud-birthday", "Compleanno con gli amici", .friends, PivotDate.calendar.startOfDay(for: now), 2880, "FFCC00")
+            old.isAllDay = true; old.calendarTitle = "Amici"; old.calendarIdentifier = "cloud-friends"; old.sourceIdentifier = "cloud"; old.sourceTitle = "iCloud"
+            var timed = old; timed.id = "birthday"; timed.eventIdentifier = "birthday"; timed.calendarIdentifier = "google-friends"; timed.sourceIdentifier = "google"; timed.sourceTitle = "Google"; timed.isAllDay = false; timed.start = at(15); timed.end = PivotDate.calendar.date(byAdding: .day, value: 1, to: at(10))!
+            events = [cloud, google, old, timed]
+        }
         calendar.loadPreview(events)
         store.change { data in
             data = AppData()
+            if ["duplicates", "birthday", "overnight"].contains(screen) { return }
             var breakfast = EventRecord(id: events[0].id, snapshot: events[0]); breakfast.status = .completed; breakfast.activeMinutes = 25
             var gym = EventRecord(id: events[1].id, snapshot: events[1]); gym.status = .partial; gym.activeMinutes = 75; gym.reason = "Avevo meno tempo: ho completato la prima parte."; gym.notes = "Buona energia durante gli esercizi."
             var study = EventRecord(id: events[3].id, snapshot: events[3]); study.status = .running; study.actualStart = now.addingTimeInterval(-600); study.activeMinutes = 10

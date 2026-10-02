@@ -3,7 +3,7 @@ import SwiftUI
 struct TodayView: View {
     @EnvironmentObject var store: PivotStore
     @EnvironmentObject var calendar: CalendarService
-    @State private var day = Date()
+    @State private var day = PreviewMode.enabled && PreviewMode.screen == "overnight" ? PivotDate.calendar.date(byAdding: .day, value: 1, to: Date())! : Date()
     var effective: [CalendarItem] { Planner.effectiveEvents(calendar.events, data: store.data) }
     var dayEvents: [CalendarItem] { effective.filter { $0.occurs(on: day) }.sorted { $0.start < $1.start } }
     var items: [CalendarItem] { Planner.plannedEvents(effective, data: store.data).filter { $0.occurs(on: day) }.sorted { $0.start < $1.start } }
@@ -53,7 +53,7 @@ struct TodayView: View {
                     SectionHeading(title: "La tua agenda", detail: "\(items.count) attività")
                     if items.isEmpty { EmptyCard(title: "Spazio alla tua giornata", message: "Qui compariranno i tuoi eventi. Puoi cambiare giorno o aggiornare il calendario.", icon: "calendar") }
                     ForEach(items) { event in
-                        NavigationLink { detail(event) } label: { EventRow(event: event, record: store.data.records[event.id]) }.buttonStyle(.plain)
+                        NavigationLink { detail(event) } label: { EventRow(event: event, record: store.data.records[event.id], day: day) }.buttonStyle(.plain)
                     }
                 }
                 PivotCard(tint: PivotTheme.blue) {
