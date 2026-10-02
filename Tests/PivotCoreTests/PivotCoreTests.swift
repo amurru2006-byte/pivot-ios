@@ -90,4 +90,64 @@ final class PivotCoreTests: XCTestCase {
         XCTAssertEqual(PivotDate.key(date("2026-10-25T00:30:00+02:00")), "2026-10-25")
         XCTAssertEqual(PivotDate.key(date("2026-10-25T23:30:00+01:00")), "2026-10-25")
     }
+    func testPartnerAndFriendsCalendarsAreDistinctAndAuthoritative() {
+        XCTAssertEqual(EventKind.classify(title: "compleanno casa", calendar: "Amici"), .friends)
+        XCTAssertEqual(EventKind.classify(title: "pranzo", calendar: "DES <3"), .partner)
+        XCTAssertEqual(EventKind.classify(title: "cinema con Des", calendar: "Amici"), .friends)
+        XCTAssertEqual(EventKind.classify(title: "serata", calendar: "Desirée"), .partner)
+        XCTAssertEqual(EventKind.classify(title: "destinazione", calendar: "Casa"), .other)
+    }
+    func testLegacySocialBackupKeepsRecordsWithoutNewCheckInField() throws {
+        var data = AppData()
+        var friend = event("friend", start: "2026-10-02T18:00:00+02:00", end: "2026-10-02T20:00:00+02:00", kind: .social)
+        friend.calendarTitle = "Amici"
+        var record = EventRecord(id: friend.id, snapshot: friend); record.notes = "Una bella serata"; record.status = .completed
+        data.records[friend.id] = record
+        data.checkIns["2026-10-02"] = DayCheckIn(id: "2026-10-02")
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: BackupCodec.encode(data)) as? [String: Any])
+        var checks = try XCTUnwrap(object["checkIns"] as? [String: [String: Any]])
+        checks["2026-10-02"]?.removeValue(forKey: "universityAttendance")
+        object["checkIns"] = checks
+        let restored = try BackupCodec.decode(JSONSerialization.data(withJSONObject: object))
+        XCTAssertEqual(restored.records[friend.id]?.snapshot.kind, .friends)
+        XCTAssertEqual(restored.records[friend.id]?.notes, "Una bella serata")
+        XCTAssertEqual(restored.records[friend.id]?.status, .completed)
+        XCTAssertNil(restored.checkIns["2026-10-02"]?.universityAttendance)
+        XCTAssertEqual(restored.installationID, data.installationID)
+    }
+    func testUniversityDecisionAffectsOnlyLecturesOnSelectedDay() {
+        let lecture = event("lecture", start: "2026-10-02T08:30:00+02:00", end: "2026-10-02T10:30:00+02:00", kind: .university)
+        let exam = event("exam", start: "2026-10-02T08:30:00+02:00", end: "2026-10-02T10:30:00+02:00", kind: .exam)
+        let tomorrow = event("tomorrow", start: "2026-10-03T08:30:00+02:00", end: "2026-10-03T10:30:00+02:00", kind: .university)
+        let study = event("study", start: "2026-10-02T15:00:00+02:00", end: "2026-10-02T17:00:00+02:00")
+        var data = AppData(); var check = DayCheckIn(id: "2026-10-02"); check.universityAttendance = false; data.checkIns[check.id] = check
+        XCTAssertEqual(Set(Planner.plannedEvents([lecture, exam, tomorrow, study], data: data).map(\.id)), Set(["exam", "tomorrow", "study"]))
+        XCTAssertTrue(Report.day(lecture.start, events: [lecture], data: data).contains("Eventi da compilare: 0"))
+        XCTAssertTrue(Report.day(lecture.start, events: [lecture], data: data).contains("non previste oggi"))
+    }
+    func testExplicitCalendarDecisionCanBeOverriddenLocally() {
+        let lecture = event("lecture", start: "2026-10-02T08:30:00+02:00", end: "2026-10-02T10:30:00+02:00", kind: .university)
+        var wake = event("wake", start: "2026-10-02T09:00:00+02:00", end: "2026-10-02T09:30:00+02:00", kind: .routine)
+        wake.notes = "Routine\n\n" + Planner.universityOffNote + "\nGiornata di prova."
+        XCTAssertEqual(Planner.plannedEvents([lecture, wake], data: AppData()).map(\.id), ["wake"])
+        var data = AppData(); var check = DayCheckIn(id: "2026-10-02"); check.universityAttendance = true; data.checkIns[check.id] = check
+        XCTAssertEqual(Planner.plannedEvents([lecture, wake], data: data).count, 2)
+    }
+    func testContradictionIsFlaggedWithoutSilentlyDroppingLecture() {
+        let lecture = event("lecture", start: "2026-10-02T08:30:00+02:00", end: "2026-10-02T10:30:00+02:00", kind: .university)
+        let wake = event("wake", start: "2026-10-02T09:00:00+02:00", end: "2026-10-02T09:30:00+02:00", kind: .routine)
+        XCTAssertEqual(Planner.overlaps(on: wake.start, events: [lecture, wake], data: AppData()).count, 1)
+        XCTAssertEqual(Planner.plannedEvents([lecture, wake], data: AppData()).count, 2)
+        let adjacent = event("adjacent", start: "2026-10-02T10:30:00+02:00", end: "2026-10-02T11:30:00+02:00")
+        XCTAssertTrue(Planner.overlaps(on: lecture.start, events: [lecture, adjacent], data: AppData()).isEmpty)
+    }
+    func testMultiDayEventCoversSecondDayAndHonorsExclusiveEnd() {
+        var birthday = event("birthday", start: "2026-10-02T00:00:00+02:00", end: "2026-10-04T00:00:00+02:00", kind: .friends)
+        birthday.isAllDay = true
+        XCTAssertTrue(birthday.occurs(on: date("2026-10-03T15:00:00+02:00")))
+        XCTAssertFalse(birthday.occurs(on: birthday.end))
+        XCTAssertTrue(birthday.timeSummary.contains("tutto il giorno"))
+        XCTAssertFalse(birthday.timeSummary.contains("2880"))
+        XCTAssertFalse(birthday.timeSummary.contains("4 ott"))
+    }
 }

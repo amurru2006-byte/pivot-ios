@@ -23,7 +23,20 @@ enum PreviewMode {
         func item(_ id: String, _ title: String, _ kind: EventKind, _ start: Date, _ minutes: Int, _ color: String, _ notes: String = "") -> CalendarItem {
             .init(id: id, eventIdentifier: id, calendarIdentifier: "preview", calendarTitle: "Esempio", title: title, start: start, end: start.addingTimeInterval(Double(minutes) * 60), location: "", notes: notes, colorHex: color, isAllDay: false, writable: false, kind: kind)
         }
-        let events = [item("breakfast", "Colazione con calma", .meal, at(9), 30, "F7C783"), item("gym", "Palestra", .workout, at(10), 120, "93B7FF"), item("lunch", "Pranzo", .meal, at(13), 60, "F7C783"), item("study", "Studio stechiometria", .study, now.addingTimeInterval(-600), 90, "7EE6CD", "40 minuti: unità di misura e conversioni.\n\nPausa di 10 minuti.\n\n40 minuti: mole e massa molare, con esercizi guidati. Segna gli errori su cui tornare domani.")]
+        var events = [item("breakfast", "Colazione con calma", .meal, at(9), 30, "F7C783"), item("gym", "Palestra", .workout, at(10), 120, "93B7FF"), item("lunch", "Pranzo", .meal, at(13), 60, "F7C783"), item("study", "Studio stechiometria", .study, now.addingTimeInterval(-600), 90, "7EE6CD", "40 minuti: unità di misura e conversioni.\n\nPausa di 10 minuti.\n\n40 minuti: mole e massa molare, con esercizi guidati. Segna gli errori su cui tornare domani.")]
+        if ["attendance", "conflict"].contains(screen) {
+            events.append(item("lecture", "Chimica generale", .university, at(8, 30), 120, "FF453A"))
+            events.append(item("wake", "Sveglia", .routine, at(9), 30, "9FE1E7", screen == "attendance" ? Planner.universityOffNote : ""))
+        }
+        if ["friends", "partner"].contains(screen) {
+            events.append(item("friends", "Compleanno con gli amici", .friends, at(19), 180, "FFCC00"))
+            events.append(item("partner", "Serata insieme", .partner, at(19), 180, "D06B64"))
+        }
+        if screen == "allday" {
+            var birthday = item("allday", "Compleanno", .friends, PivotDate.calendar.startOfDay(for: now), 2880, "FFCC00")
+            birthday.isAllDay = true
+            events.append(birthday)
+        }
         calendar.loadPreview(events)
         store.change { data in
             data = AppData()

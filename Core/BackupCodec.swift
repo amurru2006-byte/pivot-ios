@@ -23,7 +23,19 @@ enum BackupCodec {
         guard version == 1 else { throw BackupError.unsupportedVersion(version) }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        let data = try decoder.decode(AppData.self, from: bytes)
+        var data = try decoder.decode(AppData.self, from: bytes)
+        // Reclassify only legacy social snapshots; preserve IDs, answers and money.
+        for id in Array(data.records.keys) {
+            if var record = data.records[id], record.snapshot.kind == .social {
+                let kind = EventKind.classify(title: record.snapshot.title, calendar: record.snapshot.calendarTitle)
+                if kind == .partner || kind == .friends { record.snapshot.kind = kind; data.records[id] = record }
+            }
+        }
+        for index in data.moves.indices where data.moves[index].source.kind == .social {
+            let item = data.moves[index].source
+            let kind = EventKind.classify(title: item.title, calendar: item.calendarTitle)
+            if kind == .partner || kind == .friends { data.moves[index].source.kind = kind }
+        }
         guard data.records.allSatisfy({ $0.key == $0.value.id }),
               data.income.allSatisfy({ $0.amountCents >= 0 && $0.paidCents >= 0 && $0.paidCents <= $0.amountCents && $0.minutes > 0 }),
               data.moves.allSatisfy({ $0.proposedEnd > $0.proposedStart }),

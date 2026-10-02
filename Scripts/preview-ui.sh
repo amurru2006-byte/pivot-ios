@@ -17,9 +17,12 @@ xcrun simctl boot "$PIVOT_SIMULATOR" || true
 xcrun simctl bootstatus "$PIVOT_SIMULATOR" -b
 xcrun simctl status_bar "$PIVOT_SIMULATOR" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
 xcrun simctl install "$PIVOT_SIMULATOR" build/PreviewData/Build/Products/Debug-iphonesimulator/Pivot.app
-for PIVOT_SCREEN in today diary income settings detail client lesson payment checkin; do
+for PIVOT_SCREEN in today diary income settings detail client lesson payment checkin attendance conflict friends partner allday; do
   xcrun simctl terminate "$PIVOT_SIMULATOR" app.pivot.personal || true
   xcrun simctl launch "$PIVOT_SIMULATOR" app.pivot.personal --preview "--screen=$PIVOT_SCREEN"
   sleep 3
   xcrun simctl io "$PIVOT_SIMULATOR" screenshot "build/Previews/$PIVOT_SCREEN.png"
 done
+xcrun simctl terminate "$PIVOT_SIMULATOR" app.pivot.personal || true
+sleep 1
+xcrun simctl io "$PIVOT_SIMULATOR" screenshot "build/Previews/home-icon.png"

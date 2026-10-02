@@ -29,7 +29,9 @@ extension EventKind {
         case .workout: return "dumbbell.fill"
         case .university: return "graduationcap.fill"
         case .tutoring: return "person.2.fill"
-        case .social: return "heart.fill"
+        case .social: return "person.3.fill"
+        case .partner: return "heart.fill"
+        case .friends: return "person.3.fill"
         case .exam: return "pencil.and.outline"
         case .other: return "calendar"
         }
