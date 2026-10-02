@@ -5,7 +5,7 @@ struct EventDetailView: View {
     @EnvironmentObject var calendar: CalendarService
     private let sourceEvent: CalendarItem
     var event: CalendarItem {
-        Planner.effectiveEvents(calendar.events, data: store.data).first { $0.id == sourceEvent.id || EventCoalescer.savedOccurrence(sourceEvent, $0) } ?? sourceEvent
+        Planner.effectiveEvents(calendar.events.filter { $0.id == sourceEvent.id || EventCoalescer.savedOccurrence(sourceEvent, $0) }, data: store.data).first { $0.id == sourceEvent.id || EventCoalescer.savedOccurrence(sourceEvent, $0) } ?? sourceEvent
     }
     @State private var record: EventRecord
     @State private var rule: EventRule
@@ -52,15 +52,15 @@ struct EventDetailView: View {
                 PivotCard(tint: PivotTheme.blue) {
                     Label("\(DisplayDate.label(suggestion.start, format: "EEE d MMM")) · \(PivotDate.time(suggestion.start))–\(PivotDate.time(suggestion.end))", systemImage: "calendar.badge.clock").font(.headline)
                     Text(suggestion.explanation).font(.subheadline).foregroundStyle(PivotTheme.muted)
-                    Button("Usa questo spazio solo in Pivot") { choose(suggestion, sync: false) }.buttonStyle(PivotPrimaryButton())
-                    Button("Modifica anche il Calendario…") { choose(suggestion, sync: true) }.buttonStyle(PivotSecondaryButton()).disabled(!event.writable)
+                    Button("Usa questo spazio solo in Pivot") { Task { await choose(suggestion, sync: false) } }.buttonStyle(PivotPrimaryButton())
+                    Button("Modifica anche il Calendario…") { Task { await choose(suggestion, sync: true) } }.buttonStyle(PivotSecondaryButton()).disabled(!event.writable)
                 }
             }
         }
         .navigationTitle("Attività")
         .alert("Modificare il Calendario?", isPresented: $calendarApproval) {
             Button("Annulla", role: .cancel) { pendingMove = nil }
-            Button("Confermo la modifica") { applyApprovedMove() }
+            Button("Confermo la modifica") { Task { await applyApprovedMove() } }
         } message: {
             if let move = pendingMove {
                 Text("\(event.title)\nDa: \(PivotDate.key(move.source.start)) \(PivotDate.time(move.source.start))–\(PivotDate.time(move.source.end))\nA: \(PivotDate.key(move.proposedStart)) \(PivotDate.time(move.proposedStart))–\(PivotDate.time(move.proposedEnd))\nSi modifica solo questa occorrenza. La modifica si sincronizza agli altri dispositivi.")
@@ -228,9 +228,9 @@ struct EventDetailView: View {
         }
         return ok
     }
-    private func choose(_ suggestion: RecoverySuggestion, sync: Bool) {
-        calendar.refresh(settings: store.data.settings)
-        guard let source = calendar.events.first(where: { $0.id == event.id }) else {
+    private func choose(_ suggestion: RecoverySuggestion, sync: Bool) async {
+        await calendar.refresh(settings: store.data.settings)
+        guard let source = calendar.events.first(where: { $0.id == event.id || EventCoalescer.savedOccurrence(event, $0) }) else {
             message = "L'evento è cambiato o non è più disponibile. Aggiorna la giornata."; return
         }
         let move = PlanMove(source: source, proposedStart: suggestion.start, proposedEnd: suggestion.end)
@@ -240,19 +240,19 @@ struct EventDetailView: View {
             if store.change({ $0.moves.append(move) }) { message = "Proposta approvata solo in Pivot. Il Calendario non è cambiato."; suggestions = [] }
         }
     }
-    private func applyApprovedMove() {
+    private func applyApprovedMove() async {
         guard var move = pendingMove else { return }
         guard !store.locked else { message = "Lo storico è bloccato: ripristina il backup prima di modificare eventi."; return }
         do {
             // Validate the chosen slot against a fresh calendar view before writing.
-            calendar.refresh(settings: store.data.settings)
+            await calendar.refresh(settings: store.data.settings)
             guard slotIsAvailable(move) else { message = "Questo spazio non è più libero. Cerca una nuova proposta."; return }
-            try calendar.apply(move)
+            try await calendar.apply(move)
             move.syncedToCalendar = true
             if !store.change({ $0.moves.append(move) }) {
                 message = "Il Calendario è stato modificato, ma lo storico locale non è stato salvato. Controlla la copia di backup."; return
             }
-            calendar.refresh(settings: store.data.settings)
+            await calendar.refresh(settings: store.data.settings)
             message = "Evento aggiornato nel Calendario. Solo questa occorrenza."
             suggestions = []
         } catch { message = error.localizedDescription }

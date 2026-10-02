@@ -26,3 +26,11 @@ done
 xcrun simctl terminate "$PIVOT_SIMULATOR" app.pivot.personal || true
 sleep 1
 xcrun simctl io "$PIVOT_SIMULATOR" screenshot "build/Previews/home-icon.png"
+
+# A screenshot can look correct even when every touch is blocked. Exercise the
+# real root refresh path with a deliberately slow background calendar import.
+xcodebuild -project Pivot.xcodeproj -scheme Pivot -configuration Debug \
+  -destination "platform=iOS Simulator,id=$PIVOT_SIMULATOR" \
+  -derivedDataPath build/PreviewData -parallel-testing-enabled NO \
+  -resultBundlePath build/interaction-tests.xcresult \
+  CODE_SIGNING_ALLOWED=NO test > build/interaction-tests.log 2>&1

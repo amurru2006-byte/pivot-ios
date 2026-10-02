@@ -1,5 +1,13 @@
 # Pivot iOS
 
+## Correzioni 0.2.4
+
+Lettura EventKit e backup esterni fuori dal processo dell'interfaccia. Le note HTML
+vengono convertite in testo senza caricare risorse web. Gli aggiornamenti si accorpano
+senza perdere le modifiche arrivate durante una lettura. La deduplicazione e la home
+riducono i calcoli ripetuti. Test UI per tocchi durante un import lento e dopo il rientro
+nell'app, oltre ai test dei dati e della sincronizzazione.
+
 ## Novità 0.2.3
 
 - Monogramma aggiornato anche nella schermata nativa di avvio, con risorse rinominate.

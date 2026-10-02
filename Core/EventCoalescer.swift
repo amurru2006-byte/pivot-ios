@@ -16,9 +16,11 @@ enum EventCoalescer {
             if a.recurring == false && b.recurring == false { return true }
             if let anchor = a.occurrenceAnchor, anchor == b.occurrenceAnchor { return true }
         }
+        let sameTimes = abs(a.start.timeIntervalSince(b.start)) < 1 && abs(a.end.timeIntervalSince(b.end)) < 1
+        let containingAllDay = a.isAllDay != b.isAllDay && ((a.isAllDay && a.start <= b.start && a.end >= b.end) || (b.isAllDay && b.start <= a.start && b.end >= a.end))
+        guard sameTimes || containingAllDay || (a.externalIdentifier != nil && a.externalIdentifier == b.externalIdentifier && a.start < b.end && b.start < a.end) else { return false }
         guard !normalized(a.title).isEmpty, normalized(a.title) == normalized(b.title),
               normalized(a.calendarTitle) == normalized(b.calendarTitle) else { return false }
-        let sameTimes = abs(a.start.timeIntervalSince(b.start)) < 1 && abs(a.end.timeIntervalSince(b.end)) < 1
         if a.calendarIdentifier == b.calendarIdentifier {
             return a.eventIdentifier == b.eventIdentifier && sameTimes
         }
@@ -63,10 +65,22 @@ enum EventCoalescer {
     }
     static func unique(_ events: [CalendarItem], data: AppData) -> [CalendarItem] {
         var groups: [[CalendarItem]] = []
+        var idIndex: [String: Int] = [:]
+        var titleIndex: [String: Set<Int>] = [:]
+        var externalIndex: [String: Set<Int>] = [:]
         for event in events {
-            if let index = groups.firstIndex(where: { $0.contains(where: { matches($0, event) }) }) {
-                groups[index].append(event)
-            } else { groups.append([event]) }
+            // Most appointments have distinct names. Avoid comparing every event
+            // with every other event and normalizing both strings repeatedly.
+            let titleKey = normalized(event.calendarTitle) + "|" + normalized(event.title)
+            var candidates = titleIndex[titleKey] ?? []
+            if let index = idIndex[event.id] { candidates.insert(index) }
+            if let uid = event.externalIdentifier { candidates.formUnion(externalIndex[uid] ?? []) }
+            let existing = candidates.sorted().first { index in groups[index].contains { matches($0, event) } }
+            let index = existing ?? groups.count
+            if existing != nil { groups[index].append(event) } else { groups.append([event]) }
+            idIndex[event.id] = index
+            titleIndex[titleKey, default: []].insert(index)
+            if let uid = event.externalIdentifier { externalIndex[uid, default: []].insert(index) }
         }
         return groups.map { group in
             var chosen = group.sorted { prefer($0, over: $1) }[0]

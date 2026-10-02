@@ -10,6 +10,7 @@ final class PivotStore: ObservableObject {
     @Published private(set) var lastExternalBackup: Date?
     private let directory: URL
     private let file: URL
+    private let backupQueue = DispatchQueue(label: "app.pivot.external-backup", qos: .utility)
     private let bookmarkKey = "pivot.externalBackupFolder.v1"
     private let lastBackupKey = "pivot.lastExternalBackup.v1"
 
@@ -65,7 +66,7 @@ final class PivotStore: ObservableObject {
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         do {
-            try validateExternalFolder(url)
+            try Self.validateExternalFolder(url)
             let bookmark = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
             UserDefaults.standard.set(bookmark, forKey: bookmarkKey)
             writeExternal(try BackupCodec.encode(data))
@@ -80,17 +81,36 @@ final class PivotStore: ObservableObject {
 
     private func writeExternal(_ bytes: Data) {
         guard let bookmark = UserDefaults.standard.data(forKey: bookmarkKey) else { return }
+        backupStatus = "Aggiornamento della copia esterna…"
+        // Cloud-backed folders can stall on file hydration. Keep all their I/O
+        // off the UI queue, in write order, including the backup made on upgrade.
+        backupQueue.async { [weak self] in
+            let result = Self.performExternalBackup(bytes, bookmark: bookmark)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if let updatedBookmark = result.bookmark { UserDefaults.standard.set(updatedBookmark, forKey: self.bookmarkKey) }
+                if let date = result.date {
+                    self.lastExternalBackup = date
+                    UserDefaults.standard.set(date, forKey: self.lastBackupKey)
+                }
+                self.backupStatus = result.status
+            }
+        }
+    }
+    private struct BackupResult {
+        var status: String
+        var date: Date? = nil
+        var bookmark: Data? = nil
+    }
+    private nonisolated static func performExternalBackup(_ bytes: Data, bookmark: Data) -> BackupResult {
         do {
             var stale = false
             let folder = try URL(resolvingBookmarkData: bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &stale)
             let access = folder.startAccessingSecurityScopedResource()
             defer { if access { folder.stopAccessingSecurityScopedResource() } }
             try validateExternalFolder(folder)
-            if stale {
-                UserDefaults.standard.set(try folder.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil), forKey: bookmarkKey)
-            }
+            let refreshedBookmark = stale ? try folder.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) : nil
             let destination = folder.appendingPathComponent("Backup Pivot.json")
-            // Rotate only a readable, valid copy; never replace the older good backup with corrupt bytes.
             if FileManager.default.fileExists(atPath: destination.path) {
                 let previous = try Data(contentsOf: destination)
                 if (try? BackupCodec.decode(previous)) != nil {
@@ -99,15 +119,13 @@ final class PivotStore: ObservableObject {
             }
             try bytes.write(to: destination, options: .atomic)
             _ = try BackupCodec.decode(Data(contentsOf: destination))
-            lastExternalBackup = Date()
-            UserDefaults.standard.set(lastExternalBackup, forKey: lastBackupKey)
-            backupStatus = "Copia esterna scritta e verificata. La sincronizzazione iCloud è gestita da iOS."
+            return BackupResult(status: "Copia esterna scritta e verificata. La sincronizzazione iCloud è gestita da iOS.", date: Date(), bookmark: refreshedBookmark)
         } catch {
-            backupStatus = "ATTENZIONE: copia esterna non aggiornata. \(error.localizedDescription)"
+            return BackupResult(status: "ATTENZIONE: copia esterna non aggiornata. \(error.localizedDescription)")
         }
     }
 
-    private func validateExternalFolder(_ url: URL) throws {
+    private nonisolated static func validateExternalFolder(_ url: URL) throws {
         let path = url.resolvingSymlinksInPath().standardizedFileURL.path
         let container = URL(fileURLWithPath: NSHomeDirectory()).resolvingSymlinksInPath().standardizedFileURL.path
         guard path != container && !path.hasPrefix(container + "/") else {

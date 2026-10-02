@@ -344,4 +344,67 @@ final class PivotCoreTests: XCTestCase {
         XCTAssertFalse(EventCoalescer.savedOccurrence(old, current))
     }
 
+    func testCalendarNotesDoNotImportExternalHTMLResources() {
+        let html = "<p>Pranzo d&#x27;oggi &amp; cena</p><ul><li>couscous</li><li>pollo</li></ul><img src='https://invalid.example/image'><script>alert(1)</script><style>p {color: red}</style>"
+        let text = CalendarNoteText.plain(html)
+        XCTAssertTrue(text.contains("Pranzo d'oggi & cena"))
+        XCTAssertTrue(text.contains("• couscous\n• pollo"))
+        XCTAssertFalse(text.contains("https://"))
+        XCTAssertFalse(text.contains("alert"))
+        XCTAssertFalse(text.contains("color:"))
+        XCTAssertFalse(text.contains("<p>"))
+    }
+    func testCalendarNotesPreserveMathAndDecodeNestedEntities() {
+        XCTAssertEqual(CalendarNoteText.plain("x < 10 e y > 2"), "x < 10 e y > 2")
+        XCTAssertEqual(CalendarNoteText.plain("d&amp;#x27;avena &egrave; buona &#128578;"), "d'avena è buona 🙂")
+        XCTAssertEqual(CalendarNoteText.plain("&#xD800; &#999999999; &unknown;"), "&#xD800; &#999999999; &unknown;")
+    }
+    @MainActor func testRefreshGateCoalescesABurst() async {
+        let gate = RefreshGate(delayNanoseconds: 1_000_000)
+        var calls = 0
+        for _ in 0..<100 {
+            gate.request { calls += 1; try? await Task.sleep(nanoseconds: 5_000_000) }
+        }
+        await gate.waitUntilIdle()
+        XCTAssertEqual(calls, 1)
+    }
+    @MainActor func testRefreshGateKeepsOneFollowUpAndNeverOverlaps() async {
+        let gate = RefreshGate(delayNanoseconds: 1_000_000)
+        let entered = expectation(description: "First refresh started")
+        var calls = 0, active = 0, peak = 0
+        gate.request {
+            calls += 1; active += 1; peak = max(peak, active); entered.fulfill()
+            try? await Task.sleep(nanoseconds: 20_000_000)
+            active -= 1
+        }
+        await fulfillment(of: [entered], timeout: 1)
+        for _ in 0..<100 {
+            gate.request { calls += 1; active += 1; peak = max(peak, active); active -= 1 }
+        }
+        await gate.waitUntilIdle()
+        XCTAssertEqual(calls, 2)
+        XCTAssertEqual(peak, 1)
+        gate.request { calls += 1 }
+        await gate.waitUntilIdle()
+        XCTAssertEqual(calls, 3, "Later calendar edits must still trigger a refresh")
+    }
+    func testLargeCalendarImportKeepsAppointmentsAndDeduplicatesCopies() {
+        let base = date("2026-10-03T08:00:00+02:00")
+        var events: [CalendarItem] = []
+        for i in 0..<1500 {
+            var item = CalendarItem(id: "event-\(i)", eventIdentifier: "event-\(i)", externalIdentifier: "uid-\(i)", calendarIdentifier: "local", calendarTitle: "Studio", title: "Studio \(i)", start: base.addingTimeInterval(Double(i) * 3600), end: base.addingTimeInterval(Double(i) * 3600 + 1800), location: "", notes: "", colorHex: "#ABCDEF", isAllDay: false, writable: true, kind: .study)
+            item.sourceIdentifier = "icloud"; item.sourceTitle = "iCloud"; item.recurring = false
+            events.append(item)
+            if i % 50 == 0 {
+                var copy = item; copy.id += "-copy"; copy.calendarIdentifier = "google"; copy.sourceIdentifier = "google"; copy.sourceTitle = "Google"; copy.colorHex = "#000000"
+                events.append(copy)
+            }
+        }
+        let started = Date()
+        let result = EventCoalescer.unique(events, data: AppData())
+        XCTAssertEqual(result.count, 1500)
+        XCTAssertTrue(result.allSatisfy { $0.colorHex == "#ABCDEF" })
+        XCTAssertLessThan(Date().timeIntervalSince(started), 3, "Import should finish without the previous all-pairs scan")
+    }
+
 }

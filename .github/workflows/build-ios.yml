@@ -62,5 +62,6 @@ jobs:
           path: |
             build/build.log
             build/preview-build.log
+            build/interaction-tests.log
             build/export-validation.xlsx
           if-no-files-found: ignore
