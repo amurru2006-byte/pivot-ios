@@ -36,8 +36,8 @@ final class CalendarService: ObservableObject {
         events = eventStore.events(matching: predicate).map { event in
             let external = event.calendarItemExternalIdentifier
             let eventID = event.eventIdentifier ?? event.calendarItemIdentifier
-            // External ID plus occurrence start distinguishes recurring instances.
-            let key = "\(external ?? eventID)|\(Int(event.startDate.timeIntervalSince1970))"
+            // Include the calendar to separate copies imported into distinct calendars.
+            let key = "\(event.calendar.calendarIdentifier)|\(external ?? eventID)|\(Int(event.startDate.timeIntervalSince1970))"
             return CalendarItem(id: key, eventIdentifier: eventID, externalIdentifier: external,
                 calendarIdentifier: event.calendar.calendarIdentifier, calendarTitle: event.calendar.title,
                 title: event.title ?? "Evento", start: event.startDate, end: event.endDate,

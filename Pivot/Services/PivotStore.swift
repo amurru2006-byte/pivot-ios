@@ -51,9 +51,11 @@ final class PivotStore: ObservableObject {
     }
 
     func selectBackupFolder(_ url: URL) {
+        guard !locked else { error = "Prima ripristina un backup valido. Il file originale è protetto."; return }
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         do {
+            try validateExternalFolder(url)
             let bookmark = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
             UserDefaults.standard.set(bookmark, forKey: bookmarkKey)
             writeExternal(try BackupCodec.encode(data))
@@ -73,14 +75,17 @@ final class PivotStore: ObservableObject {
             let folder = try URL(resolvingBookmarkData: bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &stale)
             let access = folder.startAccessingSecurityScopedResource()
             defer { if access { folder.stopAccessingSecurityScopedResource() } }
+            try validateExternalFolder(folder)
             if stale {
                 UserDefaults.standard.set(try folder.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil), forKey: bookmarkKey)
             }
             let destination = folder.appendingPathComponent("Backup Pivot.json")
-            // Keep yesterday's valid copy as well as the current snapshot.
+            // Rotate only a readable, valid copy; never replace the older good backup with corrupt bytes.
             if FileManager.default.fileExists(atPath: destination.path) {
                 let previous = try Data(contentsOf: destination)
-                try previous.write(to: folder.appendingPathComponent("Backup Pivot precedente.json"), options: .atomic)
+                if (try? BackupCodec.decode(previous)) != nil {
+                    try previous.write(to: folder.appendingPathComponent("Backup Pivot precedente.json"), options: .atomic)
+                }
             }
             try bytes.write(to: destination, options: .atomic)
             _ = try BackupCodec.decode(Data(contentsOf: destination))
@@ -89,6 +94,15 @@ final class PivotStore: ObservableObject {
             backupStatus = "Copia esterna scritta e verificata. La sincronizzazione iCloud è gestita da iOS."
         } catch {
             backupStatus = "ATTENZIONE: copia esterna non aggiornata. \(error.localizedDescription)"
+        }
+    }
+
+    private func validateExternalFolder(_ url: URL) throws {
+        let path = url.resolvingSymlinksInPath().standardizedFileURL.path
+        let container = URL(fileURLWithPath: NSHomeDirectory()).resolvingSymlinksInPath().standardizedFileURL.path
+        guard path != container && !path.hasPrefix(container + "/") else {
+            throw NSError(domain: "PivotBackup", code: 1, userInfo: [NSLocalizedDescriptionKey:
+                "Scegli una cartella in iCloud Drive o esterna a Pivot. La cartella interna sparirebbe cancellando l'app."])
         }
     }
 
