@@ -36,9 +36,9 @@ struct EventDetailView: View {
                     DisclosureGroup { Text(event.notes).font(.subheadline).foregroundStyle(PivotTheme.muted).textSelection(.enabled).padding(.top, 10) } label: { Label("Il programma di questa attività", systemImage: "list.bullet.clipboard").font(.subheadline.weight(.semibold)) }
                 }
             }
+            if event.kind == .tutoring { tutoring }
             registration
             if event.kind == .meal { meal }
-            if event.kind == .tutoring { tutoring }
             reflection
             PivotCard {
                 DisclosureGroup { rules.padding(.top, 12) } label: { Label("Regole e tragitto", systemImage: "arrow.triangle.branch").font(.subheadline.weight(.semibold)) }

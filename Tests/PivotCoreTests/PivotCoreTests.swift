@@ -163,7 +163,7 @@ final class PivotCoreTests: XCTestCase {
         var cloud = event("cloud", start: "2026-10-03T11:00:00+02:00", end: "2026-10-03T12:00:00+02:00", kind: .tutoring)
         cloud.title = "lezione studente "; cloud.calendarTitle = "Lavoro"; cloud.calendarIdentifier = "icloud-work"; cloud.sourceIdentifier = "icloud"; cloud.sourceTitle = "iCloud"
         var google = cloud; google.id = "google"; google.eventIdentifier = "google"; google.calendarIdentifier = "google-work"; google.sourceIdentifier = "google"; google.sourceTitle = "Google"; google.notes = "Indicazioni aggiornate"
-        var data = AppData(); var record = EventRecord(id: cloud.id, snapshot: cloud); record.status = .completed; record.activeMinutes = 60; record.notes = "Argomenti affrontati"; data.records[cloud.id] = record
+        var data = AppData(); var record = EventRecord(id: cloud.id, snapshot: cloud); record.status = .completed; record.activeMinutes = 60; record.tutoringAnswered = true; record.notes = "Argomenti affrontati"; data.records[cloud.id] = record
         let items = Planner.plannedEvents([cloud, google], data: data)
         XCTAssertEqual(items.count, 1)
         XCTAssertEqual(items[0].id, cloud.id)
@@ -315,6 +315,15 @@ final class PivotCoreTests: XCTestCase {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try bytes.write(to: url)
         }
+    }
+
+    func testCompletedTutoringStillAsksForItsMissingCompensation() {
+        let item = event("tutor", start: "2026-10-03T11:00:00+02:00", end: "2026-10-03T12:00:00+02:00", kind: .tutoring)
+        var data = AppData(); var record = EventRecord(id: item.id, snapshot: item); record.status = .completed
+        data.records[item.id] = record
+        XCTAssertTrue(Report.day(item.start, events: [item], data: data).contains("Manca il compenso"))
+        record.tutoringAnswered = true; data.records[item.id] = record
+        XCTAssertFalse(Report.day(item.start, events: [item], data: data).contains("Manca il compenso"))
     }
 
 }
