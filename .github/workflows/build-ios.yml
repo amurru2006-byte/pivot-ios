@@ -1,0 +1,54 @@
+name: Compila Pivot per iPhone
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pivot-build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - name: Scarica codice
+        uses: actions/checkout@v4
+      - name: Versioni degli strumenti
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Test dati, pagamenti, backup e pianificazione
+        run: swift test
+      - name: Installa generatore progetto
+        run: brew install xcodegen
+      - name: Genera progetto Xcode
+        run: xcodegen generate
+      - name: Compila app senza firma
+        run: |
+          set -o pipefail
+          xcodebuild -project Pivot.xcodeproj -scheme Pivot -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tee build/build.log
+      - name: Prepara IPA per AltStore o Sideloadly
+        run: |
+          mkdir -p build/Package/Payload
+          cp -R build/DerivedData/Build/Products/Release-iphoneos/Pivot.app build/Package/Payload/
+          cd build/Package
+          zip -qr ../Pivot-unsigned.ipa Payload
+      - name: Carica app scaricabile
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pivot-iPhone-unsigned
+          path: build/Pivot-unsigned.ipa
+          retention-days: 14
+          if-no-files-found: error
+      - name: Conserva log di compilazione
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pivot-build-log
+          path: build/build.log
+          if-no-files-found: ignore

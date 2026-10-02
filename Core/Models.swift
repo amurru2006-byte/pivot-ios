@@ -1,0 +1,225 @@
+import Foundation
+
+enum EventKind: String, Codable, CaseIterable {
+    case routine, meal, study, workout, university, tutoring, social, exam, other
+    var label: String {
+        switch self {
+        case .routine: return "Routine"
+        case .meal: return "Pasto"
+        case .study: return "Studio"
+        case .workout: return "Palestra / cardio"
+        case .university: return "Università"
+        case .tutoring: return "Ripetizioni"
+        case .social: return "Des e amici"
+        case .exam: return "Esame"
+        case .other: return "Altro"
+        }
+    }
+    static func classify(title: String, calendar: String) -> EventKind {
+        let t = title.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        let c = calendar.lowercased()
+        if t.contains("esame") || t.contains("compitino") { return .exam }
+        if ["colazione", "pranzo", "merenda", "cena", "spuntino"].contains(where: t.contains) { return .meal }
+        if t.contains("studio") || t.contains("ripasso") || t.contains("simulazione") { return .study }
+        if t.contains("palestra") || t.contains("cardio") || c.contains("palestra") { return .workout }
+        if c.contains("lavoro") || t.contains("ripetizioni") || t.contains("lezione mamma") { return .tutoring }
+        if c.contains("unimi") || t.contains("laboratorio") { return .university }
+        if c.contains("des") || c.contains("amici") || t.contains("des e amici") { return .social }
+        if ["sveglia", "sonno", "preparo domani", "relax"].contains(where: t.contains) { return .routine }
+        return .other
+    }
+}
+
+enum EventFlexibility: String, Codable, CaseIterable {
+    case fixed, movable, compressible, optional
+    var label: String {
+        switch self {
+        case .fixed: return "Fisso"
+        case .movable: return "Spostabile"
+        case .compressible: return "Accorciabile, con conferma"
+        case .optional: return "Rinunciabile, con conferma"
+        }
+    }
+}
+
+struct CalendarItem: Codable, Identifiable, Equatable {
+    var id: String
+    var eventIdentifier: String
+    var externalIdentifier: String?
+    var calendarIdentifier: String
+    var calendarTitle: String
+    var title: String
+    var start: Date
+    var end: Date
+    var location: String
+    var notes: String
+    var colorHex: String
+    var isAllDay: Bool
+    var writable: Bool
+    var kind: EventKind
+    var durationMinutes: Int { max(1, Int(end.timeIntervalSince(start) / 60)) }
+}
+
+enum Completion: String, Codable, CaseIterable {
+    case pending, running, completed, partial, skipped
+    var label: String {
+        switch self {
+        case .pending: return "Da compilare"
+        case .running: return "In corso"
+        case .completed: return "Fatto"
+        case .partial: return "Parziale"
+        case .skipped: return "Saltato"
+        }
+    }
+}
+
+struct EventRecord: Codable, Identifiable {
+    var id: String
+    var snapshot: CalendarItem
+    var status: Completion = .pending
+    var actualStart: Date?
+    var actualEnd: Date?
+    var activeMinutes: Int = 0
+    var reason: String = ""
+    var notes: String = ""
+    var hungerBefore: Int? = nil
+    var hungerAfter: Int? = nil
+    var energy: Int? = nil
+    var followedMeal: Bool? = nil
+    var updatedAt: Date = Date()
+}
+
+struct EventRule: Codable {
+    var flexibility: EventFlexibility
+    var minimumMinutes: Int
+    var travelBeforeMinutes: Int = 0
+    var travelAfterMinutes: Int = 0
+    var travelConfirmed: Bool = false
+    static func defaultRule(for item: CalendarItem) -> EventRule {
+        let t = item.title.lowercased()
+        switch item.kind {
+        case .meal:
+            let minimum = t.contains("colazione") ? 15 : (t.contains("merenda") || t.contains("spuntino") ? 10 : 30)
+            return EventRule(flexibility: .compressible, minimumMinutes: minimum)
+        case .study: return EventRule(flexibility: .compressible, minimumMinutes: 60)
+        case .workout: return EventRule(flexibility: .movable, minimumMinutes: item.durationMinutes)
+        default: return EventRule(flexibility: .fixed, minimumMinutes: item.durationMinutes)
+        }
+    }
+}
+
+struct DayCheckIn: Codable, Identifiable {
+    var id: String
+    var wakeTime: Date?
+    var energyMorning: Int? = nil
+    var energyEvening: Int? = nil
+    var moodMorning: Int? = nil
+    var moodEvening: Int? = nil
+    var notes: String = ""
+}
+
+struct Client: Codable, Identifiable {
+    var id = UUID()
+    var name: String
+    var rateCents: Int
+}
+
+struct IncomeEntry: Codable, Identifiable {
+    var id = UUID()
+    var clientID: UUID
+    var clientName: String
+    var date: Date
+    var minutes: Int
+    var amountCents: Int
+    var paidCents: Int = 0
+    var notes: String = ""
+    var outstandingCents: Int { max(0, amountCents - paidCents) }
+}
+
+struct Payment: Codable, Identifiable {
+    var id = UUID()
+    var incomeID: UUID
+    var clientName: String
+    var date: Date
+    var amountCents: Int
+}
+
+struct PlanMove: Codable, Identifiable {
+    var id = UUID()
+    var source: CalendarItem
+    var proposedStart: Date
+    var proposedEnd: Date
+    var syncedToCalendar: Bool = false
+    var createdAt: Date = Date()
+}
+
+struct Settings: Codable {
+    var excludedCalendarIDs: [String] = []
+    var excludedCalendarTitles: [String] = []
+    var excludeHolidays: Bool = true
+    var morningDelayMinutes: Int = 30
+    var quietStartHour: Int = 22
+    var quietEndHour: Int = 8
+    var repeatMissedNotifications: Bool = true
+    var eveningHour: Int = 21
+    var eveningMinute: Int = 45
+    var studyPriorityFrom: Date? = nil
+    var studyMustTakePriority: Bool = false
+}
+
+struct AppData: Codable {
+    var schemaVersion: Int = 1
+    var installationID = UUID()
+    var updatedAt: Date = Date()
+    var records: [String: EventRecord] = [:]
+    var rules: [String: EventRule] = [:]
+    var checkIns: [String: DayCheckIn] = [:]
+    var clients: [Client] = []
+    var income: [IncomeEntry] = []
+    var payments: [Payment] = []
+    var moves: [PlanMove] = []
+    var settings = Settings()
+}
+
+enum PivotDate {
+    static var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Rome")!
+        return calendar
+    }
+    static func key(_ date: Date) -> String {
+        let c = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", c.year!, c.month!, c.day!)
+    }
+    static func time(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "it_IT")
+        f.timeZone = calendar.timeZone
+        f.dateFormat = "HH:mm"
+        return f.string(from: date)
+    }
+}
+
+enum Money {
+    static func cents(from text: String) -> Int? {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: ".")
+        guard !normalized.isEmpty, let decimal = Decimal(string: normalized, locale: Locale(identifier: "en_US_POSIX")), decimal >= 0,
+              normalized.allSatisfy({ $0.isNumber || $0 == "." }), normalized.filter({ $0 == "." }).count <= 1 else { return nil }
+        let value = decimal * 100
+        var rounded = Decimal()
+        var original = value
+        NSDecimalRound(&rounded, &original, 0, .plain)
+        guard rounded <= Decimal(100_000_000) else { return nil }
+        return NSDecimalNumber(decimal: rounded).intValue
+    }
+    static func lessonAmount(rateCents: Int, minutes: Int) -> Int {
+        Int((Double(rateCents) * Double(minutes) / 60).rounded())
+    }
+    static func display(_ cents: Int) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = "EUR"
+        f.locale = Locale(identifier: "it_IT")
+        return f.string(from: NSNumber(value: Double(cents) / 100)) ?? "€ 0,00"
+    }
+}
