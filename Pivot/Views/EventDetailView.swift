@@ -80,8 +80,9 @@ struct EventDetailView: View {
                 HStack(spacing: 6) { outcomeButtons }
                 VStack(spacing: 8) { outcomeButtons }
             }
-            Picker("Stato attività", selection: $record.status) { ForEach(Completion.allCases, id: \.self) { Text($0.label).tag($0) } }
-                .font(.subheadline).tint(PivotTheme.accent)
+            if record.status != .pending && record.status != .running {
+                Button("Azzera l'esito") { record.status = .pending }.font(.caption).foregroundStyle(PivotTheme.muted)
+            }
             Divider()
             Stepper("\(record.activeMinutes) minuti registrati", value: $record.activeMinutes, in: 0...1440, step: 5).font(.subheadline.weight(.semibold))
             Text("Il timer conta il tempo trascorso. Se hai fatto pause, correggi qui i minuti effettivi.").font(.caption).foregroundStyle(PivotTheme.muted)

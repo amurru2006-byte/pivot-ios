@@ -30,6 +30,14 @@ struct RootView: View {
         Group {
             if PreviewMode.enabled && PreviewMode.screen == "detail", let event = calendar.events.first(where: { $0.id == "study" }) {
                 NavigationStack { EventDetailView(event: event, initial: store.record(for: event), rule: store.rule(for: event)) }
+            } else if PreviewMode.enabled && PreviewMode.screen == "client" {
+                ClientForm()
+            } else if PreviewMode.enabled && PreviewMode.screen == "lesson" && !store.data.clients.isEmpty {
+                LessonForm(clients: store.data.clients)
+            } else if PreviewMode.enabled && PreviewMode.screen == "payment", let entry = store.data.income.first(where: { $0.outstandingCents > 0 }) {
+                NavigationStack { IncomeDetailView(entryID: entry.id) }
+            } else if PreviewMode.enabled && PreviewMode.screen == "checkin" {
+                NavigationStack { DayCheckInView(day: Date(), initial: store.data.checkIns[PivotDate.key(Date())]) }
             } else { tabs }
         }
         .task {

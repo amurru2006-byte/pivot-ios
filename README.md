@@ -1,6 +1,6 @@
 # Pivot — La tua giornata, riadattata
 
-App iOS nativa personale, SwiftUI, iOS 17 o successivo. Prima versione 0.1.
+App iOS nativa personale, SwiftUI, iOS 17 o successivo. Versione 0.2: interfaccia rinnovata.
 Il repository contiene soltanto codice. Nessun calendario, cliente, pagamento o backup reale.
 
 ## Cosa funziona nella prima versione
@@ -17,7 +17,7 @@ Il repository contiene soltanto codice. Nessun calendario, cliente, pagamento o 
 - Notifiche locali dopo evento, dopo 30 minuti, poi ogni ora nelle ore consentite; avvisi pasti a −30/−10.
 - Tema scuro e colori dei calendari.
 
-## Limiti espliciti di 0.1
+## Limiti espliciti della versione attuale
 
 - Non c'è un'IA autonoma né un collegamento automatico a questa conversazione ChatGPT.
 - I percorsi usano tempi inseriti e confermati dall'utente; non vengono interrogate API di routing.
@@ -26,7 +26,7 @@ Il repository contiene soltanto codice. Nessun calendario, cliente, pagamento o 
 - Aprire l'app ogni giorno e dopo modifiche al calendario aggiorna gli avvisi. iOS non garantisce esecuzione continua in background.
 - Notifiche limitate ai 60 avvisi futuri più vicini, entro 48 ore, per rispettare i limiti iOS. Full immersion e impostazioni possono silenziarle.
 - I pasti vengono letti dalle note del calendario: non vengono inventate grammature o prescrizioni.
-- Le prime schermate sono funzionali; grafica, automazioni avanzate e promemoria di incasso dedicati saranno sviluppati dopo il test base.
+- Automazioni avanzate e promemoria di incasso dedicati restano da sviluppare.
 
 ## Compilazione da Windows, senza Mac
 
@@ -67,3 +67,15 @@ La build iOS su GitHub compila tutte le schermate e i servizi. Resta necessario 
 Le sorgenti core sono in `Core/`; app e servizi in `Pivot/`; specifica XcodeGen in `project.yml`.
 Una futura modifica dello schema dati richiede migrazione e test prima dell'installazione: non cambiare
 schema o identificativo dell'app per aggirare un problema di aggiornamento.
+
+## Interfaccia 0.2 e verifica visiva
+
+Dashboard con azioni Inizia/Termina, agenda con colori dei calendari, diario a schede
+e resoconto completo espandibile. Entrate con incassi effettivi, lezioni da pagare
+e schede studente. Check-in e registrazioni usano valori esplicitamente inseriti;
+un dato mancante non viene trasformato in zero. Date e orari seguono l'Italia.
+
+Il workflow compila anche per il simulatore iPhone e produce l'artefatto
+`Pivot-iPhone-previews` con le schermate principali e i moduli di registrazione. I dati dimostrativi sono abilitati
+soltanto in Debug sul simulatore con `--preview`; sono esclusi dall'IPA Release.
+L'identificativo dell'app e lo schema dei dati rimangono quelli della 0.1.
