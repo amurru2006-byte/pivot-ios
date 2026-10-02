@@ -130,6 +130,8 @@ final class PivotCoreTests: XCTestCase {
         var wake = event("wake", start: "2026-10-02T09:00:00+02:00", end: "2026-10-02T09:30:00+02:00", kind: .routine)
         wake.notes = "Routine\n\n" + Planner.universityOffNote + "\nGiornata di prova."
         XCTAssertEqual(Planner.plannedEvents([lecture, wake], data: AppData()).map(\.id), ["wake"])
+        wake.notes = "Routine. " + Planner.universityOffNote + " Giornata di prova."
+        XCTAssertEqual(Planner.plannedEvents([lecture, wake], data: AppData()).map(\.id), ["wake"])
         var data = AppData(); var check = DayCheckIn(id: "2026-10-02"); check.universityAttendance = true; data.checkIns[check.id] = check
         XCTAssertEqual(Planner.plannedEvents([lecture, wake], data: data).count, 2)
     }
