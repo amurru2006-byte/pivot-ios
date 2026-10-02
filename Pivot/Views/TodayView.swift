@@ -6,45 +6,79 @@ struct TodayView: View {
     @State private var day = Date()
     var effective: [CalendarItem] { Planner.effectiveEvents(calendar.events, data: store.data) }
     var items: [CalendarItem] { effective.filter { PivotDate.calendar.isDate($0.start, inSameDayAs: day) }.sorted { $0.start < $1.start } }
+    var check: DayCheckIn? { store.data.checkIns[PivotDate.key(day)] }
+    var completed: Int { items.filter { store.data.records[$0.id]?.status == .completed }.count }
+    var minutes: Int { items.reduce(0) { $0 + (store.data.records[$1.id]?.activeMinutes ?? 0) } }
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    DatePicker("Giornata", selection: $day, displayedComponents: .date)
-                    if store.locked { Text("Storico protetto: ripristina un backup nelle impostazioni prima di registrare altre attività.").foregroundStyle(.orange) }
-                    if store.lastExternalBackup == nil {
-                        Text("Prima di iniziare: configura un backup esterno in Impostazioni.").foregroundStyle(.orange)
-                    }
-                    NavigationLink("Sveglia, energia e umore") { DayCheckInView(day: day, initial: store.data.checkIns[PivotDate.key(day)]) }
+            PivotScreen {
+                PivotHeader(title: "La tua giornata", subtitle: DisplayDate.label(day).capitalized)
+                DaySelector(day: $day)
+                HStack(alignment: .top, spacing: 9) {
+                    MetricTile(title: "Completati", value: "\(completed)/\(items.count)", icon: "checkmark.circle.fill")
+                    MetricTile(title: "Registrati", value: "\(minutes) min", icon: "clock.fill", color: PivotTheme.blue)
+                    MetricTile(title: "Energia", value: check?.energyMorning.map { "\($0)/10" } ?? "—", icon: "bolt.fill", color: PivotTheme.amber)
+                }
+                if store.locked {
+                    EmptyCard(title: "Storico da ripristinare", message: "Apri Impostazioni e recupera il backup per tornare a registrare le attività.", icon: "lock.shield")
                 }
                 if !calendar.hasAccess {
-                    Section("Collega i calendari dell'iPhone") {
-                        Text("Pivot legge gli eventi presenti nell'app Calendario, compresi gli account Google sincronizzati. Festività escluse.")
-                        Button("Consenti accesso al calendario") {
-                            Task { await calendar.requestAccess(); calendar.refresh(settings: store.data.settings) }
-                        }
-                        if let error = calendar.error { Text(error).foregroundStyle(.orange) }
+                    PivotCard {
+                        ActionRow(title: "Collega la tua giornata", subtitle: "Leggi gli eventi dell'app Calendario, anche quelli Google.", icon: "calendar.badge.plus")
+                        Button("Collega calendari") { Task { await calendar.requestAccess(); calendar.refresh(settings: store.data.settings) } }.buttonStyle(PivotPrimaryButton())
+                        if let error = calendar.error { Text(error).font(.caption).foregroundStyle(PivotTheme.amber) }
                     }
                 }
                 if PivotDate.calendar.isDateInToday(day), let preferred = Planner.preferredEvent(items, data: store.data, now: Date()) {
-                    Section("Adesso / appena terminato") {
-                        NavigationLink { detail(preferred) } label: { EventRow(event: preferred, record: store.data.records[preferred.id]) }
-                    }
+                    focusCard(preferred)
                 }
-                Section("La giornata") {
-                    if items.isEmpty { Text("Nessun evento. Controlla i calendari selezionati o aggiorna la giornata.").foregroundStyle(.secondary) }
+                NavigationLink { DayCheckInView(day: day, initial: check) } label: {
+                    PivotCard { ActionRow(title: "Come stai oggi?", subtitle: check?.wakeTime == nil ? "Segna la sveglia, l'energia e l'umore." : "Sveglia alle \(PivotDate.time(check!.wakeTime!)) · aggiorna il tuo check-in", icon: "sun.max.fill") }
+                }.buttonStyle(.plain)
+                VStack(alignment: .leading, spacing: 14) {
+                    SectionHeading(title: "La tua agenda", detail: "\(items.count) attività")
+                    if items.isEmpty { EmptyCard(title: "Spazio alla tua giornata", message: "Qui compariranno i tuoi eventi. Puoi cambiare giorno o aggiornare il calendario.", icon: "calendar") }
                     ForEach(items) { event in
-                        NavigationLink { detail(event) } label: { EventRow(event: event, record: store.data.records[event.id]) }
+                        NavigationLink { detail(event) } label: { EventRow(event: event, record: store.data.records[event.id]) }.buttonStyle(.plain)
                     }
                 }
-                Section("Consiglio") {
-                    Text(Planner.isStudyPriority(store.data, now: Date()) ? "Studio prioritario: se non puoi recuperare le ore prima dell'esame, non sacrificarle per la palestra. Gli impegni fissi restano protetti." : "Se salta un'attività, aprila e cerca uno spazio per recuperarla. Prima verifica i tempi di tragitto.")
+                PivotCard(tint: PivotTheme.blue) {
+                    Label("Un passo alla volta", systemImage: "sparkles").font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.blue)
+                    Text(Planner.isStudyPriority(store.data, now: Date()) ? "Proteggi le ore di studio che non riesci a recuperare prima dell'esame. Gli impegni fissi restano protetti." : "Un'attività è saltata? Aprila e cerca un nuovo spazio. Non serve ricominciare tutta la giornata.").font(.subheadline).foregroundStyle(PivotTheme.muted)
+                }
+                if store.lastExternalBackup == nil {
+                    Label("Configura una copia dei tuoi dati in Impostazioni.", systemImage: "externaldrive.badge.icloud").font(.caption).foregroundStyle(PivotTheme.amber)
                 }
             }
             .navigationTitle("Pivot")
-            .toolbar { Button { calendar.refresh(settings: store.data.settings) } label: { Image(systemName: "arrow.clockwise") } }
+            .toolbar { Button { calendar.refresh(settings: store.data.settings) } label: { Image(systemName: "arrow.clockwise") }.accessibilityLabel("Aggiorna calendari") }
             .refreshable { calendar.refresh(settings: store.data.settings) }
         }
+    }
+    private func focusCard(_ event: CalendarItem) -> some View {
+        let status = store.data.records[event.id]?.status ?? .pending
+        return PivotCard(tint: Color(pivotHex: event.colorHex)) {
+            HStack {
+                Label("Adesso / appena terminato", systemImage: event.kind.icon).font(.caption.weight(.semibold)).foregroundStyle(Color(pivotHex: event.colorHex))
+                Spacer(); StatusPill(status: status)
+            }
+            Text(event.title).font(.system(.title2, design: .rounded, weight: .bold)).fixedSize(horizontal: false, vertical: true)
+            Label("\(PivotDate.time(event.start)) – \(PivotDate.time(event.end)) · \(event.durationMinutes) min", systemImage: "clock").font(.subheadline).foregroundStyle(PivotTheme.muted)
+            if status == .pending || status == .running {
+                Button { toggle(event) } label: { Label(status == .running ? "Termina attività" : "Inizia attività", systemImage: status == .running ? "stop.fill" : "play.fill") }
+                    .buttonStyle(PivotPrimaryButton()).disabled(event.isAllDay || store.locked)
+            }
+            NavigationLink { detail(event) } label: { Label("Dettagli e registrazione", systemImage: "slider.horizontal.3") }.buttonStyle(PivotSecondaryButton())
+        }
+    }
+    private func toggle(_ event: CalendarItem) {
+        var record = store.record(for: event)
+        if record.status == .running {
+            record.actualEnd = Date(); record.status = .completed
+            if let start = record.actualStart { record.activeMinutes = max(0, Int(Date().timeIntervalSince(start) / 60)) }
+        } else { record.actualStart = Date(); record.actualEnd = nil; record.status = .running }
+        record.updatedAt = Date()
+        store.change { $0.records[event.id] = record }
     }
     private func detail(_ event: CalendarItem) -> some View {
         EventDetailView(event: event, initial: store.record(for: event), rule: store.rule(for: event))
@@ -63,20 +97,26 @@ struct DayCheckInView: View {
         _wake = State(initialValue: initial?.wakeTime ?? PivotDate.calendar.date(bySettingHour: 7, minute: 45, second: 0, of: day)!)
     }
     var body: some View {
-        Form {
-            Section("Mattina") {
+        PivotScreen {
+            PivotHeader(title: "Come stai?", subtitle: DisplayDate.label(day).capitalized)
+            PivotCard(tint: PivotTheme.amber) {
+                Label("La tua mattina", systemImage: "sun.max.fill").font(.headline).foregroundStyle(PivotTheme.amber)
                 DatePicker("Sveglia reale", selection: $wake, displayedComponents: .hourAndMinute)
-                Text("Attuale registrazione: \(check.wakeTime.map(PivotDate.time) ?? "non indicata")").font(.caption)
-                Button("Registra questo orario") { check.wakeTime = wake }
+                Button(check.wakeTime == nil ? "Registra questo orario" : "Aggiorna la sveglia") { check.wakeTime = wake }.buttonStyle(PivotSecondaryButton())
+                Text(check.wakeTime.map { "Registrata alle \(PivotDate.time($0))" } ?? "L'orario non è ancora registrato.").font(.caption).foregroundStyle(PivotTheme.muted)
                 RatingField(title: "Energia", value: $check.energyMorning)
                 RatingField(title: "Umore", value: $check.moodMorning)
             }
-            Section("Sera") {
+            PivotCard(tint: PivotTheme.blue) {
+                Label("La tua sera", systemImage: "moon.stars.fill").font(.headline).foregroundStyle(PivotTheme.blue)
                 RatingField(title: "Energia", value: $check.energyEvening)
                 RatingField(title: "Umore", value: $check.moodEvening)
             }
-            Section("Note") { TextEditor(text: $check.notes).frame(minHeight: 100) }
-            Button("Salva") { if store.change({ $0.checkIns[check.id] = check }) { dismiss() } }
-        }.navigationTitle("Come stai?")
+            PivotCard {
+                SectionHeading(title: "Qualcosa da raccontare?")
+                TextField("Come è andata, cosa ti ha aiutato…", text: $check.notes, axis: .vertical).lineLimit(4...10)
+            }
+            Button("Salva check-in") { if store.change({ $0.checkIns[check.id] = check }) { dismiss() } }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
+        }.navigationTitle("Check-in")
     }
 }

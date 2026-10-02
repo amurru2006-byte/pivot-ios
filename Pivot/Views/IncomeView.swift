@@ -8,50 +8,103 @@ struct IncomeView: View {
         let interval = PivotDate.calendar.dateInterval(of: .month, for: Date())!
         return store.data.payments.filter { $0.date >= interval.start && $0.date < interval.end }.sorted { $0.date > $1.date }
     }
+    var outstanding: [IncomeEntry] { store.data.income.filter { $0.outstandingCents > 0 }.sorted { $0.date < $1.date } }
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Incassato questo mese").foregroundStyle(.secondary)
-                        Text(Money.display(monthPayments.reduce(0) { $0 + $1.amountCents })).font(.largeTitle.bold()).foregroundStyle(.mint)
-                        Text("Da incassare: \(Money.display(store.data.income.reduce(0) { $0 + $1.outstandingCents }))")
-                    }.padding(.vertical)
-                    Button("Registra una lezione") { addingLesson = true }.disabled(store.data.clients.isEmpty || store.locked)
-                }
-                Section("Movimenti") {
-                    if monthPayments.isEmpty { Text("Nessuna entrata registrata questo mese.").foregroundStyle(.secondary) }
-                    ForEach(monthPayments) { payment in
-                        HStack {
-                            VStack(alignment: .leading) { Text(payment.clientName); Text(PivotDate.key(payment.date)).font(.caption).foregroundStyle(.secondary) }
-                            Spacer()
-                            Text("+ \(Money.display(payment.amountCents))").foregroundStyle(.mint)
-                        }
+            PivotScreen {
+                PivotHeader(title: "Le tue entrate", subtitle: "Ripetizioni, incassi e pagamenti da ricordare.")
+                balance
+                if store.data.clients.isEmpty {
+                    PivotCard {
+                        ActionRow(title: "Parti dal primo studente", subtitle: "Imposta la tariffa e registra le lezioni.", icon: "person.badge.plus")
+                        Button("Aggiungi studente") { addingClient = true }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
                     }
+                } else {
+                    Button { addingLesson = true } label: { Label("Registra una lezione", systemImage: "plus.circle.fill") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
                 }
-                Section("Da pagare") {
-                    ForEach(store.data.income.filter { $0.outstandingCents > 0 }.sorted { $0.date < $1.date }) { entry in
-                        NavigationLink { IncomeDetailView(entryID: entry.id) } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(entry.clientName)
-                                Text("\(PivotDate.key(entry.date)) · \(entry.minutes) min · mancano \(Money.display(entry.outstandingCents))").font(.caption)
+                VStack(alignment: .leading, spacing: 14) {
+                    SectionHeading(title: "Ultimi incassi", detail: DisplayDate.label(Date(), format: "MMMM").capitalized)
+                    if monthPayments.isEmpty { EmptyCard(title: "I tuoi incassi, tutti qui", message: "Quando registri un pagamento, lo ritrovi in questa lista.", icon: "eurosign.arrow.circlepath") }
+                    else {
+                        PivotCard {
+                            ForEach(monthPayments) { payment in
+                                HStack(spacing: 12) {
+                                    avatar(payment.clientName)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(payment.clientName).font(.subheadline.weight(.semibold))
+                                        Text(DisplayDate.label(payment.date, format: "d MMM · HH:mm")).font(.caption).foregroundStyle(PivotTheme.muted)
+                                    }
+                                    Spacer()
+                                    Text("+ \(Money.display(payment.amountCents))").font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.accent)
+                                }
+                                if payment.id != monthPayments.last?.id { Divider().overlay(.white.opacity(0.05)) }
                             }
                         }
                     }
                 }
-                Section("Studenti") {
-                    ForEach(store.data.clients) { client in
-                        NavigationLink { ClientDetailView(client: client) } label: {
-                            HStack { Text(client.name); Spacer(); Text("\(Money.display(client.rateCents))/h").foregroundStyle(.secondary) }
+                if !outstanding.isEmpty {
+                    VStack(alignment: .leading, spacing: 14) {
+                        SectionHeading(title: "Da incassare", detail: "\(outstanding.count) lezioni")
+                        ForEach(outstanding) { entry in
+                            NavigationLink { IncomeDetailView(entryID: entry.id) } label: {
+                                PivotCard(tint: PivotTheme.amber) {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            Text(entry.clientName).font(.headline).foregroundStyle(PivotTheme.text)
+                                            Text("\(DisplayDate.label(entry.date, format: "d MMM")) · \(entry.minutes) min").font(.caption).foregroundStyle(PivotTheme.muted)
+                                        }
+                                        Spacer()
+                                        Text(Money.display(entry.outstandingCents)).font(.headline).foregroundStyle(PivotTheme.amber)
+                                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(PivotTheme.muted)
+                                    }
+                                }
+                            }.buttonStyle(.plain)
                         }
                     }
-                    Button("Aggiungi studente") { addingClient = true }.disabled(store.locked)
                 }
-                Section { Text("Le entrate si registrano manualmente. Pivot non legge il conto bancario e non invia messaggi ai clienti.").font(.caption).foregroundStyle(.secondary) }
+                VStack(alignment: .leading, spacing: 14) {
+                    SectionHeading(title: "I tuoi studenti", detail: "\(store.data.clients.count)")
+                    ForEach(store.data.clients) { client in
+                        NavigationLink { ClientDetailView(client: client) } label: {
+                            PivotCard {
+                                HStack(spacing: 12) {
+                                    avatar(client.name)
+                                    VStack(alignment: .leading, spacing: 5) {
+                                        Text(client.name).font(.headline).foregroundStyle(PivotTheme.text)
+                                        Text("\(Money.display(client.rateCents)) all'ora").font(.caption).foregroundStyle(PivotTheme.muted)
+                                    }
+                                    Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(PivotTheme.muted)
+                                }
+                            }
+                        }.buttonStyle(.plain)
+                    }
+                    if !store.data.clients.isEmpty { Button { addingClient = true } label: { Label("Aggiungi studente", systemImage: "person.badge.plus") }.buttonStyle(PivotSecondaryButton()).disabled(store.locked) }
+                }
+                Text("Registra qui le lezioni e gli incassi: il totale segue la data effettiva dei pagamenti.").font(.caption).foregroundStyle(PivotTheme.muted)
             }.navigationTitle("Entrate")
-            .sheet(isPresented: $addingClient) { ClientForm() }
-            .sheet(isPresented: $addingLesson) { LessonForm(clients: store.data.clients) }
+                .sheet(isPresented: $addingClient) { ClientForm() }
+                .sheet(isPresented: $addingLesson) { LessonForm(clients: store.data.clients) }
         }
+    }
+    private var balance: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack {
+                Label("Incassato questo mese", systemImage: "eurosign.circle.fill").font(.subheadline)
+                Spacer(); Image(systemName: "chart.line.uptrend.xyaxis").font(.title2)
+            }.foregroundStyle(PivotTheme.accent)
+            Text(Money.display(monthPayments.reduce(0) { $0 + $1.amountCents })).font(.system(size: 42, weight: .bold, design: .rounded)).minimumScaleFactor(0.6).lineLimit(1)
+            HStack {
+                Text(DisplayDate.label(Date(), format: "MMMM yyyy").capitalized).font(.caption).foregroundStyle(PivotTheme.muted)
+                Spacer()
+                Text("Da incassare \(Money.display(outstanding.reduce(0) { $0 + $1.outstandingCents }))").font(.caption.weight(.semibold)).foregroundStyle(PivotTheme.amber)
+            }
+        }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
+            .background(LinearGradient(colors: [Color(pivotHex: "22493F"), Color(pivotHex: "1C2C41"), PivotTheme.surface], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 26))
+            .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(PivotTheme.accent.opacity(0.18)))
+    }
+    private func avatar(_ name: String) -> some View {
+        Text(String(name.prefix(1)).uppercased()).font(.system(.headline, design: .rounded)).foregroundStyle(PivotTheme.blue)
+            .frame(width: 42, height: 42).background(PivotTheme.blue.opacity(0.1), in: Circle())
     }
 }
 
@@ -70,7 +123,7 @@ struct ClientForm: View {
                     let client = Client(name: name.trimmingCharacters(in: .whitespacesAndNewlines), rateCents: cents)
                     if store.change({ $0.clients.append(client) }) { dismiss() }
                 }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (Money.cents(from: rate) ?? 0) <= 0)
-            }.navigationTitle("Nuovo studente")
+            }.pivotForm().navigationTitle("Nuovo studente")
                 .toolbar { Button("Annulla") { dismiss() } }
         }
     }
@@ -108,7 +161,7 @@ struct LessonForm: View {
                         if alreadyPaid { data.payments.append(.init(incomeID: entry.id, clientName: client.name, date: Date(), amountCents: cents)) }
                     }) { dismiss() }
                 }.disabled((finalAmount ?? 0) <= 0 || selected == nil)
-            }.navigationTitle("Registra lezione")
+            }.pivotForm().navigationTitle("Registra lezione")
                 .toolbar { Button("Annulla") { dismiss() } }
         }
     }
@@ -147,16 +200,15 @@ struct IncomeDetailView: View {
                 }
             }
             if let message { Text(message).foregroundStyle(.orange) }
-        }.navigationTitle("Dettaglio pagamento")
+        }.pivotForm().navigationTitle("Dettaglio pagamento")
     }
     private func collect(_ entry: IncomeEntry, cents: Int) {
         guard cents > 0 && cents <= entry.outstandingCents else { message = "Inserisci un importo positivo, non superiore al saldo mancante."; return }
-        store.change { data in
+        if store.change({ data in
             guard let index = data.income.firstIndex(where: { $0.id == entry.id }) else { return }
             data.income[index].paidCents += cents
             data.payments.append(.init(incomeID: entry.id, clientName: entry.clientName, date: paymentDate, amountCents: cents))
-        }
-        payment = ""
+        }) { payment = ""; message = "Pagamento registrato." }
     }
 }
 
@@ -173,6 +225,6 @@ struct ClientDetailView: View {
                     }
                 }
             }
-        }.navigationTitle(client.name)
+        }.pivotForm().navigationTitle(client.name)
     }
 }

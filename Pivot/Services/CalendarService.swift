@@ -21,7 +21,14 @@ final class CalendarService: ObservableObject {
         do { hasAccess = try await eventStore.requestFullAccessToEvents() }
         catch { self.error = error.localizedDescription }
     }
+    #if DEBUG && targetEnvironment(simulator)
+    func loadPreview(_ items: [CalendarItem]) {
+        events = items; hasAccess = true
+        choices = [.init(id: "preview", title: "Esempio", colorHex: "7EE6CD", holiday: false)]
+    }
+    #endif
     func refresh(settings: Settings) {
+        if PreviewMode.enabled { return }
         hasAccess = EKEventStore.authorizationStatus(for: .event) == .fullAccess
         guard hasAccess else { events = []; choices = []; return }
         let calendars = eventStore.calendars(for: .event)

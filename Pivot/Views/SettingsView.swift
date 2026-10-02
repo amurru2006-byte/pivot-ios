@@ -15,56 +15,74 @@ struct SettingsView: View {
     @State private var message: String?
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Protezione dello storico") {
-                    Text(store.backupStatus).foregroundStyle(store.lastExternalBackup == nil ? .orange : .secondary)
-                    if let last = store.lastExternalBackup { Text("Ultima copia esterna: \(last.formatted(date: .abbreviated, time: .shortened))").font(.caption) }
-                    Button("Scegli cartella backup in File / iCloud Drive") { folderPicker = true }.disabled(store.locked)
-                    Button("Aggiorna backup esterno") { store.backupNow() }.disabled(store.locked)
-                    Button("Esporta backup completo") {
-                        do { exportFile = try store.exportURL(); exporting = true }
-                        catch { message = error.localizedDescription }
-                    }
-                    Button("Ripristina un backup") { importing = true }
-                    Text("Scegli una cartella fuori da ‘Sul mio iPhone → Pivot’, preferibilmente iCloud Drive. La copia locale non sopravvive alla cancellazione dell'app. Dopo una reinstallazione seleziona il backup e riconfigura la cartella. I backup contengono dati personali: non pubblicarli su GitHub.").font(.caption)
+            PivotScreen {
+                PivotHeader(title: "Su misura per te", subtitle: "Calendari, promemoria e i tuoi dati al sicuro.")
+                PivotCard(tint: PivotTheme.blue) {
+                    ActionRow(title: "I tuoi dati", subtitle: store.lastExternalBackup == nil ? "Configura il backup in iCloud Drive." : "Copia esterna configurata", icon: "externaldrive.badge.icloud")
+                    Text(store.backupStatus).font(.caption).foregroundStyle(store.lastExternalBackup == nil ? PivotTheme.amber : PivotTheme.muted)
+                    if let last = store.lastExternalBackup { Text("Ultima copia: \(DisplayDate.label(last, format: "d MMM · HH:mm"))").font(.caption).foregroundStyle(PivotTheme.muted) }
+                    Button("Scegli cartella backup") { folderPicker = true }.buttonStyle(PivotSecondaryButton()).disabled(store.locked)
+                    DisclosureGroup("Gestisci backup e ripristino") {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Button("Aggiorna copia esterna") { store.backupNow() }.disabled(store.locked)
+                            Button("Esporta backup completo") {
+                                do { exportFile = try store.exportURL(); exporting = true }
+                                catch { message = error.localizedDescription }
+                            }
+                            Button("Ripristina un backup…") { importing = true }
+                            Text("Scegli una cartella in iCloud Drive, fuori da Pivot. Prima di aggiornare verifica il backup; installa la nuova versione sopra quella attuale. Se cancelli l'app, la copia locale viene eliminata. I backup contengono dati personali.").font(.caption).foregroundStyle(PivotTheme.muted)
+                        }.padding(.top, 12)
+                    }.font(.subheadline)
                 }
-                Section("Calendari") {
+                PivotCard {
+                    Label("Calendari", systemImage: "calendar").font(.headline).foregroundStyle(PivotTheme.blue)
                     Toggle("Escludi festività", isOn: $settings.excludeHolidays)
-                    ForEach(calendar.choices) { choice in
-                        Toggle(isOn: Binding(get: { !settings.excludedCalendarIDs.contains(choice.id) && !settings.excludedCalendarTitles.contains(choice.title) }, set: { enabled in
-                            settings.excludedCalendarIDs.removeAll { $0 == choice.id }
-                            settings.excludedCalendarTitles.removeAll { $0 == choice.title }
-                            if !enabled { settings.excludedCalendarIDs.append(choice.id); settings.excludedCalendarTitles.append(choice.title) }
-                        })) { Label(choice.title, systemImage: "circle.fill").foregroundStyle(Color(pivotHex: choice.colorHex)) }
+                    DisclosureGroup("Scegli quali seguire") {
+                        VStack(alignment: .leading, spacing: 14) {
+                            ForEach(calendar.choices) { choice in
+                                if settings.excludeHolidays && choice.holiday {
+                                    HStack { Label(choice.title, systemImage: "circle.fill").foregroundStyle(Color(pivotHex: choice.colorHex)); Spacer(); Text("Escluso").font(.caption).foregroundStyle(PivotTheme.muted) }
+                                } else {
+                                    Toggle(isOn: Binding(get: { !settings.excludedCalendarIDs.contains(choice.id) && !settings.excludedCalendarTitles.contains(choice.title) }, set: { enabled in
+                                        settings.excludedCalendarIDs.removeAll { $0 == choice.id }
+                                        settings.excludedCalendarTitles.removeAll { $0 == choice.title }
+                                        if !enabled { settings.excludedCalendarIDs.append(choice.id); settings.excludedCalendarTitles.append(choice.title) }
+                                    })) { Label(choice.title, systemImage: "circle.fill").foregroundStyle(Color(pivotHex: choice.colorHex)) }
+                                }
+                            }
+                            Button("Consenti / aggiorna calendari") { Task { await calendar.requestAccess(); calendar.refresh(settings: settings) } }.buttonStyle(PivotSecondaryButton())
+                        }.padding(.top, 12)
+                    }.font(.subheadline)
+                }
+                PivotCard {
+                    Label("Promemoria", systemImage: "bell.badge.fill").font(.headline).foregroundStyle(PivotTheme.amber)
+                    Text(notifications.status).font(.subheadline).foregroundStyle(PivotTheme.muted)
+                    Button("Consenti notifiche") { Task { await notifications.requestAccess(); await notifications.schedule(events: calendar.events, data: store.data) } }.buttonStyle(PivotSecondaryButton())
+                    DisclosureGroup("Orari e frequenza") {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Stepper("Mattina: dopo \(settings.morningDelayMinutes) min", value: $settings.morningDelayMinutes, in: 10...120, step: 5)
+                            Toggle("Ripeti ogni ora gli avvisi saltati", isOn: $settings.repeatMissedNotifications)
+                            Stepper("Fine avvisi: \(settings.quietStartHour):00", value: $settings.quietStartHour, in: 19...23)
+                            Stepper("Ripresa avvisi: \(settings.quietEndHour):00", value: $settings.quietEndHour, in: 5...10)
+                            Stepper("Resoconto: \(settings.eveningHour):\(String(format: "%02d", settings.eveningMinute))", value: $settings.eveningHour, in: 19...22)
+                            Text("Pranzo, merenda e cena: 30 e 10 minuti prima. Apri Pivot ogni giorno e dopo aver cambiato il calendario per aggiornare gli avvisi locali. Gli avvisi del Calendario potrebbero duplicarli.").font(.caption).foregroundStyle(PivotTheme.muted)
+                        }.padding(.top, 12)
+                    }.font(.subheadline)
+                }
+                PivotCard {
+                    Label("Studio ed esami", systemImage: "graduationcap.fill").font(.headline).foregroundStyle(PivotTheme.blue)
+                    Toggle("Dai priorità allo studio non recuperabile", isOn: $settings.studyMustTakePriority)
+                    if settings.studyMustTakePriority {
+                        DatePicker("A partire da", selection: Binding(get: { settings.studyPriorityFrom ?? Date() }, set: { settings.studyPriorityFrom = $0 }), displayedComponents: .date)
+                        Text("Gli impegni fissi restano protetti. Accorciamenti e rinunce si concordano prima di applicarli.").font(.caption).foregroundStyle(PivotTheme.muted)
                     }
-                    Button("Consenti / aggiorna calendari") { Task { await calendar.requestAccess(); calendar.refresh(settings: settings) } }
                 }
-                Section("Notifiche") {
-                    Button("Consenti notifiche") { Task { await notifications.requestAccess(); await notifications.schedule(events: calendar.events, data: store.data) } }
-                    Text(notifications.status).font(.caption)
-                    Stepper("Controllo mattina: +\(settings.morningDelayMinutes) min", value: $settings.morningDelayMinutes, in: 10...120, step: 5)
-                    Toggle("Dopo il secondo avviso, ricorda ogni ora", isOn: $settings.repeatMissedNotifications)
-                    Stepper("Fine avvisi: \(settings.quietStartHour):00", value: $settings.quietStartHour, in: 19...23)
-                    Stepper("Ripresa avvisi: \(settings.quietEndHour):00", value: $settings.quietEndHour, in: 5...10)
-                    Stepper("Resoconto serale: \(settings.eveningHour):\(String(format: "%02d", settings.eveningMinute))", value: $settings.eveningHour, in: 19...22)
-                    Text("Pranzo, merenda e cena: avvisi a −30 e −10 minuti. Se li ricevi anche dal Calendario, potresti avere doppie notifiche. Gli avvisi sono locali: Pivot non resta sempre attivo in sottofondo. Aprilo ogni giorno e dopo modifiche al calendario.").font(.caption)
-                }
-                Section("Esami e priorità") {
-                    Toggle("Studio non più recuperabile: mettilo in priorità", isOn: $settings.studyMustTakePriority)
-                    DatePicker("A partire da", selection: Binding(get: { settings.studyPriorityFrom ?? Date() }, set: { settings.studyPriorityFrom = $0 }), displayedComponents: .date)
-                    Text("Questa scelta non sposta da sola gli impegni fissi. La prima versione propone recuperi completi; le compressioni di altri eventi saranno concordate manualmente.").font(.caption)
-                }
-                Button("Salva impostazioni") {
-                    if store.change({ $0.settings = settings }) {
-                        calendar.refresh(settings: settings)
-                        message = "Impostazioni salvate."
-                    }
-                }.disabled(store.locked)
-                Section("Pivot 0.1") {
-                    Text("App nativa personale. Nessuna API IA a pagamento, nessun invio automatico a ChatGPT. Tema scuro e colori del calendario. Tariffe e pagamenti si inseriscono manualmente.").font(.caption)
-                    Text("Aggiorna installando sopra l'app esistente, con lo stesso Apple ID e identificativo. Prima di ogni aggiornamento verifica un backup esterno. Non cancellare Pivot per rinnovarlo.").font(.caption)
-                }
-                if let message { Text(message).foregroundStyle(.orange) }
+                Button { saveSettings() } label: { Label("Salva impostazioni", systemImage: "checkmark.circle.fill") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
+                if let message { Label(message, systemImage: "info.circle").font(.subheadline).foregroundStyle(PivotTheme.amber) }
+                HStack {
+                    Text("PIVOT").font(.system(.caption, design: .rounded, weight: .bold)).tracking(3)
+                    Spacer(); Text("0.2 · Il tuo punto di svolta").font(.caption)
+                }.foregroundStyle(PivotTheme.muted).padding(.top, 4)
             }.navigationTitle("Impostazioni")
                 .onAppear { settings = store.data.settings }
                 .sheet(isPresented: $folderPicker) { FolderPicker { store.selectBackupFolder($0) } }
@@ -83,5 +101,8 @@ struct SettingsView: View {
                     }
                 } message: { Text("Il backup sostituirà i dati attuali. Pivot conserva una copia locale dei dati precedenti; un file non valido non verrà applicato.") }
         }
+    }
+    private func saveSettings() {
+        if store.change({ $0.settings = settings }) { calendar.refresh(settings: settings); message = "Impostazioni salvate." }
     }
 }
