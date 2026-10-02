@@ -156,7 +156,11 @@ struct LessonForm: View {
             PivotScreen {
                 PivotHeader(title: "Una lezione in più", subtitle: "Registra il lavoro fatto e tieni traccia del pagamento.")
                 PivotCard {
-                    Picker("Studente", selection: $clientID) { ForEach(clients) { Text($0.name).tag($0.id) } }
+                    HStack {
+                        Label("Studente", systemImage: "person.fill").font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Picker("Studente", selection: $clientID) { ForEach(clients) { Text($0.name).tag($0.id) } }.pickerStyle(.menu).labelsHidden()
+                    }
                     DatePicker("Data della lezione", selection: $date)
                     Stepper("Durata: \(minutes) min", value: $minutes, in: 5...480, step: 5)
                 }
