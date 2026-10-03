@@ -55,8 +55,13 @@ final class PivotInteractionTests: XCTestCase {
         app.buttons["Chiudi"].tap()
         let objectives = app.descendants(matching: .any)["study-objectives"]
         XCTAssertTrue(objectives.exists)
+        for _ in 0..<6 { if objectives.isHittable { break }; app.swipeDown() }
+        XCTAssertTrue(objectives.isHittable)
         objectives.tap()
         objectives.typeText("Obiettivo di prova")
+        let done = app.buttons["Fine"]
+        XCTAssertTrue(done.waitForExistence(timeout: 3))
+        done.tap()
         app.swipeUp()
         let save = app.buttons["Salva registrazione"]
         for _ in 0..<10 { if save.isHittable { break }; app.swipeUp() }
