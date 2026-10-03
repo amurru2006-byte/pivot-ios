@@ -108,6 +108,12 @@ struct RootView: View {
     private func refresh() async {
         guard !PreviewMode.enabled else { return }
         await calendar.refresh(settings: store.data.settings)
+        if calendar.hasAccess && !store.locked && !store.isRestoring {
+            let prompts = LessonPromptState.observed(calendar.events, data: store.data, now: Date())
+            if prompts != store.data.lessonPrompts {
+                store.change { $0.lessonPrompts = prompts }
+            }
+        }
         promptForLesson()
         await notifications.schedule(events: Planner.plannedEvents(calendar.events, data: store.data), data: store.data)
     }

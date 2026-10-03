@@ -102,7 +102,7 @@ private actor CalendarWorker {
                 location: event.location ?? "", notes: CalendarNoteText.plain(event.notes ?? ""),
                 colorHex: Self.hex(event.calendar.cgColor), isAllDay: event.isAllDay,
                 writable: event.calendar.allowsContentModifications, kind: .classify(title: event.title ?? "", calendar: event.calendar.title),
-                sourceIdentifier: event.calendar.source.sourceIdentifier, sourceTitle: event.calendar.source.title, calendarModifiedAt: event.lastModifiedDate, recurring: recurring, occurrenceAnchor: anchor, calendarRGB: Self.rgb(event.calendar.cgColor))
+                sourceIdentifier: event.calendar.source.sourceIdentifier, sourceTitle: event.calendar.source.title, calendarModifiedAt: event.lastModifiedDate, recurring: recurring, occurrenceAnchor: anchor, calendarRGB: Self.rgb(event.calendar.cgColor), calendarCreatedAt: event.creationDate)
         }.sorted { $0.start < $1.start }
         return CalendarSnapshot(hasAccess: true, choices: choices, events: events)
     }

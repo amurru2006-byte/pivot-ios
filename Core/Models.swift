@@ -77,6 +77,7 @@ struct CalendarItem: Codable, Identifiable, Equatable {
     var recurring: Bool? = nil
     var occurrenceAnchor: Date? = nil
     var calendarRGB: CalendarRGB? = nil
+    var calendarCreatedAt: Date? = nil
     var durationMinutes: Int { max(1, Int(end.timeIntervalSince(start) / 60)) }
     func agendaStart(on day: Date) -> String {
         if isAllDay { return "Oggi" }
@@ -246,6 +247,7 @@ struct AppData: Codable {
     var studyPDFs: [String: Data]? = nil
     var training: TrainingLibrary? = nil
     var lessonDefaults: [String: LessonLogistics]? = nil
+    var lessonPrompts: LessonPromptState? = nil
 }
 
 enum PivotDate {

@@ -40,8 +40,57 @@ struct LessonLogistics: Codable {
         return result
     }
     static func pending(events: [CalendarItem], data: AppData, now: Date) -> [CalendarItem] {
-        Planner.effectiveEvents(events, data: data).filter {
-            $0.kind == .tutoring && $0.end > now && !(data.records[$0.id]?.logistics?.isConfirmed(for: $0) ?? false)
-        }.sorted { $0.start < $1.start }
+        guard let prompts = data.lessonPrompts else { return [] }
+        var included: Set<String> = []
+        return Planner.effectiveEvents(events, data: data).sorted { $0.start < $1.start }.filter {
+            let key = LessonPromptState.seriesKey($0)
+            return $0.kind == .tutoring && $0.end > now && prompts.pendingSeries.contains(key)
+                && !(data.records[$0.id]?.logistics?.isConfirmed(for: $0) ?? false)
+                && included.insert(key).inserted
+        }
+    }
+}
+
+// The first successful calendar import is a baseline, never a queue of forms.
+// Track recurring series rather than the occurrences in the rolling date window.
+struct LessonPromptState: Codable, Equatable {
+    var startedAt: Date
+    var seenSeries: Set<String>
+    var pendingSeries: Set<String> = []
+
+    static func seriesKey(_ event: CalendarItem) -> String {
+        if let external = event.externalIdentifier, !external.isEmpty {
+            return event.calendarIdentifier + "|external|" + external
+        }
+        // CalendarService appends the occurrence anchor to a recurring item's ID.
+        if event.recurring == true, let separator = event.id.lastIndex(of: "|"),
+           Int(event.id[event.id.index(after: separator)...]) != nil {
+            return String(event.id[..<separator])
+        }
+        return event.calendarIdentifier + "|event|" + event.eventIdentifier
+    }
+
+    static func observed(_ events: [CalendarItem], data: AppData, now: Date) -> LessonPromptState {
+        let lessons = events.filter { $0.kind == .tutoring }
+        let keys = Set(lessons.map(seriesKey))
+        guard var state = data.lessonPrompts else {
+            return LessonPromptState(startedAt: now, seenSeries: keys)
+        }
+        for event in lessons {
+            let key = seriesKey(event)
+            guard !state.seenSeries.contains(key) else { continue }
+            // A late-synced old event or old series entering the window is not new.
+            if event.end > now && (event.calendarCreatedAt.map { $0 > state.startedAt } ?? true) {
+                state.pendingSeries.insert(key)
+            }
+        }
+        state.seenSeries.formUnion(keys)
+        // A confirmation is per occurrence; automatic prompting is once per new series.
+        // Manual edits for any future occurrence remain available in its detail screen.
+        for record in data.records.values where record.logistics?.confirmedAt != nil {
+            state.pendingSeries.remove(seriesKey(record.snapshot))
+        }
+        state.pendingSeries.formIntersection(keys)
+        return state
     }
 }
