@@ -38,6 +38,8 @@ final class LessonPromptTests: XCTestCase {
         var record = EventRecord(id: events[0].id, snapshot: events[0])
         record.logistics = LessonLogistics(studentName: "Sara", place: .studentHome, confirmedAt: now.addingTimeInterval(15))
         data.records[record.id] = record
+        // Dismissal requests the next prompt before the asynchronous calendar refresh.
+        XCTAssertTrue(LessonLogistics.pending(events: events, data: data, now: now).isEmpty)
         data.lessonPrompts = LessonPromptState.observed(events, data: data, now: now.addingTimeInterval(20))
         XCTAssertTrue(LessonLogistics.pending(events: events, data: data, now: now).isEmpty)
         XCTAssertNil(data.records[events[1].id]?.logistics)
