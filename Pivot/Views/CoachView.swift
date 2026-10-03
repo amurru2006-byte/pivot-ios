@@ -67,8 +67,10 @@ struct CoachView: View {
 
             PivotCard {
                 TextField("Scrivi cosa è saltato o cosa vuoi spostare…", text: $input, axis: .vertical)
+                    .accessibilityIdentifier("coach-message-input")
                     .lineLimit(2...6).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 14))
                 Button { send(input) } label: { Label("Invia al Coach", systemImage: "paperplane.fill") }
+                    .accessibilityIdentifier("coach-send")
                     .buttonStyle(PivotPrimaryButton()).disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.locked || coachModel.isGenerating)
                 if coachModel.isGenerating {
                     HStack {

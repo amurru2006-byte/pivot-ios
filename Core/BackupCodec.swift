@@ -62,8 +62,7 @@ enum BackupCodec {
             guard Set(coach.messages.map(\.id)).count == coach.messages.count,
                   Set(coach.options.map(\.id)).count == coach.options.count,
                   Set(coach.pendingCalendarChanges.map(\.id)).count == coach.pendingCalendarChanges.count,
-                  coach.messages.count <= 10_000,
-                  coach.memories.count <= 1_000,
+                  Set(coach.memories.map(\.id)).count == coach.memories.count,
                   coach.options.allSatisfy({ !$0.moves.isEmpty && $0.moves.allSatisfy { $0.proposedEnd > $0.proposedStart } }),
                   coach.pendingCalendarChanges.allSatisfy({ $0.move.proposedEnd > $0.move.proposedStart }) else { throw BackupError.invalidData }
         }

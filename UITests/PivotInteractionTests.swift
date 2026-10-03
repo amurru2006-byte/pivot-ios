@@ -1,6 +1,36 @@
 import XCTest
 
 final class PivotInteractionTests: XCTestCase {
+    func testCoachConversationPersistsWithoutDownloadingAI() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--interaction-test"]
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["calendar-updated"].waitForExistence(timeout: 15))
+        let coach = app.buttons["open-pivot-coach"]
+        for _ in 0..<6 { if coach.isHittable { break }; app.swipeDown() }
+        XCTAssertTrue(coach.isHittable); coach.tap()
+        let input = app.descendants(matching: .any)["coach-message-input"]
+        for _ in 0..<12 { if input.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(input.isHittable)
+        let text = "Preferisco studiare con esercizi brevi: prova persistenza Coach."
+        input.tap(); input.typeText(text)
+        let done = app.buttons["Fine"]
+        if done.waitForExistence(timeout: 3) { done.tap() }
+        let send = app.buttons["coach-send"]
+        for _ in 0..<5 { if send.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(send.isHittable); send.tap()
+        XCTAssertTrue(app.staticTexts[text].waitForExistence(timeout: 5))
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["calendar-updated"].waitForExistence(timeout: 15))
+        let reopened = app.buttons["open-pivot-coach"]
+        for _ in 0..<6 { if reopened.isHittable { break }; app.swipeDown() }
+        XCTAssertTrue(reopened.isHittable); reopened.tap()
+        for _ in 0..<12 { if app.staticTexts[text].exists { break }; app.swipeUp() }
+        XCTAssertTrue(app.staticTexts[text].exists)
+        XCTAssertFalse(app.staticTexts["Modello locale attivo"].exists)
+    }
+
     func testTrainingPDFImportSetLoggingAndPersistence() {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--training-test"]; app.launch()

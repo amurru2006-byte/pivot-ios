@@ -43,7 +43,7 @@ struct TodayView: View {
                             icon: "brain.head.profile"
                         )
                     }
-                }.buttonStyle(.plain)
+                }.buttonStyle(.plain).accessibilityIdentifier("open-pivot-coach")
                 if store.locked {
                     EmptyCard(title: "Storico da ripristinare", message: "Apri Impostazioni e recupera il backup per tornare a registrare le attività.", icon: "lock.shield")
                 }

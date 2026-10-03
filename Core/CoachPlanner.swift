@@ -97,9 +97,16 @@ enum CoachPlanner {
 
     static func matchesSnapshot(_ original: CalendarItem, _ current: CalendarItem) -> Bool {
         original.calendarIdentifier == current.calendarIdentifier && original.eventIdentifier == current.eventIdentifier
+            && matchesPlanSnapshot(original, current)
+            && modificationDateMatches(original.calendarModifiedAt, current.calendarModifiedAt)
+    }
+
+    // Imported copies may use different calendar IDs; writes still require strict IDs above.
+    static func matchesPlanSnapshot(_ original: CalendarItem, _ current: CalendarItem) -> Bool {
+        EventCoalescer.savedOccurrence(original, current)
             && abs(original.start.timeIntervalSince(current.start)) < 1 && abs(original.end.timeIntervalSince(current.end)) < 1 && original.title == current.title
             && original.location == current.location && original.notes == current.notes
-            && original.isAllDay == current.isAllDay && modificationDateMatches(original.calendarModifiedAt, current.calendarModifiedAt)
+            && original.isAllDay == current.isAllDay
     }
 
     static func modificationDateMatches(_ original: Date?, _ current: Date?) -> Bool {
