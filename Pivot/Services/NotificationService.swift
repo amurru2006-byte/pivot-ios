@@ -8,6 +8,7 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions { [.banner, .list, .sound] }
     @Published private(set) var status = "Notifiche non configurate"
     private var generation = 0
+    private var lastLessonPromptIDs: Set<String> = []
     func requestAccess() async {
         do {
             let ok = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound])
@@ -25,9 +26,9 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
         }
         let pending = await center.pendingNotificationRequests()
         guard token == generation else { return }
-        center.removePendingNotificationRequests(withIdentifiers: pending.filter { !$0.identifier.hasPrefix("income-") }.map(\.identifier))
+        center.removePendingNotificationRequests(withIdentifiers: pending.filter { !$0.identifier.hasPrefix("income-") && !$0.identifier.hasPrefix("lesson-place-") }.map(\.identifier))
         let reserved = pending.filter { $0.identifier.hasPrefix("income-") }.count
-        let requests = NotificationPlan.requests(events: events, data: data, now: Date(), capacity: min(60, max(0, 63 - reserved)))
+        let requests = NotificationPlan.requests(events: events, data: data, now: Date(), capacity: min(57, max(0, 60 - reserved)))
         var count = 0
         for request in requests {
             guard token == generation, !Task.isCancelled else { return }
@@ -38,6 +39,20 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
             let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, request.date.timeIntervalSinceNow), repeats: false)
             do { try await center.add(.init(identifier: request.id, content: content, trigger: trigger)); count += 1 }
             catch { status = "Alcuni avvisi non sono stati programmati: \(error.localizedDescription)"; return }
+        }
+        let missingPlaces = LessonLogistics.pending(events: events, data: data, now: Date())
+        let validPlaceIDs = Set(missingPlaces.map { "lesson-place-\($0.id)" })
+        center.removePendingNotificationRequests(withIdentifiers: pending.filter { $0.identifier.hasPrefix("lesson-place-") && !validPlaceIDs.contains($0.identifier) }.map(\.identifier))
+        // Once per discovered occurrence, not every minute while it remains unanswered.
+        for event in missingPlaces.filter({ !lastLessonPromptIDs.contains($0.id) }).prefix(3) {
+            let content = UNMutableNotificationContent()
+            content.title = "Dove fai questa lezione?"
+            content.body = "\(PivotDate.shortDate(event.start)) \(PivotDate.time(event.start)) · \(event.title). Apri Pivot per confermare chi si sposta."
+            content.sound = .default
+            do {
+                try await center.add(.init(identifier: "lesson-place-\(event.id)", content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: 10, repeats: false)))
+                lastLessonPromptIDs.insert(event.id)
+            } catch { status = "Avviso luogo non programmato: \(error.localizedDescription)" }
         }
         await incomeWarning(data: data, center: center)
         status = "\(count) avvisi programmati, fino a 48 ore. Apri Pivot ogni giorno per aggiornarli. Full immersion e impostazioni di iOS possono ritardare o silenziare gli avvisi."

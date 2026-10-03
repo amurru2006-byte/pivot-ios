@@ -1,6 +1,44 @@
 import XCTest
 
 final class PivotInteractionTests: XCTestCase {
+    func testTrainingPDFImportSetLoggingAndPersistence() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--training-test"]; app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 10))
+        app.tabBars.buttons["Palestra"].tap()
+        let importer = app.buttons["import-training-fixture"]
+        for _ in 0..<8 { if importer.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(importer.isHittable); importer.tap()
+        let confirm = app.buttons["Usa questa scheda"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 8)); confirm.tap()
+        let day = app.buttons["workout-day-test-a"]
+        for _ in 0..<8 { if day.isHittable { break }; app.swipeDown() }
+        XCTAssertTrue(day.waitForExistence(timeout: 5)); day.tap()
+        let start = app.buttons["Inizia allenamento"]
+        XCTAssertTrue(start.waitForExistence(timeout: 5)); start.tap()
+        let kg = app.textFields["weight-test-exercise-0"]
+        for _ in 0..<8 { if kg.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(kg.isHittable); kg.tap(); kg.typeText("25")
+        app.buttons["Fine"].tap()
+        let reps = app.textFields["reps-test-exercise-0"]
+        reps.tap(); reps.typeText("8"); app.buttons["Fine"].tap()
+        let done = app.switches["set-done-test-exercise-0"]
+        XCTAssertTrue(done.exists); done.tap()
+        let finish = app.buttons["Termina allenamento"]
+        for _ in 0..<8 { if finish.isHittable { break }; app.swipeDown() }
+        finish.tap()
+        XCTAssertTrue(app.staticTexts["Allenamento terminato"].waitForExistence(timeout: 4))
+        app.terminate(); app.launch(); app.tabBars.buttons["Palestra"].tap()
+        let reopened = app.buttons["workout-day-test-a"]
+        XCTAssertTrue(reopened.waitForExistence(timeout: 5)); reopened.tap()
+        // A fresh unlinked workout proposes the completed session's load, not a completed set.
+        let proposed = app.textFields["weight-test-exercise-0"]
+        for _ in 0..<8 { if proposed.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(proposed.exists)
+        XCTAssertEqual(proposed.value as? String, "25,0")
+        XCTAssertEqual(app.textFields["reps-test-exercise-0"].value as? String, "8")
+    }
+
     func testTabsAndActivityButtonsRespondDuringCalendarImport() {
         continueAfterFailure = false
         let app = XCUIApplication()

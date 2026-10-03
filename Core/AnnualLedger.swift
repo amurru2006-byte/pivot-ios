@@ -27,7 +27,7 @@ struct AnnualLedger: Codable {
 enum TutoringLedger {
     // Repeated saves of the same calendar occurrence never generate a second lesson/payment.
     @discardableResult static func register(event: CalendarItem, record: inout EventRecord, client: Client, amountCents: Int, collectedCents: Int, paymentDate: Date, data: inout AppData) -> UUID? {
-        guard event.kind == .tutoring, amountCents >= 0, collectedCents >= 0, collectedCents <= amountCents else { return nil }
+        guard [.tutoring, .work].contains(event.kind), amountCents >= 0, collectedCents >= 0, collectedCents <= amountCents else { return nil }
         if let existing = data.income.first(where: { $0.id == record.incomeID || $0.calendarEventID == event.id }) {
             record.incomeID = existing.id; record.tutoringAnswered = true
             return existing.id

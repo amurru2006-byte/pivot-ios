@@ -16,6 +16,7 @@ struct TodayView: View {
         let minutes = items.reduce(0) { $0 + (store.data.records[$1.id]?.activeMinutes ?? 0) }
         NavigationStack {
             PivotScreen {
+                DaySelector(day: $day)
                 PivotHeader(title: "La tua giornata", subtitle: DisplayDate.label(day).capitalized)
                 if let sync = calendar.lastRefresh {
                     Label("Calendario aggiornato alle \(PivotDate.time(sync))", systemImage: "arrow.triangle.2.circlepath").font(.caption).foregroundStyle(PivotTheme.muted).accessibilityIdentifier("calendar-updated")
@@ -23,7 +24,6 @@ struct TodayView: View {
                 if calendar.isRefreshing {
                     Label("Aggiornamento calendario…", systemImage: "arrow.triangle.2.circlepath").font(.caption).foregroundStyle(PivotTheme.muted).accessibilityIdentifier("calendar-loading")
                 }
-                DaySelector(day: $day)
                 HStack(alignment: .top, spacing: 9) {
                     MetricTile(title: "Completati", value: "\(completed)/\(items.count)", icon: "checkmark.circle.fill")
                     MetricTile(title: "Registrati", value: "\(minutes) min", icon: "clock.fill", color: PivotTheme.blue)
@@ -107,9 +107,9 @@ struct TodayView: View {
     }
     private func focusCard(_ event: CalendarItem) -> some View {
         let status = store.data.records[event.id]?.status ?? .pending
-        return PivotCard(tint: Color(pivotHex: event.colorHex)) {
+        return PivotCard(tint: Color(calendarItem: event)) {
             HStack {
-                Label("Adesso / appena terminato", systemImage: event.kind.icon).font(.caption.weight(.semibold)).foregroundStyle(Color(pivotHex: event.colorHex))
+                Label("Adesso / appena terminato", systemImage: event.kind.icon).font(.caption.weight(.semibold)).foregroundStyle(Color(calendarItem: event))
                 Spacer(); StatusPill(status: status)
             }
             Text(event.title).font(.system(.title2, design: .rounded, weight: .bold)).fixedSize(horizontal: false, vertical: true)
@@ -128,7 +128,7 @@ struct TodayView: View {
             if let start = record.actualStart { record.activeMinutes = max(0, Int(Date().timeIntervalSince(start) / 60)) }
         } else { record.actualStart = Date(); record.actualEnd = nil; record.status = .running }
         record.updatedAt = Date()
-        if store.change({ $0.records[event.id] = record }), event.kind == .tutoring && record.status == .completed { finishedTutoring = event }
+        if store.change({ $0.records[event.id] = record }), [.tutoring, .work].contains(event.kind) && record.status == .completed { finishedTutoring = event }
     }
     private func detail(_ event: CalendarItem) -> some View {
         EventDetailView(event: event, initial: store.record(for: event), rule: store.rule(for: event))
@@ -151,11 +151,19 @@ struct DayCheckInView: View {
             PivotHeader(title: "Come stai?", subtitle: DisplayDate.label(day).capitalized)
             PivotCard(tint: PivotTheme.amber) {
                 Label("La tua mattina", systemImage: "sun.max.fill").font(.headline).foregroundStyle(PivotTheme.amber)
-                DatePicker("Sveglia reale", selection: $wake, displayedComponents: .hourAndMinute)
-                Button(check.wakeTime == nil ? "Registra questo orario" : "Aggiorna la sveglia") { check.wakeTime = wake }.buttonStyle(PivotSecondaryButton())
-                Text(check.wakeTime.map { "Registrata alle \(PivotDate.time($0))" } ?? "L'orario non è ancora registrato.").font(.caption).foregroundStyle(PivotTheme.muted)
+                ClockField(title: "Sveglia reale", value: $check.wakeTime, fallback: wake)
                 RatingField(title: "Energia", value: $check.energyMorning)
                 RatingField(title: "Umore", value: $check.moodMorning)
+            }
+            PivotCard(tint: PivotTheme.blue) {
+                Label("Sonno · dati Apple Watch", systemImage: "bed.double.fill").font(.headline).foregroundStyle(PivotTheme.blue)
+                Text("Copia solo i dati che vedi nell'app Sonno o Fitness. I campi mancanti possono restare vuoti: tempo a letto e tempo dormito non sono la stessa cosa.").font(.caption).foregroundStyle(PivotTheme.muted)
+                ClockField(title: "Ora in cui sei andato a letto", value: sleepBinding(\.bedtime), fallback: day.addingTimeInterval(-8 * 3600))
+                DurationField(title: "Tempo dormito", seconds: sleepBinding(\.durationSeconds), maxHours: 24)
+                IntegerField(title: "Punteggio sonno (0–100)", value: sleepBinding(\.score))
+                TextField("Qualità indicata, es. Buona (facoltativa)", text: sleepBinding(\.quality))
+                IntegerField(title: "Numero di risvegli", value: sleepBinding(\.awakenings))
+                DurationField(title: "Tempo delle interruzioni", seconds: sleepBinding(\.interruptionSeconds), maxHours: 24)
             }
             PivotCard(tint: PivotTheme.blue) {
                 Label("La tua sera", systemImage: "moon.stars.fill").font(.headline).foregroundStyle(PivotTheme.blue)
@@ -166,7 +174,18 @@ struct DayCheckInView: View {
                 SectionHeading(title: "Qualcosa da raccontare?")
                 TextField("Come è andata, cosa ti ha aiutato…", text: $check.notes, axis: .vertical).lineLimit(4...10)
             }
-            Button("Salva check-in") { if store.change({ $0.checkIns[check.id] = check }) { dismiss() } }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
+            Button("Salva check-in") {
+                if let sleep = check.sleep,
+                   !(sleep.score.map { (0...100).contains($0) } ?? true) || !(sleep.awakenings.map { (0...1000).contains($0) } ?? true) {
+                    store.error = "Controlla punteggio sonno e numero di risvegli."; return
+                }
+                if store.change({ $0.checkIns[check.id] = check }) { dismiss() }
+            }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
         }.navigationTitle("Check-in")
+    }
+    private func sleepBinding<T>(_ path: WritableKeyPath<SleepRecord, T>) -> Binding<T> {
+        Binding(get: { (check.sleep ?? SleepRecord())[keyPath: path] }, set: { value in
+            var sleep = check.sleep ?? SleepRecord(); sleep[keyPath: path] = value; check.sleep = sleep
+        })
     }
 }

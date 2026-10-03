@@ -3,6 +3,11 @@ import UniformTypeIdentifiers
 import UIKit
 
 extension Color {
+    init(calendarItem: CalendarItem) {
+        if let rgb = calendarItem.calendarRGB {
+            self.init(.sRGB, red: rgb.red, green: rgb.green, blue: rgb.blue, opacity: rgb.alpha)
+        } else { self.init(pivotHex: calendarItem.colorHex) }
+    }
     init(pivotHex: String) {
         let hex = pivotHex.replacingOccurrences(of: "#", with: "")
         let number = UInt64(hex, radix: 16) ?? 0x70D7BD
@@ -30,6 +35,7 @@ extension EventKind {
         case .workout: return "dumbbell.fill"
         case .university: return "graduationcap.fill"
         case .tutoring: return "person.2.fill"
+        case .work: return "briefcase.fill"
         case .social: return "person.3.fill"
         case .partner: return "heart.fill"
         case .friends: return "person.3.fill"
@@ -177,12 +183,15 @@ struct EmptyCard: View {
 struct DaySelector: View {
     @Binding var day: Date
     var body: some View {
-        HStack {
+        VStack(spacing: 4) {
+          HStack {
             Button { shift(-1) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }.accessibilityLabel("Giorno precedente")
             Spacer()
             DatePicker("Giornata", selection: $day, displayedComponents: .date).labelsHidden()
             Spacer()
             Button { shift(1) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 44) }.accessibilityLabel("Giorno successivo")
+          }
+          Button("Oggi") { day = Date() }.font(.subheadline.weight(.semibold)).padding(.bottom, 10).accessibilityIdentifier("return-today")
         }.padding(.horizontal, 5).background(PivotTheme.surface, in: RoundedRectangle(cornerRadius: 16))
     }
     private func shift(_ amount: Int) { if let next = PivotDate.calendar.date(byAdding: .day, value: amount, to: day) { day = next } }
@@ -273,7 +282,7 @@ struct EventRow: View {
             }.frame(width: 47, alignment: .leading).padding(.top, 4)
             VStack(alignment: .leading, spacing: 9) {
                 HStack {
-                    Label(event.kind.label, systemImage: event.kind.icon).font(.caption).foregroundStyle(Color(pivotHex: event.colorHex))
+                    Label(event.kind.label, systemImage: event.kind.icon).font(.caption).foregroundStyle(Color(calendarItem: event))
                     Spacer(minLength: 3)
                     StatusPill(status: record?.status ?? .pending)
                 }
@@ -288,7 +297,7 @@ struct EventRow: View {
                 }
             }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
                 .background(PivotTheme.surface, in: RoundedRectangle(cornerRadius: 18))
-                .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 2).fill(Color(pivotHex: event.colorHex)).frame(width: 3).padding(.vertical, 16) }
+                .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 2).fill(Color(calendarItem: event)).frame(width: 3).padding(.vertical, 16) }
         }
     }
 }

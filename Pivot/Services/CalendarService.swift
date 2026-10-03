@@ -102,7 +102,7 @@ private actor CalendarWorker {
                 location: event.location ?? "", notes: CalendarNoteText.plain(event.notes ?? ""),
                 colorHex: Self.hex(event.calendar.cgColor), isAllDay: event.isAllDay,
                 writable: event.calendar.allowsContentModifications, kind: .classify(title: event.title ?? "", calendar: event.calendar.title),
-                sourceIdentifier: event.calendar.source.sourceIdentifier, sourceTitle: event.calendar.source.title, calendarModifiedAt: event.lastModifiedDate, recurring: recurring, occurrenceAnchor: anchor)
+                sourceIdentifier: event.calendar.source.sourceIdentifier, sourceTitle: event.calendar.source.title, calendarModifiedAt: event.lastModifiedDate, recurring: recurring, occurrenceAnchor: anchor, calendarRGB: Self.rgb(event.calendar.cgColor))
         }.sorted { $0.start < $1.start }
         return CalendarSnapshot(hasAccess: true, choices: choices, events: events)
     }
@@ -139,11 +139,15 @@ private actor CalendarWorker {
         return ["festivit", "holiday", "giorni festivi"].contains(where: t.contains)
     }
     static func hex(_ color: CGColor) -> String {
+        let rgb = rgb(color)
+        return String(format: "#%02X%02X%02X", Int((rgb.red * 255).rounded()), Int((rgb.green * 255).rounded()), Int((rgb.blue * 255).rounded()))
+    }
+    static func rgb(_ color: CGColor) -> CalendarRGB {
         let exact = color.converted(to: CGColorSpace(name: CGColorSpace.sRGB)!, intent: .defaultIntent, options: nil) ?? color
         let ui = UIColor(cgColor: exact)
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         ui.getRed(&r, green: &g, blue: &b, alpha: &a)
-        return String(format: "#%02X%02X%02X", Int((r * 255).rounded()), Int((g * 255).rounded()), Int((b * 255).rounded()))
+        return CalendarRGB(red: Double(r), green: Double(g), blue: Double(b), alpha: Double(a))
     }
 }
 enum CalendarFailure: LocalizedError {

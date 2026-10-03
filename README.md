@@ -1,3 +1,20 @@
+## 0.4.0 — orari, sonno, lezioni, cardio e schede palestra
+
+- Orari reali con data e selettore iOS a rotella; durate in ore/minuti, secondi per cardio. Nessuna conversione manuale in minuti.
+- Navigazione giorni sopra la dashboard e pulsante Oggi; colori sRGB del calendario conservati senza arrotondarli a 8 bit.
+- Lavoro generico distinto dalle ripetizioni. Conferma luogo per singola lezione, ultima scelta proposta per studente, tragitti confermati dall'utente. Il popup compare quando Pivot rileva l'evento mentre è attiva, non istantaneamente sopra un'altra app.
+- Sonno manuale dai valori leggibili su Apple Watch: durata, sveglia, ora a letto, punteggio/qualità e interruzioni facoltative. Nessuna lettura HealthKit né ricostruzione delle fasi.
+- Camminata, escursione e tapis roulant con dati Fitness facoltativi; velocità e inclinazione per tapis roulant.
+- Sezione Palestra con importazione PDF strutturati, conferma della scheda, serie/carichi/ripetizioni, ultimo allenamento, tips personali persistenti ed esportazione testuale per il personal. Schede e dati inclusi nei backup.
+
+### Formato del PDF palestra
+
+Un PDF normale o scansionato non viene interpretato automaticamente. La scheda rielaborata deve contenere testo estraibile PDFKit con un blocco delimitato da `PIVOT-WORKOUT-V1` e `END-PIVOT-WORKOUT`. Fra i delimitatori: JSON UTF-8 codificato Base64, spazi e ritorni a capo permessi nel Base64. Usare `TrainingPDFFormat.encodedBlock` come riferimento.
+
+Struttura JSON: `formatVersion: 1`, `name`, `days`. Ogni giorno ha `id`, `name`, `exercises`. Ogni esercizio ha `id` stabile fra aggiornamenti, `name`, `sets` (1–30), `reps` (testo, conserva range/istruzioni), `restSeconds` (0–3600), `coachNotes`. Non aggiungere prescrizioni o carichi non indicati dal personal. Identità di esercizio diversa se cambia significativamente la variante: non trasferire carichi fra macchine/esercizi differenti. Fino a 6 schede conservate; nessun cambio di codice necessario per una nuova scheda conforme.
+
+Le registrazioni precedenti e i PDF sopravvivono a un aggiornamento sopra la stessa app; la cancellazione dell'app richiede un backup esterno. Notifiche reali su iPhone/Watch e invio automatico Gmail restano da verificare/configurare separatamente. Non c'è un collegamento automatico alla chat.
+
 ## 0.3.0 — materiali di studio e verifica consolidata
 
 Ogni sessione di studio può avere obiettivi, esercizi e PDF importati da File. I documenti sono copiati nel contenitore privato dell’app, apribili e condivisibili: massimo 6 per sessione, 10 MB ciascuno, 50 MB totali nello storico. Non c’è una sincronizzazione automatica con ChatGPT: salvare il PDF ricevuto in File, poi importarlo nella sessione.
