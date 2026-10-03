@@ -33,6 +33,7 @@ final class Pivot040Tests: XCTestCase {
         let logistics = LessonLogistics(studentName: "Sara", place: .studentHome, confirmedAt: Date(), eventTitleAtConfirmation: first.title, calendarLocationAtConfirmation: first.location)
         var record = EventRecord(id: first.id, snapshot: first); record.logistics = logistics
         data.records[first.id] = record; data.lessonDefaults = [LessonLogistics.key("Sara"): logistics]
+        data.lessonPrompts = LessonPromptState(startedAt: date("2026-10-03T09:00:00+02:00"), seenSeries: [], pendingSeries: [LessonPromptState.seriesKey(second)])
         let pending = LessonLogistics.pending(events: [first, second], data: data, now: date("2026-10-03T10:00:00+02:00"))
         XCTAssertEqual(pending.map(\.id), [second.id])
         var renamed = first; renamed.title = "lezione con Luca"

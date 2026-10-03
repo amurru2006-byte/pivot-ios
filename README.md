@@ -1,3 +1,11 @@
+## 0.4.1 — conferme soltanto per nuove lezioni
+
+- Il primo import riuscito dopo l'aggiornamento registra gli eventi esistenti senza richiedere luoghi retroattivamente.
+- Le nuove lezioni generano una richiesta; una serie ricorrente genera una sola richiesta, non una per ogni settimana.
+- Baseline e richieste sono salvate nello storico/backup. Spostare o rinominare eventi esistenti non riattiva il pop-up.
+- Gli eventi vecchi sincronizzati in ritardo vengono esclusi usando la data di creazione del calendario, quando disponibile. Senza questa data, il riconoscimento usa gli identificativi già osservati.
+- La scelta di luogo rimane modificabile manualmente nella singola occorrenza; non vengono inventati luoghi o tragitti per gli eventi precedenti.
+
 ## 0.4.0 — orari, sonno, lezioni, cardio e schede palestra
 
 - Orari reali con data e selettore iOS a rotella; durate in ore/minuti, secondi per cardio. Nessuna conversione manuale in minuti.
