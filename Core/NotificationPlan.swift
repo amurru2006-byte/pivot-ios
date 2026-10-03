@@ -22,7 +22,7 @@ enum NotificationPlan {
         // Use the same deduplicated, attendance-aware program as the home screen.
         for event in Planner.plannedEvents(events, data: data) where !event.isAllDay {
             let record = data.records[event.id]
-            let missingCompensation = event.kind == .tutoring && [Completion.completed, .partial].contains(record?.status ?? .pending)
+            let missingCompensation = [.tutoring, .work].contains(event.kind) && [Completion.completed, .partial].contains(record?.status ?? .pending)
                 && record?.tutoringAnswered != true && !data.income.contains(where: { $0.calendarEventID == event.id || $0.id == record?.incomeID })
             guard missingCompensation || ![Completion.completed, .partial, .skipped].contains(record?.status ?? .pending) else { continue }
             if event.kind == .meal {

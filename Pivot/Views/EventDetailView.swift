@@ -94,7 +94,10 @@ struct EventDetailView: View {
                 record.activeMinutes = latest.activeMinutes; record.status = latest.status
             }
         }
-        .sheet(isPresented: $editingLogistics) { LessonLogisticsView(event: event) }
+        .sheet(isPresented: $editingLogistics, onDismiss: {
+            rule = store.rule(for: event)
+            record.logistics = store.record(for: event).logistics
+        }) { LessonLogisticsView(event: event) }
         .fileImporter(isPresented: $importingPDF, allowedContentTypes: [.pdf]) { result in
             switch result {
             case .success(let url): Task { await attachPDF(url) }
