@@ -298,6 +298,6 @@ struct EventRow: View {
             }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
                 .background(PivotTheme.surface, in: RoundedRectangle(cornerRadius: 18))
                 .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 2).fill(Color(calendarItem: event)).frame(width: 3).padding(.vertical, 16) }
-        }
+        }.opacity([Completion.completed, .partial].contains(record?.status ?? .pending) ? 0.52 : 1)
     }
 }

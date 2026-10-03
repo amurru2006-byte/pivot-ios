@@ -1,3 +1,16 @@
+## 0.5.0 — Pivot Coach (prima versione)
+
+- Accesso al Coach dalla home, mantenendo le cinque schede dell’app.
+- Recuperi completi e conservativi, con tragitti confermati, durata minima, impegni fissi, orari di sonno e controlli contro i conflitti.
+- Accettazione locale e seconda conferma separata nel Coach prima di scrivere sul Calendario. La singola occorrenza viene riletta e verificata anche immediatamente prima del salvataggio EventKit.
+- Chat divise per giorno, eliminabili, incluse nel resoconto e nei backup. Preferenze aggiunte manualmente dall’utente, consultabili e cancellabili.
+- Qwen3 0.6B Q4_K_M opzionale: download di 397 MB a revisione fissa, verifica SHA-256, Application Support esclusa dal backup. Nessun modello nel repository/bundle e nessuna API a pagamento. LLM.swift fissato a un commit.
+- Il modello scrive commenti, non esegue azioni. Le proposte cliccabili vengono sempre dal pianificatore verificato. Se il modello manca, il Coach resta utilizzabile.
+- Questa prima versione non comprende apprendimento statistico automatico, tagli multipli, modifica libera di eventi futuri o import HealthKit. Il dialogo locale e le prestazioni vanno verificati sul dispositivo reale; un modello piccolo può sbagliare.
+- Attività fatte/parziali attenuate, attività saltate nascoste nella home ma conservate nello storico; salvataggio esplicito chiude i dettagli. Selettore data più visibile per le registrazioni oltre mezzanotte.
+
+Dipendenza locale: [LLM.swift](https://github.com/eastriverlee/LLM.swift), licenza MIT. Modello: [Qwen3 0.6B GGUF](https://huggingface.co/unsloth/Qwen3-0.6B-GGUF), licenza Apache-2.0. Non concede accesso automatico di ChatGPT ai dati di Pivot.
+
 ## 0.4.1 — conferme soltanto per nuove lezioni
 
 - Il primo import riuscito dopo l'aggiornamento registra gli eventi esistenti senza richiedere luoghi retroattivamente.

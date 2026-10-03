@@ -216,6 +216,48 @@ struct PlanMove: Codable, Identifiable {
     var createdAt: Date = Date()
 }
 
+enum CoachRole: String, Codable, Equatable {
+    case user, coach, system
+}
+
+struct CoachMessage: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var dayKey: String
+    var role: CoachRole
+    var text: String
+    var createdAt = Date()
+}
+
+struct CoachOption: Codable, Identifiable {
+    var id = UUID()
+    var title: String
+    var explanation: String
+    var consequences: String
+    var moves: [PlanMove]
+    var createdAt = Date()
+}
+
+struct PendingCalendarChange: Codable, Identifiable {
+    var id = UUID()
+    var move: PlanMove
+    var optionTitle: String
+    var createdAt = Date()
+    var conflictMessage: String? = nil
+}
+
+struct CoachMemory: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var text: String
+    var createdAt = Date()
+}
+
+struct CoachState: Codable {
+    var messages: [CoachMessage] = []
+    var options: [CoachOption] = []
+    var pendingCalendarChanges: [PendingCalendarChange] = []
+    var memories: [CoachMemory] = []
+}
+
 struct Settings: Codable {
     var excludedCalendarIDs: [String] = []
     var excludedCalendarTitles: [String] = []
@@ -248,6 +290,8 @@ struct AppData: Codable {
     var training: TrainingLibrary? = nil
     var lessonDefaults: [String: LessonLogistics]? = nil
     var lessonPrompts: LessonPromptState? = nil
+    // Optional so every existing backup remains readable without a migration.
+    var coach: CoachState? = nil
 }
 
 enum PivotDate {

@@ -9,7 +9,13 @@ struct TodayView: View {
     var body: some View {
         let effective = Planner.effectiveEvents(calendar.events, data: store.data)
         let dayEvents = effective.filter { $0.occurs(on: day) }
-        let items = Planner.plannedEffectiveEvents(effective, data: store.data).filter { $0.occurs(on: day) }
+        let items = Planner.plannedEffectiveEvents(effective, data: store.data).filter {
+            $0.occurs(on: day) && store.data.records[$0.id]?.status != .skipped
+        }.sorted { lhs, rhs in
+            let leftDone = [Completion.completed, .partial].contains(store.data.records[lhs.id]?.status ?? .pending)
+            let rightDone = [Completion.completed, .partial].contains(store.data.records[rhs.id]?.status ?? .pending)
+            return leftDone == rightDone ? lhs.start < rhs.start : !leftDone
+        }
         let attendance = Planner.universityAttendance(on: day, events: effective, data: store.data)
         let conflicts = Planner.overlapsInPlannedEvents(on: day, events: items)
         let completed = items.filter { store.data.records[$0.id]?.status == .completed }.count
@@ -29,6 +35,15 @@ struct TodayView: View {
                     MetricTile(title: "Registrati", value: "\(minutes) min", icon: "clock.fill", color: PivotTheme.blue)
                     MetricTile(title: "Energia", value: check?.energyMorning.map { "\($0)/10" } ?? "—", icon: "bolt.fill", color: PivotTheme.amber)
                 }
+                NavigationLink { CoachView() } label: {
+                    PivotCard(tint: PivotTheme.accent) {
+                        ActionRow(
+                            title: store.data.coachState.pendingCalendarChanges.isEmpty ? "Parla con Pivot Coach" : "Controlla le modifiche del Coach",
+                            subtitle: store.data.coachState.pendingCalendarChanges.isEmpty ? "Recupera attività e adatta la giornata con proposte verificate." : "\(store.data.coachState.pendingCalendarChanges.count) modifiche sono solo in Pivot: il Calendario aspetta la tua conferma.",
+                            icon: "brain.head.profile"
+                        )
+                    }
+                }.buttonStyle(.plain)
                 if store.locked {
                     EmptyCard(title: "Storico da ripristinare", message: "Apri Impostazioni e recupera il backup per tornare a registrare le attività.", icon: "lock.shield")
                 }

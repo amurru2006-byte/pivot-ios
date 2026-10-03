@@ -20,14 +20,14 @@ struct ClockField: View {
         .sheet(isPresented: $editing) {
             NavigationStack {
                 VStack(spacing: 18) {
-                    DatePicker("Data", selection: $draft, displayedComponents: .date).datePickerStyle(.compact)
+                    DatePicker("Data", selection: $draft, displayedComponents: .date).datePickerStyle(.graphical)
                     DatePicker(title, selection: $draft, displayedComponents: .hourAndMinute).datePickerStyle(.wheel).labelsHidden()
                     Button("Conferma orario") { value = draft; editing = false }.buttonStyle(PivotPrimaryButton())
                     if value != nil { Button("Cancella orario", role: .destructive) { value = nil; editing = false } }
                 }.padding(24).navigationTitle(title)
                     .toolbar { Button("Annulla") { editing = false } }
                     .background(PivotTheme.background.ignoresSafeArea())
-            }.presentationDetents([.medium, .large])
+            }.presentationDetents([.large])
         }
     }
 }

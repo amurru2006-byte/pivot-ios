@@ -11,12 +11,14 @@ concurrency:
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 25
+    timeout-minutes: 55
     steps:
       - name: Scarica codice
         uses: actions/checkout@v4
       - name: Versioni degli strumenti
         run: |
+          PIVOT_XCODE=$(find /Applications -maxdepth 1 -name 'Xcode_*.app' | sort -V | tail -n 1)
+          if [ -n "$PIVOT_XCODE" ]; then sudo xcode-select -s "$PIVOT_XCODE/Contents/Developer"; fi
           xcodebuild -version
           swift --version
       - name: Test dati, pagamenti, backup e pianificazione

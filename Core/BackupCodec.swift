@@ -58,6 +58,15 @@ enum BackupCodec {
               data.moves.allSatisfy({ $0.proposedEnd > $0.proposedStart }),
               data.payments.allSatisfy({ payment in payment.amountCents > 0 && data.income.contains(where: { entry in entry.id == payment.incomeID }) }),
               data.income.allSatisfy({ entry in data.payments.filter { $0.incomeID == entry.id }.reduce(0) { $0 + $1.amountCents } == entry.paidCents }) else { throw BackupError.invalidData }
+        if let coach = data.coach {
+            guard Set(coach.messages.map(\.id)).count == coach.messages.count,
+                  Set(coach.options.map(\.id)).count == coach.options.count,
+                  Set(coach.pendingCalendarChanges.map(\.id)).count == coach.pendingCalendarChanges.count,
+                  coach.messages.count <= 10_000,
+                  coach.memories.count <= 1_000,
+                  coach.options.allSatisfy({ !$0.moves.isEmpty && $0.moves.allSatisfy { $0.proposedEnd > $0.proposedStart } }),
+                  coach.pendingCalendarChanges.allSatisfy({ $0.move.proposedEnd > $0.move.proposedStart }) else { throw BackupError.invalidData }
+        }
         return data
     }
 }
