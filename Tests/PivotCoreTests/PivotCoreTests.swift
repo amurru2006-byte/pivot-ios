@@ -6,6 +6,97 @@ final class PivotCoreTests: XCTestCase {
     func event(_ id: String, start: String, end: String, kind: EventKind = .study) -> CalendarItem {
         CalendarItem(id: id, eventIdentifier: id, externalIdentifier: id, calendarIdentifier: "test", calendarTitle: "Test", title: "studio", start: date(start), end: date(end), location: "", notes: "", colorHex: "#00FF00", isAllDay: false, writable: true, kind: kind)
     }
+    func testStudyDocumentsSurviveFullBackupAndRestoreWithNewFileIDs() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let item = event("study-material", start: "2026-10-02T10:00:00+02:00", end: "2026-10-02T12:00:00+02:00")
+        let pdf = Data("%PDF-1.4\nPDF test fixture\n%%EOF\n".utf8)
+        let doc = StudyDocument(name: "sessione.pdf", byteCount: pdf.count)
+        try pdf.write(to: StudyFiles.url(for: doc.id, directory: folder))
+        var data = AppData()
+        var record = EventRecord(id: item.id, snapshot: item)
+        record.study = StudySession(objectives: "Mole", exercises: "1–4", documents: [doc])
+        data.records[item.id] = record
+        let complete = try StudyFiles.completeBackup(data, directory: folder)
+        let decoded = try BackupCodec.decode(BackupCodec.encode(complete))
+        XCTAssertEqual(decoded.studyPDFs?[doc.id.uuidString], pdf)
+        let restored = try StudyFiles.installBackup(decoded, directory: folder)
+        let restoredDoc = try XCTUnwrap(restored.records[item.id]?.study?.documents.first)
+        XCTAssertNotEqual(restoredDoc.id, doc.id)
+        XCTAssertEqual(try Data(contentsOf: StudyFiles.url(for: restoredDoc.id, directory: folder)), pdf)
+        XCTAssertEqual(try Data(contentsOf: StudyFiles.url(for: doc.id, directory: folder)), pdf)
+        XCTAssertNil(restored.studyPDFs)
+        XCTAssertEqual(restored.records[item.id]?.study?.objectives, "Mole")
+        XCTAssertEqual(restored.records[item.id]?.study?.exercises, "1–4")
+    }
+    func testStudyBackupRejectsMissingAndTruncatedDocuments() throws {
+        let item = event("s", start: "2026-10-02T10:00:00+02:00", end: "2026-10-02T12:00:00+02:00")
+        var data = AppData()
+        let doc = StudyDocument(name: "file.pdf", byteCount: 25)
+        var record = EventRecord(id: item.id, snapshot: item)
+        record.study = StudySession(documents: [doc]); data.records[item.id] = record
+        XCTAssertThrowsError(try StudyFiles.validateBackup(data, requireFiles: true))
+        data.studyPDFs = [doc.id.uuidString: Data("%PDF-1.4 broken".utf8)]
+        XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encode(data)))
+        XCTAssertThrowsError(try StudyFiles.validate(Data("not pdf".utf8)))
+        XCTAssertThrowsError(try StudyFiles.validate(Data("%PDF-1.4 no end".utf8)))
+    }
+    func testPDFsAreNotReadWhenSavingOrdinaryLocalData() throws {
+        let item = event("s", start: "2026-10-02T10:00:00+02:00", end: "2026-10-02T12:00:00+02:00")
+        var data = AppData()
+        var record = EventRecord(id: item.id, snapshot: item)
+        record.study = StudySession(documents: [.init(name: "file.pdf", byteCount: 100)])
+        data.records[item.id] = record
+        XCTAssertNoThrow(try BackupCodec.decode(BackupCodec.encode(data)))
+        XCTAssertThrowsError(try StudyFiles.completeBackup(data, directory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)))
+    }
+    func testStudyBackupRejectsExcessDocumentsAndDuplicateIDs() {
+        var data = AppData()
+        let item = event("s", start: "2026-10-02T10:00:00+02:00", end: "2026-10-02T12:00:00+02:00")
+        let doc = StudyDocument(name: "file.pdf", byteCount: 100)
+        var record = EventRecord(id: item.id, snapshot: item)
+        record.study = StudySession(documents: [doc, doc]); data.records[item.id] = record
+        XCTAssertThrowsError(try StudyFiles.validateBackup(data))
+        record.study?.documents = (0..<7).map { _ in StudyDocument(name: "file.pdf", byteCount: 100) }
+        data.records[item.id] = record
+        XCTAssertThrowsError(try StudyFiles.validateBackup(data))
+        record.study?.documents = (0..<6).map { _ in StudyDocument(name: "file.pdf", byteCount: StudyFiles.maximumBytes) }
+        data.records[item.id] = record
+        XCTAssertThrowsError(try StudyFiles.validateBackup(data))
+    }
+    func testMealNotificationsAndEveningCheckInTakePriorityOverHourlyRepeats() {
+        let now = date("2026-10-02T08:00:00+02:00")
+        var events = (0..<12).map { i in event("old-\(i)", start: "2026-10-02T08:00:00+02:00", end: "2026-10-02T09:00:00+02:00") }
+        events.append(event("lunch", start: "2026-10-03T13:00:00+02:00", end: "2026-10-03T14:00:00+02:00", kind: .meal))
+        let requests = NotificationPlan.requests(events: events, data: AppData(), now: now, capacity: 12)
+        XCTAssertEqual(requests.count, 12)
+        XCTAssertTrue(requests.contains { $0.id == "meal-lunch-30" })
+        XCTAssertTrue(requests.contains { $0.id == "meal-lunch-10" })
+        XCTAssertTrue(requests.contains { $0.id == "evening-2026-10-02" })
+        XCTAssertTrue(requests.contains { $0.id == "evening-2026-10-03" })
+        XCTAssertEqual(Set(requests.map(\.id)).count, requests.count)
+    }
+    func testNotificationsUseSameAttendanceAndDeduplicationAsAgenda() {
+        let item = event("uni", start: "2026-10-02T10:00:00+02:00", end: "2026-10-02T12:00:00+02:00", kind: .university)
+        var data = AppData()
+        data.checkIns["2026-10-02"] = DayCheckIn(id: "2026-10-02", universityAttendance: false)
+        XCTAssertFalse(NotificationPlan.requests(events: [item], data: data, now: date("2026-10-02T08:00:00+02:00")).contains { $0.id.contains("uni") })
+        data.checkIns = [:]
+        let requests = NotificationPlan.requests(events: [item, item], data: data, now: date("2026-10-02T08:00:00+02:00"))
+        XCTAssertEqual(requests.filter { $0.id == "event-uni-0" }.count, 1)
+    }
+    func testStudyObjectivesAndMaterialsAppearInReport() {
+        let item = event("study-report", start: "2026-10-02T10:00:00+02:00", end: "2026-10-02T12:00:00+02:00")
+        var data = AppData()
+        var record = EventRecord(id: item.id, snapshot: item)
+        record.study = StudySession(objectives: "Mole", exercises: "1–4", documents: [.init(name: "sessione.pdf", byteCount: 30)])
+        data.records[item.id] = record
+        let text = Report.day(item.start, events: [item], data: data)
+        XCTAssertTrue(text.contains("Obiettivi della sessione: Mole"))
+        XCTAssertTrue(text.contains("Esercizi previsti: 1–4"))
+        XCTAssertTrue(text.contains("Materiali PDF: sessione.pdf"))
+    }
     func testMoneyUsesCentsAndRejectsInvalidText() {
         XCTAssertEqual(Money.cents(from: "15,50"), 1550)
         XCTAssertEqual(Money.cents(from: "0.01"), 1)

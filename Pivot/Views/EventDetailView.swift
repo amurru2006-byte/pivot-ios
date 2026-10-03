@@ -1,4 +1,6 @@
 import SwiftUI
+import UniformTypeIdentifiers
+import UIKit
 
 struct EventDetailView: View {
     @EnvironmentObject var store: PivotStore
@@ -19,6 +21,9 @@ struct EventDetailView: View {
     @State private var receivedAmount = ""
     @State private var received = false
     @State private var receiptDate = Date()
+    @State private var importingPDF = false
+    @State private var importingMaterial = false
+    @State private var documentPreview: StudyDocument?
     var linkedIncome: IncomeEntry? { store.data.income.first { $0.id == record.incomeID || $0.calendarEventID == event.id } }
     var selectedClient: Client? { store.data.clients.first { $0.id == selectedClientID } }
     @Environment(\.dismiss) private var dismiss
@@ -37,6 +42,7 @@ struct EventDetailView: View {
                 }
             }
             if event.kind == .tutoring { tutoring }
+            if event.kind == .study { studyMaterial }
             registration
             if event.kind == .meal { meal }
             reflection
@@ -58,6 +64,15 @@ struct EventDetailView: View {
             }
         }
         .navigationTitle("Attività")
+        .fileImporter(isPresented: $importingPDF, allowedContentTypes: [.pdf]) { result in
+            switch result {
+            case .success(let url): Task { await attachPDF(url) }
+            case .failure(let error): message = error.localizedDescription
+            }
+        }
+        .sheet(item: $documentPreview) { document in
+            if let url = try? store.studyPDFURL(document) { StudyPDFPreview(url: url, title: document.name) }
+        }
         .alert("Modificare il Calendario?", isPresented: $calendarApproval) {
             Button("Annulla", role: .cancel) { pendingMove = nil }
             Button("Confermo la modifica") { Task { await applyApprovedMove() } }
@@ -147,6 +162,76 @@ struct EventDetailView: View {
                 TextField(labels.2, text: reflectionBinding(\.nextStep), axis: .vertical).lineLimit(2...4)
             } label: { Label("Dettagli: \(event.kind.label)", systemImage: "text.bubble").font(.subheadline.weight(.semibold)) }
         }
+    }
+    private var studyMaterial: some View {
+        PivotCard(tint: PivotTheme.blue) {
+            Label("Materiale della sessione", systemImage: "doc.richtext").font(.headline).foregroundStyle(PivotTheme.blue)
+            TextField("Obiettivi: cosa devi capire", text: studyBinding(\.objectives), axis: .vertical).lineLimit(2...5)
+                .padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12)).accessibilityIdentifier("study-objectives")
+            TextField("Esercizi da svolgere e pagine", text: studyBinding(\.exercises), axis: .vertical).lineLimit(2...5)
+                .padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12)).accessibilityIdentifier("study-exercises")
+            ForEach(record.study?.documents ?? []) { document in
+                HStack {
+                    Button {
+                        do { _ = try store.studyPDFURL(document); documentPreview = document }
+                        catch { message = error.localizedDescription }
+                    } label: { Label(document.name, systemImage: "doc.fill").font(.subheadline).lineLimit(2) }
+                    Spacer()
+                    Button(role: .destructive) { removeDocument(document) } label: { Image(systemName: "minus.circle") }
+                        .accessibilityLabel("Rimuovi allegato \(document.name)").disabled(store.locked || importingMaterial)
+                }
+            }
+            Button { importingPDF = true } label: { Label(importingMaterial ? "Importazione del PDF…" : "Aggiungi PDF da File", systemImage: "plus.circle") }
+                .buttonStyle(PivotSecondaryButton()).disabled(store.locked || importingMaterial || (record.study?.documents.count ?? 0) >= StudyFiles.maximumDocuments)
+            Text("Fino a 6 PDF, massimo 10 MB ciascuno. Sono copiati in Pivot e inclusi nel backup completo (50 MB totali). I materiali che prepariamo in chat vanno salvati in File e importati qui.")
+                .font(.caption).foregroundStyle(PivotTheme.muted)
+            #if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.arguments.contains("--study-material-test") {
+                Button("Importa PDF di prova") {
+                    let url = FileManager.default.temporaryDirectory.appendingPathComponent("Scheda di prova.pdf")
+                    let renderer = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 400, height: 600))
+                    let bytes = renderer.pdfData { context in
+                        context.beginPage()
+                        ("Scheda di prova Pivot" as NSString).draw(at: CGPoint(x: 25, y: 25), withAttributes: nil)
+                    }
+                    do { try bytes.write(to: url); Task { await attachPDF(url) } }
+                    catch { message = error.localizedDescription }
+                }.accessibilityIdentifier("import-study-fixture")
+            }
+            #endif
+        }
+    }
+    private func studyBinding(_ path: WritableKeyPath<StudySession, String>) -> Binding<String> {
+        Binding(get: { (record.study ?? StudySession())[keyPath: path] }, set: { value in
+            var session = record.study ?? StudySession(); session[keyPath: path] = value; record.study = session
+        })
+    }
+    private func attachPDF(_ url: URL) async {
+        guard !importingMaterial, (record.study?.documents.count ?? 0) < StudyFiles.maximumDocuments else { return }
+        importingMaterial = true
+        defer { importingMaterial = false }
+        do {
+            let document = try await store.importStudyPDF(url)
+            guard StudyFiles.documents(in: store.data).reduce(0, { $0 + $1.byteCount }) + document.byteCount <= StudyFiles.maximumLibraryBytes else { throw StudyFileError.libraryFull }
+            var session = record.study ?? StudySession()
+            session.documents.append(document)
+            record.study = session
+            // Store the material independently of an unfinished activity questionnaire.
+            saveStudyMaterial()
+        } catch { message = error.localizedDescription }
+    }
+    private func removeDocument(_ document: StudyDocument) {
+        var session = record.study ?? StudySession()
+        session.documents.removeAll { $0.id == document.id }
+        record.study = session
+        saveStudyMaterial()
+    }
+    private func saveStudyMaterial() {
+        var saved = store.record(for: event)
+        saved.study = record.study
+        saved.snapshot = event
+        saved.updatedAt = Date()
+        if !store.change({ $0.records[event.id] = saved }) { message = "Materiale non salvato. Riprova prima di chiudere." }
     }
     private func reflectionBinding(_ path: WritableKeyPath<ActivityReflection, String>) -> Binding<String> {
         Binding(get: { (record.reflection ?? ActivityReflection())[keyPath: path] }, set: { value in

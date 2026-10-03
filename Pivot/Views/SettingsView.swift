@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import UIKit
 
 struct SettingsView: View {
     @EnvironmentObject var store: PivotStore
@@ -26,8 +27,10 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 16) {
                             Button("Aggiorna copia esterna") { store.backupNow() }.disabled(store.locked)
                             Button("Esporta backup completo") {
-                                do { exportFile = try store.exportURL(); exporting = true }
-                                catch { message = error.localizedDescription }
+                                Task {
+                                    do { exportFile = try await store.exportURL(); exporting = true }
+                                    catch { message = error.localizedDescription }
+                                }
                             }
                             Button("Ripristina un backup…") { importing = true }
                             Text("Scegli una cartella in iCloud Drive, fuori da Pivot. Prima di aggiornare verifica il backup; installa la nuova versione sopra quella attuale. Se cancelli l'app, la copia locale viene eliminata. I backup contengono dati personali.").font(.caption).foregroundStyle(PivotTheme.muted)
@@ -58,6 +61,9 @@ struct SettingsView: View {
                     Label("Promemoria", systemImage: "bell.badge.fill").font(.headline).foregroundStyle(PivotTheme.amber)
                     Text(notifications.status).font(.subheadline).foregroundStyle(PivotTheme.muted)
                     Button("Consenti notifiche") { Task { await notifications.requestAccess(); await notifications.schedule(events: calendar.events, data: store.data) } }.buttonStyle(PivotSecondaryButton())
+                    Button("Apri impostazioni notifiche di iOS") {
+                        if let url = URL(string: UIApplication.openNotificationSettingsURLString) { UIApplication.shared.open(url) }
+                    }.font(.subheadline).foregroundStyle(PivotTheme.accent)
                     DisclosureGroup("Orari e frequenza") {
                         VStack(alignment: .leading, spacing: 16) {
                             Stepper("Mattina: dopo \(settings.morningDelayMinutes) min", value: $settings.morningDelayMinutes, in: 10...120, step: 5)
@@ -81,7 +87,7 @@ struct SettingsView: View {
                 if let message { Label(message, systemImage: "info.circle").font(.subheadline).foregroundStyle(PivotTheme.amber) }
                 HStack {
                     Text("PIVOT").font(.system(.caption, design: .rounded, weight: .bold)).tracking(3)
-                    Spacer(); Text("0.2 · Il tuo punto di svolta").font(.caption)
+                    Spacer(); Text("0.3 · Il tuo punto di svolta").font(.caption)
                 }.foregroundStyle(PivotTheme.muted).padding(.top, 4)
             }.navigationTitle("Impostazioni")
                 .onAppear { settings = store.data.settings }
@@ -96,7 +102,7 @@ struct SettingsView: View {
                 .alert("Ripristinare lo storico?", isPresented: $restoreApproval) {
                     Button("Annulla", role: .cancel) { pendingRestore = nil }
                     Button("Confermo il ripristino") {
-                        if let url = pendingRestore { store.restore(url); settings = store.data.settings }
+                        if let url = pendingRestore { Task { await store.restore(url); settings = store.data.settings } }
                         pendingRestore = nil
                     }
                 } message: { Text("Il backup sostituirà i dati attuali. Pivot conserva una copia locale dei dati precedenti; un file non valido non verrà applicato.") }

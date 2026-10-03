@@ -1,15 +1,18 @@
 import Foundation
 import SwiftUI
+import PDFKit
 
 @MainActor
 final class PivotStore: ObservableObject {
     @Published private(set) var data = AppData()
     @Published var error: String?
     @Published private(set) var locked = false
+    @Published private(set) var isRestoring = false
     @Published private(set) var backupStatus = "Backup esterno non configurato"
     @Published private(set) var lastExternalBackup: Date?
     private let directory: URL
     private let file: URL
+    private let documentsDirectory: URL
     private let backupQueue = DispatchQueue(label: "app.pivot.external-backup", qos: .utility)
     private let bookmarkKey = "pivot.externalBackupFolder.v1"
     private let lastBackupKey = "pivot.lastExternalBackup.v1"
@@ -17,6 +20,7 @@ final class PivotStore: ObservableObject {
     init() {
         directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Pivot", isDirectory: true)
         file = directory.appendingPathComponent("pivot-data.json")
+        documentsDirectory = directory.appendingPathComponent("StudyPDFs", isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             if FileManager.default.fileExists(atPath: file.path) {
@@ -44,7 +48,7 @@ final class PivotStore: ObservableObject {
 
     @discardableResult
     func change(_ edit: (inout AppData) -> Void) -> Bool {
-        guard !locked else { error = "Salvataggio bloccato per proteggere lo storico originale."; return false }
+        guard !locked && !isRestoring else { error = "Salvataggio bloccato durante il ripristino o per proteggere lo storico originale."; return false }
         var next = data
         edit(&next)
         next.updatedAt = Date()
@@ -56,7 +60,7 @@ final class PivotStore: ObservableObject {
             }
             try bytes.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             data = next
-            writeExternal(bytes)
+            writeExternal(next)
             return true
         } catch { self.error = "Modifica non salvata: \(error.localizedDescription)"; return false }
     }
@@ -69,23 +73,23 @@ final class PivotStore: ObservableObject {
             try Self.validateExternalFolder(url)
             let bookmark = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
             UserDefaults.standard.set(bookmark, forKey: bookmarkKey)
-            writeExternal(try BackupCodec.encode(data))
+            writeExternal(data)
         } catch { self.error = "Cartella di backup non configurata: \(error.localizedDescription)" }
     }
 
     func backupNow() {
         guard !locked else { error = "Prima ripristina un backup valido. Il file originale è protetto."; return }
-        do { writeExternal(try BackupCodec.encode(data)) }
-        catch { self.error = error.localizedDescription }
+        writeExternal(data)
     }
 
-    private func writeExternal(_ bytes: Data) {
+    private func writeExternal(_ snapshot: AppData) {
         guard let bookmark = UserDefaults.standard.data(forKey: bookmarkKey) else { return }
         backupStatus = "Aggiornamento della copia esterna…"
         // Cloud-backed folders can stall on file hydration. Keep all their I/O
         // off the UI queue, in write order, including the backup made on upgrade.
+        let pdfDirectory = documentsDirectory
         backupQueue.async { [weak self] in
-            let result = Self.performExternalBackup(bytes, bookmark: bookmark)
+            let result = Self.performExternalBackup(snapshot, bookmark: bookmark, documents: pdfDirectory)
             DispatchQueue.main.async {
                 guard let self else { return }
                 if let updatedBookmark = result.bookmark { UserDefaults.standard.set(updatedBookmark, forKey: self.bookmarkKey) }
@@ -102,8 +106,9 @@ final class PivotStore: ObservableObject {
         var date: Date? = nil
         var bookmark: Data? = nil
     }
-    private nonisolated static func performExternalBackup(_ bytes: Data, bookmark: Data) -> BackupResult {
+    private nonisolated static func performExternalBackup(_ snapshot: AppData, bookmark: Data, documents: URL) -> BackupResult {
         do {
+            let bytes = try BackupCodec.encode(StudyFiles.completeBackup(snapshot, directory: documents))
             var stale = false
             let folder = try URL(resolvingBookmarkData: bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &stale)
             let access = folder.startAccessingSecurityScopedResource()
@@ -134,21 +139,32 @@ final class PivotStore: ObservableObject {
         }
     }
 
-    func exportURL() throws -> URL {
-        let bytes: Data
-        if locked { bytes = try Data(contentsOf: file) }
-        else { bytes = try BackupCodec.encode(data) }
-        let destination = FileManager.default.temporaryDirectory.appendingPathComponent("Backup Pivot.json")
-        try bytes.write(to: destination, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-        return destination
+    func exportURL() async throws -> URL {
+        let snapshot = data, sourceFile = file, pdfDirectory = documentsDirectory, isLocked = locked
+        return try await Task.detached(priority: .utility) {
+            let bytes = isLocked ? try Data(contentsOf: sourceFile) : try BackupCodec.encode(StudyFiles.completeBackup(snapshot, directory: pdfDirectory))
+            let destination = FileManager.default.temporaryDirectory.appendingPathComponent("Backup Pivot.json")
+            try bytes.write(to: destination, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            return destination
+        }.value
     }
 
-    func restore(_ url: URL) {
-        let access = url.startAccessingSecurityScopedResource()
-        defer { if access { url.stopAccessingSecurityScopedResource() } }
+    func restore(_ url: URL) async {
+        guard !isRestoring else { return }
+        isRestoring = true
+        defer { isRestoring = false }
+        let pdfDirectory = documentsDirectory
         do {
-            let bytes = try Data(contentsOf: url)
-            let restored = try BackupCodec.decode(bytes)
+            let restored = try await Task.detached(priority: .utility) {
+                let access = url.startAccessingSecurityScopedResource()
+                defer { if access { url.stopAccessingSecurityScopedResource() } }
+                let decoded = try BackupCodec.decode(Data(contentsOf: url))
+                for bytes in (decoded.studyPDFs ?? [:]).values {
+                    guard let pdf = PDFDocument(data: bytes), pdf.pageCount > 0, !pdf.isLocked else { throw StudyFileError.invalidBackup }
+                }
+                return try StudyFiles.installBackup(decoded, directory: pdfDirectory)
+            }.value
+            let bytes = try BackupCodec.encode(restored)
             if FileManager.default.fileExists(atPath: file.path) {
                 let old = try Data(contentsOf: file)
                 let archive = directory.appendingPathComponent("before-restore-\(Int(Date().timeIntervalSince1970)).json")
@@ -158,8 +174,30 @@ final class PivotStore: ObservableObject {
             data = restored
             locked = false
             error = nil
-            writeExternal(bytes)
+            writeExternal(restored)
         } catch { self.error = "Ripristino non eseguito: \(error.localizedDescription)" }
+    }
+
+    func importStudyPDF(_ url: URL) async throws -> StudyDocument {
+        guard !locked && !isRestoring else { throw BackupError.invalidData }
+        let destinationDirectory = documentsDirectory
+        return try await Task.detached(priority: .utility) {
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
+            if let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > StudyFiles.maximumBytes { throw StudyFileError.tooLarge }
+            let bytes = try Data(contentsOf: url)
+            try StudyFiles.validate(bytes)
+            guard let pdf = PDFDocument(data: bytes), pdf.pageCount > 0, !pdf.isLocked else { throw StudyFileError.invalidPDF }
+            let document = StudyDocument(name: url.lastPathComponent, byteCount: bytes.count)
+            try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
+            try bytes.write(to: StudyFiles.url(for: document.id, directory: destinationDirectory), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            return document
+        }.value
+    }
+    func studyPDFURL(_ document: StudyDocument) throws -> URL {
+        let url = StudyFiles.url(for: document.id, directory: documentsDirectory)
+        guard FileManager.default.fileExists(atPath: url.path) else { throw StudyFileError.missingFile }
+        return url
     }
 
     func incomeExcelURL(year: Int) throws -> URL {

@@ -25,6 +25,11 @@ enum Report {
                 lines.append("Tempo registrato: \(r.activeMinutes) minuti")
                 if !r.reason.isEmpty { lines.append("Motivo: \(r.reason)") }
                 if !r.notes.isEmpty { lines.append("Note: \(r.notes)") }
+                if let study = r.study {
+                    if !study.objectives.isEmpty { lines.append("Obiettivi della sessione: \(study.objectives)") }
+                    if !study.exercises.isEmpty { lines.append("Esercizi previsti: \(study.exercises)") }
+                    if !study.documents.isEmpty { lines.append("Materiali PDF: \(study.documents.map(\.name).joined(separator: ", "))") }
+                }
                 if let details = r.reflection {
                     if !details.focus.isEmpty { lines.append("Attività svolta: \(details.focus)") }
                     if !details.result.isEmpty { lines.append("Risultato: \(details.result)") }

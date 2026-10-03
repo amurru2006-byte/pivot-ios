@@ -24,6 +24,7 @@ enum BackupCodec {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         var data = try decoder.decode(AppData.self, from: bytes)
+        try StudyFiles.validateBackup(data)
         // Reclassify only legacy social snapshots; preserve IDs, answers and money.
         for id in Array(data.records.keys) {
             if var record = data.records[id], record.snapshot.kind == .social || EventCoalescer.normalized(record.snapshot.calendarTitle) == "lavoro" {

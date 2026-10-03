@@ -35,4 +35,42 @@ final class PivotInteractionTests: XCTestCase {
         app.tabBars.buttons["Entrate"].tap()
         XCTAssertTrue(app.staticTexts["Le tue entrate"].waitForExistence(timeout: 3))
     }
+    func testStudyPDFImportOpenAndPersistenceAcrossRelaunch() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--interaction-test", "--study-material-test"]
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["calendar-updated"].waitForExistence(timeout: 15))
+        let details = app.buttons["Dettagli e registrazione"]
+        for _ in 0..<5 { if details.isHittable { break }; app.swipeUp() }
+        details.tap()
+        let importer = app.buttons["import-study-fixture"]
+        for _ in 0..<6 { if importer.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(importer.isHittable)
+        importer.tap()
+        let pdf = app.buttons["Scheda di prova.pdf"]
+        XCTAssertTrue(pdf.waitForExistence(timeout: 5))
+        pdf.tap()
+        XCTAssertTrue(app.buttons["Chiudi"].waitForExistence(timeout: 5))
+        app.buttons["Chiudi"].tap()
+        let objectives = app.descendants(matching: .any)["study-objectives"]
+        XCTAssertTrue(objectives.exists)
+        objectives.tap()
+        objectives.typeText("Obiettivo di prova")
+        app.swipeUp()
+        let save = app.buttons["Salva registrazione"]
+        for _ in 0..<10 { if save.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(save.isHittable)
+        save.tap()
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["calendar-updated"].waitForExistence(timeout: 15))
+        let reopened = app.buttons["Dettagli e registrazione"]
+        for _ in 0..<5 { if reopened.isHittable { break }; app.swipeUp() }
+        reopened.tap()
+        for _ in 0..<6 { if app.buttons["Scheda di prova.pdf"].isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(app.buttons["Scheda di prova.pdf"].exists)
+        XCTAssertEqual(app.descendants(matching: .any)["study-objectives"].value as? String, "Obiettivo di prova")
+    }
+
 }
