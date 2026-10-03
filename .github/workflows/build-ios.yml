@@ -27,6 +27,20 @@ jobs:
         run: brew install xcodegen
       - name: Genera progetto Xcode
         run: xcodegen generate
+      - name: Autorizza il componente AI approvato
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          approved = json.loads(Path('Scripts/trusted-macros.json').read_text())
+          assert len(approved) == 1
+          assert approved[0]['targetName'] == 'LLMMacrosImplementation'
+          assert approved[0]['packageIdentity'] == 'llm.swift'
+          assert ('revision: ' + approved[0]['fingerprint']) in Path('project.yml').read_text()
+          security = Path.home() / 'Library/org.swift.swiftpm/security'
+          security.mkdir(parents=True, exist_ok=True)
+          (security / 'macros.json').write_text(json.dumps(approved, indent=2))
+          PY
       - name: Compila app senza firma
         run: |
           set -o pipefail
