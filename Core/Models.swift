@@ -2,7 +2,7 @@ import Foundation
 
 enum EventKind: String, Codable, CaseIterable {
     // Keep `social` so existing backups remain readable.
-    case routine, meal, study, workout, university, tutoring, social, partner, friends, exam, other
+    case routine, meal, study, workout, university, tutoring, work, social, partner, friends, exam, other
     var label: String {
         switch self {
         case .routine: return "Routine"
@@ -11,6 +11,7 @@ enum EventKind: String, Codable, CaseIterable {
         case .workout: return "Palestra / cardio"
         case .university: return "Università"
         case .tutoring: return "Ripetizioni"
+        case .work: return "Lavoro"
         case .social: return "Sociale"
         case .partner: return "Des"
         case .friends: return "Amici"
@@ -25,13 +26,16 @@ enum EventKind: String, Codable, CaseIterable {
         // A dedicated calendar is authoritative; never infer a partner from "destinazione".
         if calendarWords.contains("amici") { return .friends }
         if calendarWords.contains("des") || calendarWords.contains("desiree") { return .partner }
-        if calendarWords.contains("lavoro") || t.contains("ripetizioni") || t.contains("lezione mamma") { return .tutoring }
+        let titleWords = t.components(separatedBy: CharacterSet.alphanumerics.inverted)
+        if calendarWords.contains("lavoro") {
+            return titleWords.contains("lezione") || titleWords.contains("studente") || t.contains("ripetizion") ? .tutoring : .work
+        }
+        if t.contains("ripetizioni") || t.contains("lezione mamma") { return .tutoring }
         if t.contains("esame") || t.contains("compitino") { return .exam }
         if ["colazione", "pranzo", "merenda", "cena", "spuntino"].contains(where: t.contains) { return .meal }
         if t.contains("studio") || t.contains("ripasso") || t.contains("simulazione") { return .study }
-        if t.contains("palestra") || t.contains("cardio") || c.contains("palestra") { return .workout }
-        if c.contains("unimi") || t.contains("laboratorio") { return .university }
-        let titleWords = t.components(separatedBy: CharacterSet.alphanumerics.inverted)
+        if ["palestra", "cardio", "camminata", "escursione", "tapis roulant", "treadmill"].contains(where: t.contains) || c.contains("palestra") { return .workout }
+        if c.contains("unimi") || calendarWords.contains("uni") || t.contains("laboratorio") { return .university }
         if titleWords.contains("amici") { return .friends }
         if titleWords.contains("des") || titleWords.contains("desiree") { return .partner }
         if ["sveglia", "sonno", "preparo domani", "relax"].contains(where: t.contains) { return .routine }
@@ -72,6 +76,7 @@ struct CalendarItem: Codable, Identifiable, Equatable {
     var calendarModifiedAt: Date? = nil
     var recurring: Bool? = nil
     var occurrenceAnchor: Date? = nil
+    var calendarRGB: CalendarRGB? = nil
     var durationMinutes: Int { max(1, Int(end.timeIntervalSince(start) / 60)) }
     func agendaStart(on day: Date) -> String {
         if isAllDay { return "Oggi" }
@@ -130,6 +135,9 @@ struct EventRecord: Codable, Identifiable {
     var study: StudySession? = nil
     var incomeID: UUID? = nil
     var tutoringAnswered: Bool? = nil
+    var logistics: LessonLogistics? = nil
+    var reminders: String? = nil
+    var cardio: CardioRecord? = nil
     var updatedAt: Date = Date()
 }
 
@@ -168,6 +176,7 @@ struct DayCheckIn: Codable, Identifiable {
     var notes: String = ""
     // Optional so backups from 0.2 decode without this field.
     var universityAttendance: Bool? = nil
+    var sleep: SleepRecord? = nil
 }
 
 struct Client: Codable, Identifiable {
@@ -235,6 +244,8 @@ struct AppData: Codable {
     var ledger: AnnualLedger? = nil
     // Embedded PDF bytes exist only in a complete backup, never in the live JSON.
     var studyPDFs: [String: Data]? = nil
+    var training: TrainingLibrary? = nil
+    var lessonDefaults: [String: LessonLogistics]? = nil
 }
 
 enum PivotDate {

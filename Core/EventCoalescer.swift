@@ -87,6 +87,7 @@ enum EventCoalescer {
             // Use the original iCloud calendar's exact color when a Google import differs.
             if let original = group.first(where: { ($0.sourceTitle ?? "").lowercased().contains("icloud") }) {
                 chosen.colorHex = original.colorHex
+                chosen.calendarRGB = original.calendarRGB
             }
             // Keep an existing answer/timer under its original ID, while displaying current calendar metadata.
             let records = data.records.values.filter { record in group.contains(where: { savedOccurrence(record.snapshot, $0) }) }

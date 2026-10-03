@@ -245,8 +245,8 @@ final class PivotCoreTests: XCTestCase {
     }
     func testWorkCalendarDoesNotBecomeUniversityOrPersonalStudy() {
         XCTAssertEqual(EventKind.classify(title: "laboratorio chimica con uno studente", calendar: "Lavoro"), .tutoring)
-        XCTAssertEqual(EventKind.classify(title: "studio matematica", calendar: "Lavoro"), .tutoring)
-        XCTAssertEqual(EventKind.classify(title: "preparazione esame", calendar: "Lavoro"), .tutoring)
+        XCTAssertEqual(EventKind.classify(title: "studio matematica", calendar: "Lavoro"), .work)
+        XCTAssertEqual(EventKind.classify(title: "preparazione esame", calendar: "Lavoro"), .work)
         XCTAssertEqual(EventKind.classify(title: "Chimica generale", calendar: "Unimi-L27"), .university)
         XCTAssertEqual(EventKind.classify(title: "studio matematica", calendar: "Unimi-L27"), .study)
     }
@@ -315,7 +315,7 @@ final class PivotCoreTests: XCTestCase {
         old.title = "laboratorio chimica"; old.calendarTitle = "Lavoro"
         var data = AppData(); var record = EventRecord(id: old.id, snapshot: old); record.notes = "Risposte salvate"; data.records[old.id] = record
         let restored = try BackupCodec.decode(BackupCodec.encode(data))
-        XCTAssertEqual(restored.records[old.id]?.snapshot.kind, .tutoring)
+        XCTAssertEqual(restored.records[old.id]?.snapshot.kind, .work)
         XCTAssertEqual(restored.records[old.id]?.notes, record.notes)
         XCTAssertEqual(restored.income.count, data.income.count)
     }

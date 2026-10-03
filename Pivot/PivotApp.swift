@@ -29,6 +29,8 @@ struct RootView: View {
     @State private var selectedTab = PreviewMode.enabled ? PreviewMode.tab : 0
     @State private var previewReady = !PreviewMode.enabled
     @State private var refreshGate = RefreshGate()
+    @State private var lessonToConfirm: CalendarItem?
+    @State private var deferredLessonIDs: Set<String> = []
     private let refreshClock = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
     var body: some View {
         Group {
@@ -81,6 +83,9 @@ struct RootView: View {
         .onChange(of: scene) { _, value in if value == .active { requestRefresh() } }
         .onChange(of: store.data.updatedAt) { _, _ in requestRefresh() }
         .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged).debounce(for: .milliseconds(400), scheduler: RunLoop.main)) { _ in requestRefresh() }
+        .sheet(item: $lessonToConfirm, onDismiss: { promptForLesson() }) { event in
+            LessonLogisticsView(event: event, onDefer: { deferredLessonIDs.insert(event.id) })
+        }
         .alert("Pivot", isPresented: Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })) {
             Button("OK") { store.error = nil }
         } message: { Text(store.error ?? "") }
@@ -90,6 +95,7 @@ struct RootView: View {
             TodayView().tag(0).tabItem { Label("Oggi", systemImage: "calendar") }
             DiaryView().tag(1).tabItem { Label("Diario", systemImage: "book.closed.fill") }
             IncomeView().tag(2).tabItem { Label("Entrate", systemImage: "eurosign.circle.fill") }
+            NavigationStack { TrainingView() }.tag(4).tabItem { Label("Palestra", systemImage: "dumbbell.fill") }
             SettingsView().tag(3).tabItem { Label("Impostazioni", systemImage: "gearshape.fill") }
         }
         .toolbarBackground(PivotTheme.surface, for: .tabBar)
@@ -102,7 +108,12 @@ struct RootView: View {
     private func refresh() async {
         guard !PreviewMode.enabled else { return }
         await calendar.refresh(settings: store.data.settings)
+        promptForLesson()
         await notifications.schedule(events: Planner.plannedEvents(calendar.events, data: store.data), data: store.data)
+    }
+    private func promptForLesson() {
+        guard !PreviewMode.enabled, scene == .active, !store.locked, !store.isRestoring, lessonToConfirm == nil else { return }
+        lessonToConfirm = LessonLogistics.pending(events: calendar.events, data: store.data, now: Date()).first { !deferredLessonIDs.contains($0.id) }
     }
 }
 

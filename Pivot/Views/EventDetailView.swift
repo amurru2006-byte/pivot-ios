@@ -24,6 +24,7 @@ struct EventDetailView: View {
     @State private var importingPDF = false
     @State private var importingMaterial = false
     @State private var documentPreview: StudyDocument?
+    @State private var editingLogistics = false
     var linkedIncome: IncomeEntry? { store.data.income.first { $0.id == record.incomeID || $0.calendarEventID == event.id } }
     var selectedClient: Client? { store.data.clients.first { $0.id == selectedClientID } }
     @Environment(\.dismiss) private var dismiss
@@ -41,8 +42,30 @@ struct EventDetailView: View {
                     DisclosureGroup { Text(event.notes).font(.subheadline).foregroundStyle(PivotTheme.muted).textSelection(.enabled).padding(.top, 10) } label: { Label("Il programma di questa attività", systemImage: "list.bullet.clipboard").font(.subheadline.weight(.semibold)) }
                 }
             }
-            if event.kind == .tutoring { tutoring }
+            if event.kind == .tutoring {
+                PivotCard {
+                    Label("Dove fai questa lezione?", systemImage: "mappin.and.ellipse").font(.headline)
+                    Text(store.record(for: event).logistics?.place.label ?? "Luogo da confermare").font(.subheadline)
+                    if let logistics = store.record(for: event).logistics {
+                        if !logistics.address.isEmpty { Text(logistics.address).font(.caption).foregroundStyle(PivotTheme.muted) }
+                        if logistics.travelConfirmed {
+                            Text("Partenza: \(PivotDate.time(event.start.addingTimeInterval(-Double(logistics.travelBeforeMinutes) * 60)))").font(.subheadline).foregroundStyle(PivotTheme.accent)
+                        }
+                    }
+                    Button("Conferma / modifica questa lezione") { editingLogistics = true }.buttonStyle(PivotSecondaryButton())
+                }
+            }
+            if [.tutoring, .work].contains(event.kind) { tutoring }
             if event.kind == .study { studyMaterial }
+            if event.kind == .workout {
+                CardioFields(value: $record.cardio, title: event.title)
+                NavigationLink { TrainingView(event: event) } label: { Label("Scheda e diario palestra", systemImage: "dumbbell.fill") }.buttonStyle(PivotSecondaryButton())
+            }
+            PivotCard {
+                Label("Promemoria per questo evento", systemImage: "pin.fill").font(.headline)
+                TextField("Materiale da portare, cose da ricordare…", text: Binding(get: { record.reminders ?? "" }, set: { record.reminders = $0 }), axis: .vertical).lineLimit(2...6)
+                Text("Queste note valgono solo per questa occorrenza.").font(.caption).foregroundStyle(PivotTheme.muted)
+            }
             registration
             if event.kind == .meal { meal }
             reflection
@@ -64,6 +87,14 @@ struct EventDetailView: View {
             }
         }
         .navigationTitle("Attività")
+        .onAppear {
+            // A workout diary can change the timer while this detail is underneath it.
+            if event.kind == .workout, let latest = store.data.records[event.id] {
+                record.actualStart = latest.actualStart; record.actualEnd = latest.actualEnd
+                record.activeMinutes = latest.activeMinutes; record.status = latest.status
+            }
+        }
+        .sheet(isPresented: $editingLogistics) { LessonLogisticsView(event: event) }
         .fileImporter(isPresented: $importingPDF, allowedContentTypes: [.pdf]) { result in
             switch result {
             case .success(let url): Task { await attachPDF(url) }
@@ -83,9 +114,9 @@ struct EventDetailView: View {
         }
     }
     private var hero: some View {
-        PivotCard(tint: Color(pivotHex: event.colorHex)) {
+        PivotCard(tint: Color(calendarItem: event)) {
             HStack {
-                Label(event.kind.label, systemImage: event.kind.icon).font(.subheadline.weight(.semibold)).foregroundStyle(Color(pivotHex: event.colorHex))
+                Label(event.kind.label, systemImage: event.kind.icon).font(.subheadline.weight(.semibold)).foregroundStyle(Color(calendarItem: event))
                 Spacer(); StatusPill(status: record.status)
             }
             Text(event.title).font(.system(.title2, design: .rounded, weight: .bold)).fixedSize(horizontal: false, vertical: true)
@@ -113,8 +144,16 @@ struct EventDetailView: View {
                 Button("Azzera l'esito") { record.status = .pending }.font(.caption).foregroundStyle(PivotTheme.muted)
             }
             Divider()
-            Stepper("\(record.activeMinutes) minuti registrati", value: $record.activeMinutes, in: 0...1440, step: 5).font(.subheadline.weight(.semibold))
-            Text("Il timer conta il tempo trascorso. Se hai fatto pause, correggi qui i minuti effettivi.").font(.caption).foregroundStyle(PivotTheme.muted)
+            ClockField(title: "Inizio reale", value: $record.actualStart, fallback: event.start)
+            ClockField(title: "Fine reale", value: $record.actualEnd, fallback: event.end)
+            if let start = record.actualStart, let end = record.actualEnd, let seconds = ActivityTiming.seconds(start: start, end: end) {
+                Text("Durata calcolata: \(ActivityTiming.duration(seconds))").font(.subheadline).foregroundStyle(PivotTheme.accent)
+            }
+            DurationField(title: "Tempo attivo (escluse pause)", seconds: Binding(get: { record.activeMinutes == 0 ? nil : record.activeMinutes * 60 }, set: { record.activeMinutes = ($0 ?? 0) / 60 }), maxHours: 48)
+            Button("Usa la durata tra inizio e fine") { updateMinutes() }.font(.caption)
+            Text("Inizio e fine calcolano la durata. Se hai fatto pause, puoi correggere il tempo attivo in ore e minuti.").font(.caption).foregroundStyle(PivotTheme.muted)
+                .onChange(of: record.actualStart) { _, _ in updateMinutes() }
+                .onChange(of: record.actualEnd) { _, _ in updateMinutes() }
             if record.status == .partial || record.status == .skipped {
                 TextField("Cosa ti ha fermato?", text: $record.reason, axis: .vertical).lineLimit(2...5).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
                 Text("Racconta il motivo: ci aiuta ad adattare il programma.").font(.caption).foregroundStyle(PivotTheme.amber)
@@ -149,6 +188,7 @@ struct EventDetailView: View {
             case .workout: return ("Allenamento o cardio svolto", "Esercizi, durata e sensazioni", "Cosa adatti la prossima volta?")
             case .university, .exam: return ("Argomenti affrontati", "Cosa hai capito e cosa manca?", "Cosa devi ripassare?")
             case .tutoring: return ("Argomenti della ripetizione", "Come è andata allo studente?", "Cosa preparare per la prossima lezione?")
+            case .work: return ("Lavoro svolto", "Risultato", "Prossimo passo")
             case .meal: return ("Cosa hai mangiato?", "Quantità e variazioni rispetto al piano", "Cosa ti aiuta per il prossimo pasto?")
             case .routine: return ("Cosa hai fatto nella routine?", "Minuti e ostacoli", "Cosa prepari per domani?")
             case .partner, .friends, .social: return ("Com'è andata l'uscita?", "Tempi reali e cambi di programma", "Vuoi ricordarti qualcosa?")
@@ -246,11 +286,11 @@ struct EventDetailView: View {
                 NavigationLink { IncomeDetailView(entryID: entry.id) } label: { Label(entry.outstandingCents > 0 ? "Registra il pagamento mancante" : "Vedi il pagamento", systemImage: "arrow.right.circle") }
                 Text("Salvare ancora questa attività non aggiunge un secondo incasso.").font(.caption).foregroundStyle(PivotTheme.muted)
             } else {
-                Picker("Studente", selection: $selectedClientID) {
+                Picker(event.kind == .work ? "Cliente" : "Studente", selection: $selectedClientID) {
                     Text("Inserisci il nome").tag(nil as UUID?)
                     ForEach(store.data.clients) { Text($0.name).tag(Optional($0.id)) }
                 }
-                if selectedClient == nil { TextField("Nome dello studente", text: $studentName).textContentType(.name) }
+                if selectedClient == nil { TextField(event.kind == .work ? "Nome cliente / lavoro" : "Nome dello studente", text: $studentName).textContentType(.name) }
                 TextField("Importo concordato in euro (anche 0)", text: $lessonAmount).keyboardType(.decimalPad)
                 Toggle("Ho già ricevuto un pagamento", isOn: $received)
                 if received {
@@ -265,9 +305,9 @@ struct EventDetailView: View {
     private var rules: some View {
         VStack(alignment: .leading, spacing: 16) {
             Picker("Gestione", selection: $rule.flexibility) { ForEach(EventFlexibility.allCases, id: \.self) { Text($0.label).tag($0) } }
-            Stepper("Minimo: \(rule.minimumMinutes) min", value: $rule.minimumMinutes, in: 5...300, step: 5)
-            Stepper("Tragitto prima: \(rule.travelBeforeMinutes) min", value: $rule.travelBeforeMinutes, in: 0...240, step: 5)
-            Stepper("Tragitto dopo: \(rule.travelAfterMinutes) min", value: $rule.travelAfterMinutes, in: 0...240, step: 5)
+            DurationField(title: "Durata minima", seconds: Binding(get: { rule.minimumMinutes * 60 }, set: { rule.minimumMinutes = max(5, ($0 ?? 300) / 60) }), maxHours: 12)
+            DurationField(title: "Tragitto prima", seconds: Binding(get: { rule.travelBeforeMinutes * 60 }, set: { rule.travelBeforeMinutes = ($0 ?? 0) / 60 }), maxHours: 4)
+            DurationField(title: "Tragitto dopo", seconds: Binding(get: { rule.travelAfterMinutes * 60 }, set: { rule.travelAfterMinutes = ($0 ?? 0) / 60 }), maxHours: 4)
             Toggle("Tempi di tragitto verificati", isOn: $rule.travelConfirmed)
             Text("Conferma anche quando il tragitto è zero. In palestra, cambio e doccia fanno parte dell'attività. Riduzioni e spostamenti richiedono la tua conferma.").font(.caption).foregroundStyle(PivotTheme.muted)
         }.font(.subheadline)
@@ -282,10 +322,14 @@ struct EventDetailView: View {
         if let start = record.actualStart, let end = record.actualEnd { record.activeMinutes = max(0, Int(end.timeIntervalSince(start) / 60)) }
     }
     @discardableResult private func save() -> Bool {
+        if let start = record.actualStart, let end = record.actualEnd, ActivityTiming.seconds(start: start, end: end) == nil {
+            message = "La fine reale deve essere successiva all'inizio. Controlla anche la data se l'attività supera mezzanotte."; return false
+        }
+        guard record.cardio?.isValid ?? true else { message = "Controlla i dati cardio: usa numeri validi e lascia vuoti quelli che non hai."; return false }
         if (record.status == .partial || record.status == .skipped) && record.reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             message = "Scrivi il motivo dell'attività parziale o saltata."; return false
         }
-        let isLessonDone = event.kind == .tutoring && [.completed, .partial].contains(record.status)
+        let isLessonDone = [.tutoring, .work].contains(event.kind) && [.completed, .partial].contains(record.status)
         var client: Client?
         var cents: Int?
         var collected = 0
@@ -303,6 +347,7 @@ struct EventDetailView: View {
         record.updatedAt = Date()
         record.snapshot = event
         var saved = record
+        saved.logistics = store.record(for: event).logistics
         let ok = store.change { data in
             if let client, let cents { TutoringLedger.register(event: event, record: &saved, client: client, amountCents: cents, collectedCents: collected, paymentDate: receiptDate, data: &data) }
             data.records[event.id] = saved; data.rules[event.id] = rule

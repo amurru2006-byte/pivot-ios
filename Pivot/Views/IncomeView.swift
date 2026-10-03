@@ -195,7 +195,7 @@ struct LessonForm: View {
                         Picker("Studente", selection: $clientID) { ForEach(clients) { Text($0.name).tag($0.id) } }.pickerStyle(.menu).labelsHidden()
                     }
                     DatePicker("Data della lezione", selection: $date)
-                    Stepper("Durata: \(minutes) min", value: $minutes, in: 5...480, step: 5)
+                    DurationField(title: "Durata della lezione", seconds: Binding(get: { minutes * 60 }, set: { minutes = max(1, ($0 ?? 60) / 60) }), maxHours: 8)
                 }
                 PivotCard(tint: PivotTheme.accent) {
                     Text("Importo della lezione").font(.subheadline).foregroundStyle(PivotTheme.muted)

@@ -200,6 +200,58 @@ final class PivotStore: ObservableObject {
         return url
     }
 
+    func importTrainingPDF(_ url: URL) async throws -> TrainingPlan {
+        guard !locked && !isRestoring else { throw BackupError.invalidData }
+        let destinationDirectory = documentsDirectory
+        return try await Task.detached(priority: .utility) {
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
+            if let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > StudyFiles.maximumBytes { throw StudyFileError.tooLarge }
+            let bytes = try Data(contentsOf: url)
+            try StudyFiles.validate(bytes)
+            guard let pdf = PDFDocument(data: bytes), !pdf.isLocked, (1...100).contains(pdf.pageCount) else { throw StudyFileError.invalidPDF }
+            let payload = try TrainingPDFFormat.parse(pdf.string ?? "")
+            let document = StudyDocument(name: url.lastPathComponent, byteCount: bytes.count)
+            try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
+            try bytes.write(to: StudyFiles.url(for: document.id, directory: destinationDirectory), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            return TrainingPlan(payload: payload, document: document)
+        }.value
+    }
+
+    func installTrainingPlan(_ plan: TrainingPlan) throws {
+        var library = data.training ?? TrainingLibrary()
+        guard library.plans.count < 6 else { throw TrainingError.invalidPlan }
+        guard StudyFiles.documents(in: data).reduce(0, { $0 + $1.byteCount }) + plan.document.byteCount <= StudyFiles.maximumLibraryBytes else { throw StudyFileError.libraryFull }
+        library.plans.append(plan); library.activePlanID = plan.id
+        try library.validate()
+        guard change({ $0.training = library }) else { throw BackupError.invalidData }
+    }
+
+    @discardableResult func saveTraining(_ session: TrainingSession, tips: [String: String], event: CalendarItem?) -> Bool {
+        var library = data.training ?? TrainingLibrary()
+        if let index = library.sessions.firstIndex(where: { $0.id == session.id }) { library.sessions[index] = session }
+        else { library.sessions.append(session) }
+        for (key, value) in tips { library.tips[key] = value }
+        do { try library.validate() }
+        catch { self.error = "Controlla carichi e ripetizioni prima di salvare. I dati precedenti sono conservati."; return false }
+        return change { data in
+            data.training = library
+            if let event = event ?? session.calendarEventID.flatMap({ data.records[$0]?.snapshot }) {
+                var record = data.records[event.id] ?? EventRecord(id: event.id, snapshot: event)
+                record.actualStart = session.start; record.actualEnd = session.end
+                record.activeMinutes = max(0, Int((session.end ?? Date()).timeIntervalSince(session.start) / 60))
+                record.status = session.end == nil ? .running : .completed
+                record.updatedAt = Date(); data.records[event.id] = record
+            }
+        }
+    }
+
+    func trainingExportURL(_ session: TrainingSession) throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Allenamento-Pivot-\(PivotDate.key(session.start))-\(session.id.uuidString.prefix(8)).txt")
+        try Data(TrainingExport.text(session, library: data.training ?? TrainingLibrary()).utf8).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        return url
+    }
+
     func incomeExcelURL(year: Int) throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("Registro-Pivot-\(year).xlsx")
         try LedgerExcel.make(data: data, year: year).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
