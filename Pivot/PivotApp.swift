@@ -39,6 +39,8 @@ struct RootView: View {
             if !previewReady {
                 ProgressView("Anteprima…")
             } else if PreviewMode.enabled && PreviewMode.screen == "launch" { PivotLaunchView()
+            } else if PreviewMode.enabled && PreviewMode.screen == "coach" {
+                NavigationStack { CoachView() }
             } else if PreviewMode.enabled && PreviewMode.screen == "tutoring", let event = calendar.events.first(where: { $0.kind == .tutoring }) {
                 NavigationStack { EventDetailView(event: event, initial: store.record(for: event), rule: store.rule(for: event)) }
             } else if PreviewMode.enabled && PreviewMode.screen == "detail", let event = calendar.events.first(where: { $0.id == "study" }) {
