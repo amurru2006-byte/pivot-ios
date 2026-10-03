@@ -1,3 +1,13 @@
+## 0.3.0 — materiali di studio e verifica consolidata
+
+Ogni sessione di studio può avere obiettivi, esercizi e PDF importati da File. I documenti sono copiati nel contenitore privato dell’app, apribili e condivisibili: massimo 6 per sessione, 10 MB ciascuno, 50 MB totali nello storico. Non c’è una sincronizzazione automatica con ChatGPT: salvare il PDF ricevuto in File, poi importarlo nella sessione.
+
+Il normale salvataggio scrive solo i metadati dei documenti. I PDF vengono incorporati nel backup completo esterno/esportato in un processo in background. Il ripristino verifica i documenti prima di sostituire lo storico e usa nuove identità dei file, mantenendo intatte le copie precedenti. Un documento mancante impedisce di sovrascrivere la copia completa. Durante il ripristino i salvataggi sono bloccati per evitare di perdere una registrazione concorrente. I backup precedenti senza documenti restano compatibili.
+
+Promemoria: pasti, mattina e resoconto serale hanno precedenza sulle ripetizioni orarie quando la coda iOS è piena. Lo stesso programma deduplicato e la stessa scelta di frequenza universitaria valgono per agenda e notifiche. Le impostazioni includono un collegamento alle notifiche di Pivot in iOS.
+
+Revisione: dati, duplicati, spostamenti, backup, incassi, compatibilità e promemoria; successivamente test dei percorsi sul simulatore, compreso importazione/apertura PDF e persistenza dopo riavvio dell’app. Le copie Google devono prima essere sincronizzate da iOS; una demo web non verifica questo passaggio né la consegna reale delle notifiche su iPhone.
+
 # Pivot iOS
 
 ## Correzioni 0.2.4

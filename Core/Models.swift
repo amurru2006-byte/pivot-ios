@@ -127,6 +127,7 @@ struct EventRecord: Codable, Identifiable {
     var energy: Int? = nil
     var followedMeal: Bool? = nil
     var reflection: ActivityReflection? = nil
+    var study: StudySession? = nil
     var incomeID: UUID? = nil
     var tutoringAnswered: Bool? = nil
     var updatedAt: Date = Date()
@@ -232,6 +233,8 @@ struct AppData: Codable {
     var moves: [PlanMove] = []
     var settings = Settings()
     var ledger: AnnualLedger? = nil
+    // Embedded PDF bytes exist only in a complete backup, never in the live JSON.
+    var studyPDFs: [String: Data]? = nil
 }
 
 enum PivotDate {
