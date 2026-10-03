@@ -44,7 +44,8 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
         let validPlaceIDs = Set(missingPlaces.map { "lesson-place-\($0.id)" })
         center.removePendingNotificationRequests(withIdentifiers: pending.filter { $0.identifier.hasPrefix("lesson-place-") && !validPlaceIDs.contains($0.identifier) }.map(\.identifier))
         // Once per discovered occurrence, not every minute while it remains unanswered.
-        for event in missingPlaces.filter({ !lastLessonPromptIDs.contains($0.id) }).prefix(3) {
+        let retainedPlaceCount = pending.filter { $0.identifier.hasPrefix("lesson-place-") && validPlaceIDs.contains($0.identifier) }.count
+        for event in missingPlaces.filter({ !lastLessonPromptIDs.contains($0.id) }).prefix(max(0, 3 - retainedPlaceCount)) {
             let content = UNMutableNotificationContent()
             content.title = "Dove fai questa lezione?"
             content.body = "\(PivotDate.shortDate(event.start)) \(PivotDate.time(event.start)) · \(event.title). Apri Pivot per confermare chi si sposta."

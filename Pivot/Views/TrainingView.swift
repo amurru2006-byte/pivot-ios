@@ -123,6 +123,7 @@ struct TrainingView: View {
 
 struct TrainingSessionView: View {
     @EnvironmentObject var store: PivotStore
+    @Environment(\.scenePhase) private var scenePhase
     @State private var session: TrainingSession
     @State private var tips: [String: String]
     @State private var message: String?
@@ -170,6 +171,7 @@ struct TrainingSessionView: View {
             if let message { Text(message).font(.caption).foregroundStyle(PivotTheme.amber) }
         }.navigationTitle("Allenamento")
             .onDisappear { save() }
+            .onChange(of: scenePhase) { _, phase in if phase != .active { save() } }
             .sheet(isPresented: $sharing) { if let export { ShareSheet(items: [export]) } }
     }
     private func exerciseCard(_ index: Int) -> some View {
