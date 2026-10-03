@@ -6,12 +6,14 @@ struct PivotApp: App {
     @StateObject private var store = PivotStore()
     @StateObject private var calendar = CalendarService()
     @StateObject private var notifications = NotificationService()
+    @StateObject private var coachModel = LocalCoachService()
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(store)
                 .environmentObject(calendar)
                 .environmentObject(notifications)
+                .environmentObject(coachModel)
                 .preferredColorScheme(.dark)
                 .tint(PivotTheme.accent)
                 .environment(\.locale, Locale(identifier: "it_IT"))

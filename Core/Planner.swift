@@ -52,7 +52,7 @@ enum Planner {
     static func effectiveEvents(_ events: [CalendarItem], data: AppData) -> [CalendarItem] {
         EventCoalescer.unique(events, data: data).map { item in
             guard let move = data.moves.last(where: { $0.source.id == item.id && !$0.syncedToCalendar }) else { return item }
-            guard item.start == move.source.start && item.end == move.source.end && item.title == move.source.title else { return item }
+            guard CoachPlanner.matchesSnapshot(move.source, item) else { return item }
             var changed = item
             changed.start = move.proposedStart
             changed.end = move.proposedEnd

@@ -154,6 +154,96 @@ final class PivotCoreTests: XCTestCase {
         XCTAssertEqual(suggestions.first?.start, date("2026-10-02T17:30:00+02:00"))
         XCTAssertEqual(suggestions.first?.end, date("2026-10-02T19:30:00+02:00"))
     }
+    func testCoachFindsOnlyTheRequestedMissedEventAndQueuesCalendarConfirmation() throws {
+        var gym = event("gym", start: "2026-10-02T09:00:00+02:00", end: "2026-10-02T10:30:00+02:00", kind: .workout)
+        gym.title = "palestra"
+        var oldStudy = event("old-study", start: "2026-10-02T07:00:00+02:00", end: "2026-10-02T08:00:00+02:00")
+        oldStudy.title = "studio matematica"
+        var data = AppData()
+        var gymRule = EventRule.defaultRule(for: gym); gymRule.travelConfirmed = true; data.rules[gym.id] = gymRule
+        var studyRule = EventRule.defaultRule(for: oldStudy); studyRule.travelConfirmed = true; data.rules[oldStudy.id] = studyRule
+        let now = date("2026-10-02T11:00:00+02:00")
+        let result = CoachPlanner.respond(message: "Voglio recuperare la palestra", events: [oldStudy, gym], data: data, now: now)
+        let option = try XCTUnwrap(result.options.first)
+        XCTAssertEqual(option.moves.count, 1)
+        XCTAssertEqual(option.moves.first?.source.id, gym.id)
+        XCTAssertNil(CoachPlanner.accept(option, events: [oldStudy, gym], data: &data, now: now))
+        XCTAssertEqual(data.moves.last?.source.id, gym.id)
+        XCTAssertEqual(data.coach?.pendingCalendarChanges.count, 1)
+        XCTAssertFalse(data.moves.last?.syncedToCalendar ?? true)
+    }
+    func testCoachRejectsStaleCalendarProposal() throws {
+        var gym = event("gym", start: "2026-10-02T09:00:00+02:00", end: "2026-10-02T10:30:00+02:00", kind: .workout)
+        gym.title = "palestra"
+        let move = PlanMove(source: gym, proposedStart: date("2026-10-02T13:00:00+02:00"), proposedEnd: date("2026-10-02T14:30:00+02:00"))
+        let option = CoachOption(title: "Recupero", explanation: "", consequences: "", moves: [move])
+        var data = AppData(); var rule = EventRule.defaultRule(for: gym); rule.travelConfirmed = true; data.rules[gym.id] = rule
+        var changed = gym; changed.start = date("2026-10-02T09:30:00+02:00"); changed.end = date("2026-10-02T11:00:00+02:00")
+        let error = CoachPlanner.validate(option, events: [changed], data: data, now: date("2026-10-02T11:00:00+02:00"))
+        XCTAssertNotNil(error)
+    }
+    func testCoachDataSurvivesBackupAndAppearsInDailyReport() throws {
+        var data = AppData()
+        let day = date("2026-10-02T11:00:00+02:00")
+        var state = CoachState()
+        state.messages = [
+            .init(dayKey: "2026-10-02", role: .user, text: "Ho saltato la palestra", createdAt: day),
+            .init(dayKey: "2026-10-02", role: .coach, text: "Cerco solo spazi verificati", createdAt: day)
+        ]
+        data.coach = state
+        let restored = try BackupCodec.decode(BackupCodec.encode(data))
+        XCTAssertEqual(restored.coach?.messages.count, 2)
+        let report = Report.day(day, events: [], data: restored)
+        XCTAssertTrue(report.contains("Conversazione con Pivot Coach"))
+        XCTAssertTrue(report.contains("Ho saltato la palestra"))
+    }
+    func testCoachDoesNotTreatEveryPastPendingEventAsSkipped() {
+        let old = event("old", start: "2026-10-01T09:00:00+02:00", end: "2026-10-01T10:00:00+02:00")
+        let current = event("current", start: "2026-10-02T09:00:00+02:00", end: "2026-10-02T10:00:00+02:00")
+        var data = AppData()
+        var rule = EventRule.defaultRule(for: current); rule.travelConfirmed = true
+        data.rules[old.id] = rule; data.rules[current.id] = rule
+        let now = date("2026-10-02T11:00:00+02:00")
+        XCTAssertTrue(CoachPlanner.respond(message: "Ho studiato bene oggi", events: [old, current], data: data, now: now).options.isEmpty)
+        let result = CoachPlanner.respond(message: "Recupera studio", events: [old, current], data: data, now: now)
+        XCTAssertEqual(result.options.first?.moves.first?.source.id, current.id)
+    }
+    func testCoachRejectsConflictWithAnotherProposedMoveAndFixedEvent() {
+        let a = event("a", start: "2026-10-02T08:00:00+02:00", end: "2026-10-02T09:00:00+02:00")
+        let b = event("b", start: "2026-10-02T09:00:00+02:00", end: "2026-10-02T10:00:00+02:00")
+        let fixed = event("fixed", start: "2026-10-02T13:00:00+02:00", end: "2026-10-02T14:00:00+02:00", kind: .tutoring)
+        var data = AppData()
+        var rule = EventRule.defaultRule(for: a); rule.travelConfirmed = true
+        data.rules[a.id] = rule; data.rules[b.id] = rule
+        let moveA = PlanMove(source: a, proposedStart: date("2026-10-02T12:00:00+02:00"), proposedEnd: date("2026-10-02T13:00:00+02:00"))
+        let moveB = PlanMove(source: b, proposedStart: date("2026-10-02T12:30:00+02:00"), proposedEnd: date("2026-10-02T13:30:00+02:00"))
+        let option = CoachOption(title: "Conflict", explanation: "", consequences: "", moves: [moveA, moveB])
+        let now = date("2026-10-02T11:00:00+02:00")
+        XCTAssertNotNil(CoachPlanner.validate(option, events: [a,b], data: data, now: now))
+        XCTAssertNotNil(CoachPlanner.validate(option, events: [a,b,fixed], data: data, now: now))
+        XCTAssertNotNil(CoachPlanner.accept(option, events: [a,b,fixed], data: &data, now: now))
+        XCTAssertTrue(data.moves.isEmpty)
+        XCTAssertTrue(data.coachState.pendingCalendarChanges.isEmpty)
+    }
+    func testCoachRejectsTrimmingMovableGymAndChangingCalendarNotes() {
+        var gym = event("gym", start: "2026-10-02T09:00:00+02:00", end: "2026-10-02T11:00:00+02:00", kind: .workout)
+        var data = AppData(); var rule = EventRule.defaultRule(for: gym); rule.travelConfirmed = true; data.rules[gym.id] = rule
+        let move = PlanMove(source: gym, proposedStart: date("2026-10-02T13:00:00+02:00"), proposedEnd: date("2026-10-02T14:00:00+02:00"))
+        let option = CoachOption(title: "Gym", explanation: "", consequences: "", moves: [move])
+        XCTAssertNotNil(CoachPlanner.validate(option, events: [gym], data: data, now: date("2026-10-02T12:00:00+02:00")))
+        gym.notes = "Different notes"
+        XCTAssertFalse(CoachPlanner.matchesSnapshot(move.source, gym))
+    }
+    func testCoachSnapshotEqualitySurvivesBackupRoundTrip() throws {
+        var item = event("snapshot", start: "2026-10-02T09:00:00+02:00", end: "2026-10-02T10:00:00+02:00")
+        item.calendarModifiedAt = date("2026-10-02T08:00:00+02:00").addingTimeInterval(0.123)
+        var data = AppData(); var coach = CoachState()
+        coach.pendingCalendarChanges = [.init(move: .init(source: item, proposedStart: date("2026-10-02T13:00:00+02:00"), proposedEnd: date("2026-10-02T14:00:00+02:00")), optionTitle: "Test")]
+        data.coach = coach
+        let restored = try BackupCodec.decode(BackupCodec.encode(data))
+        let source = try XCTUnwrap(restored.coach?.pendingCalendarChanges.first?.move.source)
+        XCTAssertTrue(CoachPlanner.matchesSnapshot(source, item))
+    }
     func testFixedEventsNeverGetRecoveryProposals() {
         let item = event("one", start: "2026-10-02T10:00:00+02:00", end: "2026-10-02T12:00:00+02:00", kind: .tutoring)
         var data = AppData()

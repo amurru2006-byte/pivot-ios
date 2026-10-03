@@ -77,8 +77,18 @@ enum Report {
         let payments = data.payments.filter { PivotDate.calendar.isDate($0.date, inSameDayAs: date) }
         lines.append("\nIncassato oggi: \(Money.display(payments.reduce(0) { $0 + $1.amountCents }))")
         lines.append("Da incassare per queste lezioni: \(Money.display(entries.reduce(0) { $0 + $1.outstandingCents }))")
+        let coachMessages = (data.coach?.messages ?? []).filter { $0.dayKey == key }
+        if !coachMessages.isEmpty {
+            lines.append("\nConversazione con Pivot Coach")
+            for message in coachMessages {
+                let speaker = message.role == .user ? "Tu" : (message.role == .coach ? "Coach" : "Decisione")
+                lines.append("\(speaker): \(message.text)")
+            }
+        }
+        let pending = (data.coach?.pendingCalendarChanges ?? []).filter { PivotDate.key($0.move.proposedStart) == key || PivotDate.key($0.move.source.start) == key }
+        if !pending.isEmpty { lines.append("Modifiche locali ancora da confermare nel Calendario: \(pending.count).") }
         lines.append("\nEventi da compilare: \(missing).")
-        lines.append("Invia questo testo a ChatGPT per la valutazione. Pivot usa regole locali, non un'IA collegata automaticamente alla chat.")
+        lines.append("Invia questo testo a ChatGPT per una valutazione più ampia. Pivot Coach usa regole locali prudenti e non modifica il Calendario senza conferma finale.")
         return lines.joined(separator: "\n")
     }
 }

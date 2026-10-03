@@ -87,7 +87,7 @@ struct SettingsView: View {
                 if let message { Label(message, systemImage: "info.circle").font(.subheadline).foregroundStyle(PivotTheme.amber) }
                 HStack {
                     Text("PIVOT").font(.system(.caption, design: .rounded, weight: .bold)).tracking(3)
-                    Spacer(); Text("0.4.1 · Il tuo punto di svolta").font(.caption)
+                    Spacer(); Text("0.5.0 · Il tuo punto di svolta").font(.caption)
                 }.foregroundStyle(PivotTheme.muted).padding(.top, 4)
             }.navigationTitle("Impostazioni")
                 .onAppear { settings = store.data.settings }

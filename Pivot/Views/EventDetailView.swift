@@ -13,8 +13,6 @@ struct EventDetailView: View {
     @State private var rule: EventRule
     @State private var message: String?
     @State private var suggestions: [RecoverySuggestion] = []
-    @State private var pendingMove: PlanMove?
-    @State private var calendarApproval = false
     @State private var studentName = ""
     @State private var selectedClientID: UUID? = nil
     @State private var lessonAmount = ""
@@ -73,7 +71,7 @@ struct EventDetailView: View {
                 DisclosureGroup { rules.padding(.top, 12) } label: { Label("Regole e tragitto", systemImage: "arrow.triangle.branch").font(.subheadline.weight(.semibold)) }
             }
             if let message { Label(message, systemImage: "info.circle").font(.subheadline).foregroundStyle(PivotTheme.amber) }
-            Button { if save() { message = "Registrazione salvata." } } label: { Label("Salva registrazione", systemImage: "checkmark.circle.fill") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
+            Button { if save() { dismiss() } } label: { Label("Salva registrazione", systemImage: "checkmark.circle.fill") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
             if rule.flexibility != .fixed && !event.isAllDay {
                 Button { findRecovery() } label: { Label("Trova uno spazio per recuperare", systemImage: "arrow.triangle.2.circlepath") }.buttonStyle(PivotSecondaryButton()).disabled(store.locked)
             }
@@ -81,8 +79,9 @@ struct EventDetailView: View {
                 PivotCard(tint: PivotTheme.blue) {
                     Label("\(DisplayDate.label(suggestion.start, format: "EEE d MMM")) · \(PivotDate.time(suggestion.start))–\(PivotDate.time(suggestion.end))", systemImage: "calendar.badge.clock").font(.headline)
                     Text(suggestion.explanation).font(.subheadline).foregroundStyle(PivotTheme.muted)
-                    Button("Usa questo spazio solo in Pivot") { Task { await choose(suggestion, sync: false) } }.buttonStyle(PivotPrimaryButton())
-                    Button("Modifica anche il Calendario…") { Task { await choose(suggestion, sync: true) } }.buttonStyle(PivotSecondaryButton()).disabled(!event.writable)
+                    Button("Usa questo spazio in Pivot") { Task { await choose(suggestion) } }.buttonStyle(PivotPrimaryButton())
+                    Text("Il Calendario non cambia ora. La modifica comparirà nel Pivot Coach, dove potrai controllarla e confermarla separatamente.")
+                        .font(.caption).foregroundStyle(PivotTheme.muted)
                 }
             }
         }
@@ -106,14 +105,6 @@ struct EventDetailView: View {
         }
         .sheet(item: $documentPreview) { document in
             if let url = try? store.studyPDFURL(document) { StudyPDFPreview(url: url, title: document.name) }
-        }
-        .alert("Modificare il Calendario?", isPresented: $calendarApproval) {
-            Button("Annulla", role: .cancel) { pendingMove = nil }
-            Button("Confermo la modifica") { Task { await applyApprovedMove() } }
-        } message: {
-            if let move = pendingMove {
-                Text("\(event.title)\nDa: \(PivotDate.key(move.source.start)) \(PivotDate.time(move.source.start))–\(PivotDate.time(move.source.end))\nA: \(PivotDate.key(move.proposedStart)) \(PivotDate.time(move.proposedStart))–\(PivotDate.time(move.proposedEnd))\nSi modifica solo questa occorrenza. La modifica si sincronizza agli altri dispositivi.")
-            }
         }
     }
     private var hero: some View {
@@ -361,35 +352,26 @@ struct EventDetailView: View {
         }
         return ok
     }
-    private func choose(_ suggestion: RecoverySuggestion, sync: Bool) async {
+    private func choose(_ suggestion: RecoverySuggestion) async {
         await calendar.refresh(settings: store.data.settings)
         guard let source = calendar.events.first(where: { $0.id == event.id || EventCoalescer.savedOccurrence(event, $0) }) else {
             message = "L'evento è cambiato o non è più disponibile. Aggiorna la giornata."; return
         }
         let move = PlanMove(source: source, proposedStart: suggestion.start, proposedEnd: suggestion.end)
         guard slotIsAvailable(move) else { message = "Questo spazio non è più libero. Cerca una nuova proposta."; return }
-        if sync { pendingMove = move; calendarApproval = true }
-        else {
-            if store.change({ $0.moves.append(move) }) { message = "Proposta approvata solo in Pivot. Il Calendario non è cambiato."; suggestions = [] }
-        }
-    }
-    private func applyApprovedMove() async {
-        guard var move = pendingMove else { return }
-        guard !store.locked else { message = "Lo storico è bloccato: ripristina il backup prima di modificare eventi."; return }
-        do {
-            // Validate the chosen slot against a fresh calendar view before writing.
-            await calendar.refresh(settings: store.data.settings)
-            guard slotIsAvailable(move) else { message = "Questo spazio non è più libero. Cerca una nuova proposta."; return }
-            try await calendar.apply(move)
-            move.syncedToCalendar = true
-            if !store.change({ $0.moves.append(move) }) {
-                message = "Il Calendario è stato modificato, ma lo storico locale non è stato salvato. Controlla la copia di backup."; return
-            }
-            await calendar.refresh(settings: store.data.settings)
-            message = "Evento aggiornato nel Calendario. Solo questa occorrenza."
+        if store.change({ data in
+            data.moves.removeAll { !$0.syncedToCalendar && $0.source.id == source.id }
+            data.moves.append(move)
+            var coach = data.coachState
+            coach.pendingCalendarChanges.removeAll { $0.move.source.id == source.id }
+            coach.pendingCalendarChanges.append(PendingCalendarChange(move: move, optionTitle: "Recupero scelto dall’attività"))
+            coach.messages.append(.init(dayKey: PivotDate.key(Date()), role: .system, text: "Recupero applicato in Pivot: \(source.title). In attesa della conferma finale per il Calendario."))
+            data.coachState = coach
+            if var saved = data.records[source.id], saved.status == .skipped { saved.status = .pending; data.records[source.id] = saved }
+        }) {
+            message = "Proposta applicata in Pivot. Il Calendario non è cambiato: confermala dal Pivot Coach."
             suggestions = []
-        } catch { message = error.localizedDescription }
-        pendingMove = nil
+        }
     }
     private func slotIsAvailable(_ move: PlanMove) -> Bool {
         guard rule.travelConfirmed, move.proposedStart > Date() else { return false }

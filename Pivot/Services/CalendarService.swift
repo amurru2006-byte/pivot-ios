@@ -52,7 +52,7 @@ final class CalendarService: ObservableObject {
         inFlight = nil
         isRefreshing = false
     }
-    func apply(_ move: PlanMove) async throws { try await worker.apply(move) }
+    func apply(_ move: PlanMove, data: AppData) async throws { try await worker.apply(move, data: data) }
 }
 
 private struct CalendarFilter: Equatable {
@@ -106,8 +106,14 @@ private actor CalendarWorker {
         }.sorted { $0.start < $1.start }
         return CalendarSnapshot(hasAccess: true, choices: choices, events: events)
     }
-    func apply(_ move: PlanMove) throws {
+    func apply(_ move: PlanMove, data: AppData) throws {
         guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { throw CalendarFailure.noAccess }
+        // Validate on a new snapshot inside the same worker job that performs the write.
+        let fresh = snapshot(settings: data.settings)
+        let option = CoachOption(title: "Conferma Calendario", explanation: "", consequences: "", moves: [move])
+        if let problem = CoachPlanner.validate(option, events: fresh.events, data: data, now: Date()) {
+            throw NSError(domain: "PivotCalendar", code: 1, userInfo: [NSLocalizedDescriptionKey: problem])
+        }
         // Re-fetch before writing and reject moved, deleted, or read-only occurrences.
         let predicate = eventStore.predicateForEvents(withStart: move.source.start.addingTimeInterval(-1), end: move.source.end.addingTimeInterval(1), calendars: nil)
         let matching = eventStore.events(matching: predicate).first { event in
@@ -116,6 +122,11 @@ private actor CalendarWorker {
                 && event.title == move.source.title && event.calendar.calendarIdentifier == move.source.calendarIdentifier
         }
         guard let event = matching, event.calendar.allowsContentModifications else { throw CalendarFailure.changed }
+        guard CoachPlanner.modificationDateMatches(move.source.calendarModifiedAt, event.lastModifiedDate),
+              (event.location ?? "") == move.source.location,
+              CalendarNoteText.plain(event.notes ?? "") == move.source.notes,
+              event.isAllDay == move.source.isAllDay else { throw CalendarFailure.changed }
+        guard move.proposedEnd > move.proposedStart else { throw CalendarFailure.changed }
         event.startDate = move.proposedStart
         event.endDate = move.proposedEnd
         try eventStore.save(event, span: .thisEvent, commit: true)

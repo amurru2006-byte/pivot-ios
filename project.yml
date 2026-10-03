@@ -8,8 +8,12 @@ settings:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "1,2"
     CODE_SIGNING_ALLOWED: NO
-    MARKETING_VERSION: "0.4.1"
-    CURRENT_PROJECT_VERSION: "10"
+    MARKETING_VERSION: "0.5.0"
+    CURRENT_PROJECT_VERSION: "11"
+packages:
+  LLM:
+    url: https://github.com/eastriverlee/LLM.swift.git
+    revision: 1d42188d5238ce4b9d25958f5444713b83d5e045
 targets:
   Pivot:
     type: application
@@ -17,6 +21,8 @@ targets:
     sources:
       - path: Pivot
       - path: Core
+    dependencies:
+      - package: LLM
     info:
       path: build/Info.plist
       properties:
