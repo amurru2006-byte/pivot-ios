@@ -2,8 +2,8 @@
 set -euo pipefail
 mkdir -p build/Previews
 xcodebuild -project Pivot.xcodeproj -scheme Pivot -configuration Debug \
-  -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-  -derivedDataPath build/PreviewData CODE_SIGNING_ALLOWED=NO build > build/preview-build.log 2>&1
+  -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO build > build/preview-build.log 2>&1
 xcrun simctl list devices available -j > build/devices.json
 PIVOT_SIMULATOR=$(python3 - <<'PY'
 import json
@@ -16,7 +16,7 @@ PY
 xcrun simctl boot "$PIVOT_SIMULATOR" || true
 xcrun simctl bootstatus "$PIVOT_SIMULATOR" -b
 xcrun simctl status_bar "$PIVOT_SIMULATOR" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
-xcrun simctl install "$PIVOT_SIMULATOR" build/PreviewData/Build/Products/Debug-iphonesimulator/Pivot.app
+xcrun simctl install "$PIVOT_SIMULATOR" build/DerivedData/Build/Products/Debug-iphonesimulator/Pivot.app
 for PIVOT_SCREEN in today coach income settings tutoring launch income-warning income-red duplicates birthday; do
   xcrun simctl terminate "$PIVOT_SIMULATOR" app.pivot.personal || true
   xcrun simctl launch "$PIVOT_SIMULATOR" app.pivot.personal --preview "--screen=$PIVOT_SCREEN"
@@ -31,6 +31,6 @@ xcrun simctl io "$PIVOT_SIMULATOR" screenshot "build/Previews/home-icon.png"
 # real root refresh path with a deliberately slow background calendar import.
 xcodebuild -project Pivot.xcodeproj -scheme Pivot -configuration Debug \
   -destination "platform=iOS Simulator,id=$PIVOT_SIMULATOR" \
-  -derivedDataPath build/PreviewData -parallel-testing-enabled NO \
+  -derivedDataPath build/DerivedData -parallel-testing-enabled NO \
   -resultBundlePath build/interaction-tests.xcresult \
   CODE_SIGNING_ALLOWED=NO test > build/interaction-tests.log 2>&1
