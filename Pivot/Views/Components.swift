@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import UIKit
 
 extension Color {
     init(pivotHex: String) {
@@ -58,6 +59,13 @@ struct PivotScreen<Content: View>: View {
         }
         .background(LinearGradient(colors: [Color(pivotHex: "101D2A"), PivotTheme.background], startPoint: .topLeading, endPoint: .center).ignoresSafeArea())
         .foregroundStyle(PivotTheme.text)
+        .scrollDismissesKeyboard(.interactively)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Fine") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
+            }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(PivotTheme.background, for: .navigationBar)
     }
