@@ -41,10 +41,12 @@ struct LessonLogistics: Codable {
     }
     static func pending(events: [CalendarItem], data: AppData, now: Date) -> [CalendarItem] {
         guard let prompts = data.lessonPrompts else { return [] }
+        let answeredSeries = Set(data.records.values.filter { $0.logistics?.confirmedAt != nil }.map { LessonPromptState.seriesKey($0.snapshot) })
         var included: Set<String> = []
         return Planner.effectiveEvents(events, data: data).sorted { $0.start < $1.start }.filter {
             let key = LessonPromptState.seriesKey($0)
             return $0.kind == .tutoring && $0.end > now && prompts.pendingSeries.contains(key)
+                && !answeredSeries.contains(key)
                 && !(data.records[$0.id]?.logistics?.isConfirmed(for: $0) ?? false)
                 && included.insert(key).inserted
         }
