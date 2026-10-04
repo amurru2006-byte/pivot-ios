@@ -35,9 +35,12 @@ struct CoachView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     SectionHeading(title: "Da recuperare?")
                     ForEach(missed) { event in
-                        Button { send("Voglio recuperare \(event.title)") } label: {
+                        Button { send("Voglio recuperare \(event.title)", targetID: event.id) } label: {
                             HStack {
-                                Label(event.title, systemImage: event.kind.icon).lineLimit(2)
+                                VStack(alignment: .leading) {
+                                    Label(event.title, systemImage: event.kind.icon).lineLimit(2)
+                                    Text(event.timeSummary).font(.caption)
+                                }
                                 Spacer(); Image(systemName: "arrow.up.right.circle.fill")
                             }
                         }.buttonStyle(PivotSecondaryButton())
@@ -75,7 +78,7 @@ struct CoachView: View {
                 if coachModel.isGenerating {
                     HStack {
                         ProgressView()
-                        Text("L’AI locale sta preparando un commento…").font(.caption)
+                        Text("L’AI locale valuta le soluzioni verificate…").font(.caption)
                         Spacer()
                         Button("Interrompi") { coachModel.stop() }.font(.caption)
                     }
@@ -138,7 +141,7 @@ struct CoachView: View {
             switch coachModel.status {
             case .ready:
                 Label("Modello locale attivo", systemImage: "cpu.fill").font(.headline).foregroundStyle(PivotTheme.blue)
-                Text("Qwen3 0,6B rende più naturali le spiegazioni. Orari e modifiche restano sempre controllati dal motore sicuro di Pivot.")
+                Text("Qwen3 0,6B può consigliare una delle soluzioni verificate. Non può inventare orari né applicare modifiche. Se la risposta non supera i controlli, resta il pianificatore sicuro.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
             case .downloading(let progress):
                 Label("Download e caricamento del modello", systemImage: "arrow.down.circle.fill").font(.headline)
@@ -149,7 +152,7 @@ struct CoachView: View {
                 Text(error).font(.caption).foregroundStyle(PivotTheme.muted)
                 Button("Riprova") { Task { await coachModel.load() } }.buttonStyle(PivotSecondaryButton())
             case .notLoaded:
-                Label("Spiegazioni AI opzionali", systemImage: "cpu").font(.headline).foregroundStyle(PivotTheme.blue)
+                Label("Suggerimenti AI opzionali", systemImage: "cpu").font(.headline).foregroundStyle(PivotTheme.blue)
                 Text("Scarica una volta Qwen3 0,6B (397 MB). Il file viene verificato e resta sul telefono. Senza modello, il Coach funziona con le regole verificate. Le prestazioni reali vanno provate sul tuo iPhone.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
                 Button("Scarica e attiva") { Task { await coachModel.load() } }.buttonStyle(PivotSecondaryButton())
@@ -180,12 +183,12 @@ struct CoachView: View {
         }
     }
 
-    private func send(_ text: String) {
+    private func send(_ text: String, targetID: String? = nil) {
         let clean = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(3000))
         guard !clean.isEmpty, !store.locked, !coachModel.isGenerating else { return }
         let now = Date()
         historyDay = now
-        let result = CoachPlanner.respond(message: clean, events: calendar.events, data: store.data, now: now)
+        let result = CoachPlanner.respond(message: clean, events: calendar.events, data: store.data, now: now, targetID: targetID)
         let context = contextForModel(now: now)
         let coachReplyID = UUID()
         guard store.change({ data in
@@ -198,10 +201,13 @@ struct CoachView: View {
         if coachModel.isReady {
             Task {
                 guard let comment = await coachModel.comment(userMessage: clean, verified: result, context: context) else { return }
+                // Calendar edits or an accepted/discarded option invalidate a delayed suggestion.
+                guard result.options.allSatisfy({ CoachPlanner.validate($0, events: calendar.events, data: store.data, now: Date()) == nil }) else { return }
                 store.change { data in
                     var coach = data.coachState
-                    guard coach.messages.contains(where: { $0.id == coachReplyID }) else { return }
-                    coach.messages.append(.init(dayKey: PivotDate.key(now), role: .coach, text: "Commento AI locale (può sbagliare):\n" + comment))
+                    guard coach.messages.contains(where: { $0.id == coachReplyID }),
+                          result.options.allSatisfy({ option in coach.options.contains(where: { $0.id == option.id }) }) else { return }
+                    coach.messages.append(.init(dayKey: PivotDate.key(now), role: .coach, text: "Suggerimento AI locale (scelta da valutare):\n" + comment))
                     data.coachState = coach
                 }
             }

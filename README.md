@@ -1,3 +1,13 @@
+## 0.5.1 — revisione della proposta Claude
+
+- La proposta ricevuta è una specifica, non un'implementazione. È stata confrontata con il Coach 0.5.0: non viene sostituito il modello con un 2B/3B non misurato sull'iPhone.
+- Output AI a campi chiusi: scelta di un'opzione verificata e tono. Il testo visibile usa i dati del motore; ID inventati, campi aggiuntivi, JSON malformato o testo libero vengono scartati. È validazione dopo generazione, non decodifica vincolata: non si promette una percentuale di successo del modello.
+- Le attività con lo stesso titolo o punteggio richiedono chiarimento. I pulsanti di recupero passano l'identità della singola occorrenza; titolo e orario aiutano anche in chat.
+- Negazioni e parole come “personal” non sono interpretate come richieste di recupero. Un bersaglio non riconosciuto non viene sostituito con l'unico evento passato.
+- “Oggi”, “domani” e “dopodomani” delimitano il giorno di recupero e conservano le date anche oltre mezzanotte. Nessun accorciamento implicito e nessuna stima di tragitto inventata.
+- Un suggerimento AI arrivato dopo un cambio del Calendario, l'accettazione o lo scarto di un'opzione obsoleta non viene aggiunto alla chat.
+- Migrazione dati invariata e compatibile con 0.5.0. Preferenze ancora manuali, nessun apprendimento statistico o lettura HealthKit introdotto da questo aggiornamento.
+
 ## 0.5.0 — Pivot Coach (prima versione)
 
 - Accesso al Coach dalla home, mantenendo le cinque schede dell’app.

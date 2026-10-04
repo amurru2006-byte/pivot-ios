@@ -3,19 +3,26 @@ import Foundation
 struct CoachTurnResult {
     var reply: String
     var options: [CoachOption]
+    var needsActivityClarification = false
 }
 
 enum CoachPlanner {
-    static func respond(message: String, events: [CalendarItem], data: AppData, now: Date) -> CoachTurnResult {
+    static func respond(message: String, events: [CalendarItem], data: AppData, now: Date, targetID: String? = nil) -> CoachTurnResult {
         let effective = Planner.plannedEvents(events, data: data)
-        let target = recoveryTarget(message: message, events: effective, data: data, now: now)
-        guard let target else {
+        let selection = recoveryTarget(message: message, events: effective, data: data, now: now, targetID: targetID)
+        let target: CalendarItem
+        switch selection {
+        case .ambiguous(let candidates):
+            let choices = candidates.prefix(4).map { "‘\($0.title)’ (\(PivotDate.time($0.start)))" }.joined(separator: ", ")
+            return CoachTurnResult(reply: "A quale attività ti riferisci? Potrebbe essere \(choices). Indica il titolo e l’orario, oppure scegli il pulsante dell’attività: non ne seleziono una a caso.", options: [], needsActivityClarification: true)
+        case .none:
             let next = Planner.preferredEvent(effective, data: data, now: now)
             let suffix = next.map { " Il prossimo impegno utile è ‘\($0.title)’ alle \(PivotDate.time($0.start))." } ?? " Non vedo attività urgenti da recuperare in questo momento."
             return CoachTurnResult(
                 reply: "Ho letto la giornata, ma non modifico nulla senza sapere quale attività vuoi recuperare o spostare." + suffix,
-                options: []
+                options: [], needsActivityClarification: true
             )
+        case .target(let item): target = item
         }
 
         // Leave time to read and accept, and use the real Calendar snapshot for writes.
@@ -23,14 +30,26 @@ enum CoachPlanner {
         guard let source = canonical.first(where: { $0.id == target.id }) else {
             return CoachTurnResult(reply: "Aggiorna il Calendario: non trovo più questa attività.", options: [])
         }
-        let earliest = Date(timeIntervalSince1970: ceil(now.addingTimeInterval(5 * 60).timeIntervalSince1970 / 300) * 300)
-        let suggestions = Planner.recover(target, events: events, data: data, now: earliest, days: 3)
+        let query = EventCoalescer.normalized(message)
+        let words = query.split(separator: " ").map(String.init)
+        let offset = words.contains("dopodomani") || query.contains("dopo domani") ? 2 : (words.contains("domani") ? 1 : 0)
+        let onlyToday = words.contains("oggi")
+        guard !(onlyToday && offset > 0) else {
+            return CoachTurnResult(reply: "Vuoi recuperare l’attività oggi oppure \(offset == 1 ? "domani" : "dopodomani")? Chiariscilo prima di preparare gli orari.", options: [])
+        }
+        let roundedNow = Date(timeIntervalSince1970: ceil(now.addingTimeInterval(5 * 60).timeIntervalSince1970 / 300) * 300)
+        let earliest: Date
+        if offset > 0, let requestedDay = PivotDate.calendar.date(byAdding: .day, value: offset, to: PivotDate.calendar.startOfDay(for: now)) {
+            earliest = requestedDay
+        } else { earliest = roundedNow }
+        let days = onlyToday || offset > 0 ? 1 : 3
+        let suggestions = Planner.recover(target, events: events, data: data, now: earliest, days: days)
         guard !suggestions.isEmpty else {
             let rule = data.rules[target.id] ?? .defaultRule(for: target)
             let reason: String
             if rule.flexibility == .fixed { reason = "è segnato come fisso" }
             else if !rule.travelConfirmed { reason = "mancano i tempi di tragitto confermati" }
-            else { reason = "non esiste uno spazio completo e senza conflitti nei prossimi tre giorni" }
+            else { reason = days == 1 ? "non esiste uno spazio completo e senza conflitti nel giorno richiesto" : "non esiste uno spazio completo e senza conflitti nei prossimi tre giorni" }
             return CoachTurnResult(reply: "Non ti propongo uno spostamento rischioso: ‘\(target.title)’ \(reason). Apri l’attività per correggere flessibilità o tragitto, oppure dimmi esplicitamente cosa sei disposto ad accorciare.", options: [])
         }
 
@@ -141,24 +160,44 @@ enum CoachPlanner {
         return nil
     }
 
-    private static func recoveryTarget(message: String, events: [CalendarItem], data: AppData, now: Date) -> CalendarItem? {
+    private enum TargetSelection {
+        case none, target(CalendarItem), ambiguous([CalendarItem])
+    }
+
+    private static func recoveryTarget(message: String, events: [CalendarItem], data: AppData, now: Date, targetID: String?) -> TargetSelection {
         let query = EventCoalescer.normalized(message)
         let candidates = events.filter { item in
             guard !item.isAllDay, item.occurs(on: now) else { return false }
             let status = data.records[item.id]?.status ?? .pending
             return status == .skipped || (status == .pending && item.end <= now)
         }
+        if let targetID {
+            if let target = candidates.first(where: { $0.id == targetID }) { return .target(target) }
+            return .none
+        }
+        let queryWords = Set(query.split(separator: " ").map(String.init))
+        // Match whole words, not e.g. "pers" in "personale" or "des" in "destinazione".
+        let verbs = ["recuper", "spost", "salt", "rimand", "riprogramm"]
+        let intent = queryWords.contains { word in verbs.contains { word.hasPrefix($0) } }
+            || queryWords.contains("ritardo") || queryWords.contains("perso") || queryWords.contains("persa") || query.contains("non ho fatto")
+        let deniesRecovery = ["non voglio", "non devo", "non posso", "non serve", "non spostare", "non recuperare", "senza spostare", "senza recuperare", "non ho saltato", "non ho perso"].contains { query.contains($0) }
+        guard intent && !deniesRecovery else { return .none }
+        let stopWords: Set<String> = ["con", "per", "del", "dei", "della", "delle", "alla", "alle", "dalle", "una", "uno", "gli", "che", "oggi", "domani", "prova"]
         let scored = candidates.map { item -> (CalendarItem, Int) in
             let title = EventCoalescer.normalized(item.title)
-            let words = Set(title.split(separator: " ").filter { $0.count > 2 })
-            let hits = words.filter { query.contains(String($0)) }.count
-            let kindHit = query.contains(EventCoalescer.normalized(item.kind.label)) ? 2 : 0
-            return (item, hits + kindHit)
+            let titleWords = Set(title.split(separator: " ").map(String.init).filter { $0.count > 2 && !stopWords.contains($0) })
+            let hits = titleWords.intersection(queryWords).count
+            let kindWords = Set(EventCoalescer.normalized(item.kind.label).split(separator: " ").map(String.init).filter { $0.count > 2 })
+            let kindHit = kindWords.intersection(queryWords).isEmpty ? 0 : 2
+            let timeHit = message.contains(PivotDate.time(item.start)) ? 10 : 0
+            let exact = !title.isEmpty && (" " + query + " ").contains(" " + title + " ") ? 20 : 0
+            return (item, hits + kindHit + timeHit + exact)
         }.sorted { lhs, rhs in lhs.1 == rhs.1 ? lhs.0.end > rhs.0.end : lhs.1 > rhs.1 }
-        let intent = ["recuper", "spost", "salt", "ritardo", "pers", "non ho fatto"].contains { query.contains($0) }
-        guard intent else { return nil }
-        if let best = scored.first, best.1 > 0 { return best.0 }
-        return intent && candidates.count == 1 ? candidates[0] : nil
+        if let best = scored.first, best.1 > 0 {
+            let tied = scored.filter { $0.1 == best.1 }.map { $0.0 }
+            return tied.count == 1 ? .target(best.0) : .ambiguous(tied)
+        }
+        return candidates.isEmpty ? .none : .ambiguous(candidates)
     }
 
     private static func slotIsFree(_ move: PlanMove, events: [CalendarItem], data: AppData) -> Bool {
