@@ -30,7 +30,8 @@ enum CoachPlanner {
         guard let source = canonical.first(where: { $0.id == target.id }) else {
             return CoachTurnResult(reply: "Aggiorna il Calendario: non trovo più questa attività.", options: [])
         }
-        let query = EventCoalescer.normalized(message)
+        // A quick-action button supplies an occurrence ID, not a new day constraint.
+        let query = targetID == nil ? EventCoalescer.normalized(message) : ""
         let words = query.split(separator: " ").map(String.init)
         let offset = words.contains("dopodomani") || query.contains("dopo domani") ? 2 : (words.contains("domani") ? 1 : 0)
         let onlyToday = words.contains("oggi")
@@ -38,6 +39,9 @@ enum CoachPlanner {
             return CoachTurnResult(reply: "Vuoi recuperare l’attività oggi oppure \(offset == 1 ? "domani" : "dopodomani")? Chiariscilo prima di preparare gli orari.", options: [])
         }
         let roundedNow = Date(timeIntervalSince1970: ceil(now.addingTimeInterval(5 * 60).timeIntervalSince1970 / 300) * 300)
+        guard !onlyToday || PivotDate.calendar.isDate(roundedNow, inSameDayAs: now) else {
+            return CoachTurnResult(reply: "Non rimane uno spazio utile oggi. Non sposto l’attività a domani senza una nuova richiesta.", options: [])
+        }
         let earliest: Date
         if offset > 0, let requestedDay = PivotDate.calendar.date(byAdding: .day, value: offset, to: PivotDate.calendar.startOfDay(for: now)) {
             earliest = requestedDay

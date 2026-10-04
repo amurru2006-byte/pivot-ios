@@ -70,6 +70,17 @@ final class CoachSafetyTests: XCTestCase {
         }
         XCTAssertTrue(CoachPlanner.respond(message: "Recupera palestra oggi o domani", events: events, data: state, now: now).options.isEmpty)
     }
+    func testTodayNearMidnightDoesNotRollIntoTheNextDay() {
+        let result = CoachPlanner.respond(message: "Recupera palestra oggi", events: [first], data: data(for: [first]), now: date("2026-10-02T23:58:00+02:00"))
+        XCTAssertTrue(result.options.isEmpty)
+        XCTAssertTrue(result.reply.contains("Non rimane uno spazio utile oggi"))
+    }
+    func testQuickActionDoesNotReadTomorrowInTheEventTitleAsACommand() {
+        var item = first
+        item.title = "palestra: preparo la scheda per domani"
+        let result = CoachPlanner.respond(message: "Voglio recuperare \(item.title)", events: [item], data: data(for: [item]), now: now, targetID: item.id)
+        XCTAssertEqual(result.options.first.map { PivotDate.key($0.moves[0].proposedStart) }, "2026-10-02")
+    }
     func testStructuredNarratorUsesOnlyVerifiedFactsAndHasNoSideEffects() throws {
         let result = CoachPlanner.respond(message: "Recupera palestra", events: [first], data: data(for: [first]), now: now)
         let option = try XCTUnwrap(result.options.first)
