@@ -14,6 +14,7 @@ struct SettingsView: View {
     @State private var exporting = false
     @State private var exportFile: URL?
     @State private var message: String?
+    private var installedVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—" }
     var body: some View {
         NavigationStack {
             PivotScreen {
@@ -87,7 +88,7 @@ struct SettingsView: View {
                 if let message { Label(message, systemImage: "info.circle").font(.subheadline).foregroundStyle(PivotTheme.amber) }
                 HStack {
                     Text("PIVOT").font(.system(.caption, design: .rounded, weight: .bold)).tracking(3)
-                    Spacer(); Text("\(Bundle.main.infoDictionary?[\"CFBundleShortVersionString\"] as? String ?? \"—\") · Il tuo punto di svolta").font(.caption)
+                    Spacer(); Text("\(installedVersion) · Il tuo punto di svolta").font(.caption)
                 }.foregroundStyle(PivotTheme.muted).padding(.top, 4)
             }.navigationTitle("Impostazioni")
                 .onAppear { settings = store.data.settings }
