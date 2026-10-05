@@ -1,7 +1,8 @@
 import Foundation
 
 enum Report {
-    static func day(_ date: Date, events: [CalendarItem], data: AppData) -> String {
+    static func day(_ date: Date, events: [CalendarItem], data original: AppData) -> String {
+        let data = HealthImport.exportData(original)
         let key = PivotDate.key(date)
         let items = Planner.plannedEvents(events, data: data).filter { $0.occurs(on: date) && !$0.isAllDay }
         var lines = ["PIVOT — Resoconto \(key)"]
@@ -77,7 +78,7 @@ enum Report {
         let payments = data.payments.filter { PivotDate.calendar.isDate($0.date, inSameDayAs: date) }
         lines.append("\nIncassato oggi: \(Money.display(payments.reduce(0) { $0 + $1.amountCents }))")
         lines.append("Da incassare per queste lezioni: \(Money.display(entries.reduce(0) { $0 + $1.outstandingCents }))")
-        let coachMessages = (data.coach?.messages ?? []).filter { $0.dayKey == key }
+        let coachMessages = data.settings.includeCoachInReports == false ? [] : (data.coach?.messages ?? []).filter { $0.dayKey == key }
         if !coachMessages.isEmpty {
             lines.append("\nConversazione con Pivot Coach")
             for message in coachMessages {

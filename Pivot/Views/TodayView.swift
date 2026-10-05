@@ -3,159 +3,151 @@ import SwiftUI
 struct TodayView: View {
     @EnvironmentObject var store: PivotStore
     @EnvironmentObject var calendar: CalendarService
-    @State private var finishedTutoring: CalendarItem?
-    @State private var day = PreviewMode.enabled && PreviewMode.screen == "overnight" ? PivotDate.calendar.date(byAdding: .day, value: 1, to: Date())! : Date()
-    var check: DayCheckIn? { store.data.checkIns[PivotDate.key(day)] }
+    @EnvironmentObject var health: HealthService
+    @State private var day = Date()
+    @State private var showDecisions = false
+    @State private var showHealth = false
+    private var check: DayCheckIn? { store.data.checkIns[PivotDate.key(day)] }
+    private var items: [CalendarItem] {
+        Planner.plannedEvents(calendar.events, data: store.data).filter { $0.occurs(on: day) && store.data.records[$0.id]?.status != .skipped }
+    }
+    private var active: [CalendarItem] { items.filter { ![Completion.completed, .partial].contains(store.data.records[$0.id]?.status ?? .pending) } }
+    private var finished: [CalendarItem] { items.filter { [Completion.completed, .partial].contains(store.data.records[$0.id]?.status ?? .pending) } }
+    private var focused: CalendarItem? {
+        PivotDate.calendar.isDateInToday(day) ? Planner.preferredEvent(active, data: store.data, now: Date()) : active.first
+    }
+    private var decisions: [EventDecision] { (store.data.decisions ?? []).filter { PivotDate.calendar.isDate($0.date, inSameDayAs: day) } }
     var body: some View {
-        let effective = Planner.effectiveEvents(calendar.events, data: store.data)
-        let dayEvents = effective.filter { $0.occurs(on: day) }
-        let items = Planner.plannedEffectiveEvents(effective, data: store.data).filter {
-            $0.occurs(on: day) && store.data.records[$0.id]?.status != .skipped
-        }.sorted { lhs, rhs in
-            let leftDone = [Completion.completed, .partial].contains(store.data.records[lhs.id]?.status ?? .pending)
-            let rightDone = [Completion.completed, .partial].contains(store.data.records[rhs.id]?.status ?? .pending)
-            return leftDone == rightDone ? lhs.start < rhs.start : !leftDone
-        }
-        let attendance = Planner.universityAttendance(on: day, events: effective, data: store.data)
-        let conflicts = Planner.overlapsInPlannedEvents(on: day, events: items)
-        let completed = items.filter { store.data.records[$0.id]?.status == .completed }.count
-        let minutes = items.reduce(0) { $0 + (store.data.records[$1.id]?.activeMinutes ?? 0) }
         NavigationStack {
             PivotScreen {
                 DaySelector(day: $day)
-                PivotHeader(title: "La tua giornata", subtitle: DisplayDate.label(day).capitalized)
-                if let sync = calendar.lastRefresh {
-                    Label("Calendario aggiornato alle \(PivotDate.time(sync))", systemImage: "arrow.triangle.2.circlepath").font(.caption).foregroundStyle(PivotTheme.muted).accessibilityIdentifier("calendar-updated")
-                }
-                if calendar.isRefreshing {
-                    Label("Aggiornamento calendario…", systemImage: "arrow.triangle.2.circlepath").font(.caption).foregroundStyle(PivotTheme.muted).accessibilityIdentifier("calendar-loading")
-                }
-                HStack(alignment: .top, spacing: 9) {
-                    MetricTile(title: "Completati", value: "\(completed)/\(items.count)", icon: "checkmark.circle.fill")
-                    MetricTile(title: "Registrati", value: "\(minutes) min", icon: "clock.fill", color: PivotTheme.blue)
-                    MetricTile(title: "Energia", value: check?.energyMorning.map { "\($0)/10" } ?? "—", icon: "bolt.fill", color: PivotTheme.amber)
-                }
-                NavigationLink { CoachView() } label: {
-                    PivotCard(tint: PivotTheme.accent) {
-                        ActionRow(
-                            title: store.data.coachState.pendingCalendarChanges.isEmpty ? "Parla con Pivot Coach" : "Controlla le modifiche del Coach",
-                            subtitle: store.data.coachState.pendingCalendarChanges.isEmpty ? "Recupera attività e adatta la giornata con proposte verificate." : "\(store.data.coachState.pendingCalendarChanges.count) modifiche sono solo in Pivot: il Calendario aspetta la tua conferma.",
-                            icon: "brain.head.profile"
-                        )
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(PivotDate.calendar.isDateInToday(day) ? "Il prossimo passo" : DisplayDate.label(day, format: "EEEE").capitalized)
+                            .font(.system(.title, design: .rounded, weight: .bold))
+                        Text(DisplayDate.label(day, format: "d MMMM") + " · \(finished.count)/\(items.count) attività segnate").font(.caption).foregroundStyle(PivotTheme.muted)
                     }
-                }.buttonStyle(.plain).accessibilityIdentifier("open-pivot-coach")
-                if store.locked {
-                    EmptyCard(title: "Storico da ripristinare", message: "Apri Impostazioni e recupera il backup per tornare a registrare le attività.", icon: "lock.shield")
+                    Spacer()
+                    NavigationLink { CoachView() } label: { Image(systemName: "bubble.left.and.bubble.right.fill").font(.title3).padding(12).background(PivotTheme.accent.opacity(0.1), in: Circle()) }
+                        .accessibilityLabel("Parla con Pivot").accessibilityIdentifier("open-pivot-coach")
                 }
-                if !calendar.hasAccess {
+                if store.locked {
+                    EmptyCard(title: "Storico da ripristinare", message: "Recupera il backup nelle Impostazioni. I dati originali sono protetti.", icon: "lock.shield")
+                } else if !calendar.hasAccess {
                     PivotCard {
-                        ActionRow(title: "Collega la tua giornata", subtitle: "Leggi gli eventi dell'app Calendario, anche quelli Google.", icon: "calendar.badge.plus")
-                        Button("Collega calendari") { Task { await calendar.requestAccess(); await calendar.refresh(settings: store.data.settings) } }.buttonStyle(PivotPrimaryButton())
+                        ActionRow(title: "Collega il calendario", subtitle: "Tutti i tuoi impegni, con i loro colori.", icon: "calendar.badge.plus")
+                        Button("Consenti calendari") { Task { await calendar.requestAccess(); await calendar.refresh(settings: store.data.settings) } }.buttonStyle(PivotPrimaryButton())
                         if let error = calendar.error { Text(error).font(.caption).foregroundStyle(PivotTheme.amber) }
                     }
-                }
-                if PivotDate.calendar.isDateInToday(day), let preferred = Planner.preferredEvent(items, data: store.data, now: Date()) {
-                    focusCard(preferred)
-                }
-                NavigationLink { DayCheckInView(day: day, initial: check) } label: {
-                    PivotCard { ActionRow(title: "Come stai oggi?", subtitle: check?.wakeTime.map { "Sveglia alle \(PivotDate.time($0)) · aggiorna il tuo check-in" } ?? "Segna la sveglia, l'energia e l'umore.", icon: "sun.max.fill") }
-                }.buttonStyle(.plain)
-                if dayEvents.contains(where: { $0.kind == .university }) { universityCard(dayEvents: dayEvents, attendance: attendance) }
-                if !conflicts.isEmpty {
-                    PivotCard(tint: PivotTheme.amber) {
-                        Label("Orari da chiarire", systemImage: "exclamationmark.triangle.fill").font(.headline).foregroundStyle(PivotTheme.amber)
-                        Text("Questi impegni si sovrappongono: non sono un programma già risolto.").font(.subheadline).foregroundStyle(PivotTheme.muted)
-                        ForEach(Array(conflicts.prefix(3).enumerated()), id: \.offset) { _, pair in
-                            Text("\(PivotDate.time(pair.0.start)) \(pair.0.title) ↔ \(PivotDate.time(pair.1.start)) \(pair.1.title)").font(.caption).fixedSize(horizontal: false, vertical: true)
-                        }
-                        Text("Se oggi non frequenti le lezioni, indicarlo qui le toglie dal programma di Pivot.").font(.caption).foregroundStyle(PivotTheme.muted)
-                    }
-                }
-                VStack(alignment: .leading, spacing: 14) {
-                    SectionHeading(title: "La tua agenda", detail: "\(items.count) attività")
-                    if items.isEmpty { EmptyCard(title: "Spazio alla tua giornata", message: "Qui compariranno i tuoi eventi. Puoi cambiare giorno o aggiornare il calendario.", icon: "calendar") }
-                    ForEach(items) { event in
+                } else if let focused { focusCard(focused) }
+                else { EmptyCard(title: active.isEmpty ? "Per oggi hai segnato tutto" : "Un po’ di spazio per te", message: "Puoi rivedere le attività e completare il diario quando vuoi.", icon: "checkmark.circle") }
+
+                HStack(spacing: 12) {
+                    NavigationLink { DayCheckInView(day: day, initial: check) } label: {
+                        Label(check?.energyMorning.map { "Energia \($0)/10" } ?? "Come stai?", systemImage: "sun.max")
+                    }.buttonStyle(.plain)
+                    Spacer()
+                    Button { showDecisions = true } label: {
+                        Label(decisions.isEmpty ? "Nessun dubbio" : "Da decidere · \(decisions.count)", systemImage: decisions.isEmpty ? "checkmark.circle" : "questionmark.bubble")
+                            .foregroundStyle(decisions.isEmpty ? PivotTheme.muted : PivotTheme.amber)
+                    }.accessibilityIdentifier("decision-inbox")
+                }.font(.caption.weight(.semibold)).padding(.vertical, 2)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionHeading(title: "In arrivo", detail: "\(active.filter { $0.id != focused?.id }.count)")
+                    ForEach(active.filter { $0.id != focused?.id }) { event in
                         NavigationLink { detail(event) } label: { EventRow(event: event, record: store.data.records[event.id], day: day) }.buttonStyle(.plain)
                     }
+                    if active.isEmpty { Text("Nessuna attività da compilare.").font(.subheadline).foregroundStyle(PivotTheme.muted) }
                 }
-                PivotCard(tint: PivotTheme.blue) {
-                    Label("Un passo alla volta", systemImage: "sparkles").font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.blue)
-                    Text(Planner.isStudyPriority(store.data, now: Date()) ? "Proteggi le ore di studio che non riesci a recuperare prima dell'esame. Gli impegni fissi restano protetti." : "Un'attività è saltata? Aprila e cerca un nuovo spazio. Non serve ricominciare tutta la giornata.").font(.subheadline).foregroundStyle(PivotTheme.muted)
+                if !finished.isEmpty {
+                    DisclosureGroup("Già segnate · \(finished.count)") {
+                        VStack(spacing: 12) {
+                            ForEach(finished) { event in
+                                NavigationLink { detail(event) } label: { EventRow(event: event, record: store.data.records[event.id], day: day) }.buttonStyle(.plain)
+                            }
+                        }.padding(.top, 12)
+                    }.font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.muted)
                 }
-                if store.lastExternalBackup == nil {
-                    Label("Configura una copia dei tuoi dati in Impostazioni.", systemImage: "externaldrive.badge.icloud").font(.caption).foregroundStyle(PivotTheme.amber)
+                if items.contains(where: { $0.kind == .university }) || store.data.checkIns[PivotDate.key(day)]?.universityAttendance == false {
+                    DisclosureGroup("Lezioni universitarie di oggi") {
+                        HStack {
+                            Button("Le seguo") { attendance(true) }.buttonStyle(PivotSecondaryButton())
+                            Button("Non vado") { attendance(false) }.buttonStyle(PivotSecondaryButton())
+                        }.padding(.top, 10)
+                    }.font(.subheadline).foregroundStyle(PivotTheme.muted)
                 }
+                Button { showHealth = true } label: {
+                    Label(store.data.settings.healthEnabled == true ? "Salute e attività rilevate" : "Collega Salute e Apple Watch", systemImage: "heart.text.square")
+                }.font(.caption).foregroundStyle(PivotTheme.muted)
+                if let sync = calendar.lastRefresh {
+                    Label("Calendario aggiornato alle \(PivotDate.time(sync))", systemImage: "arrow.triangle.2.circlepath").font(.caption2).foregroundStyle(PivotTheme.muted).accessibilityIdentifier("calendar-updated")
+                }
+                if calendar.isRefreshing { ProgressView().accessibilityIdentifier("calendar-loading") }
             }
             .navigationTitle("Pivot")
             .toolbar { Button { Task { await calendar.refresh(settings: store.data.settings) } } label: { Image(systemName: "arrow.clockwise") }.accessibilityLabel("Aggiorna calendari") }
-            .refreshable { await calendar.refresh(settings: store.data.settings) }
-            .sheet(item: $finishedTutoring) { event in NavigationStack { detail(event) } }
-        }
-    }
-    private func universityCard(dayEvents: [CalendarItem], attendance: Bool?) -> some View {
-        PivotCard(tint: PivotTheme.blue) {
-            Label("Università oggi", systemImage: "graduationcap.fill").font(.headline).foregroundStyle(PivotTheme.blue)
-            Text(attendance == false ? "Oggi non frequenti: le lezioni restano consultabili, fuori dalle attività da fare." : "Le lezioni del calendario vanno distinte da quelle che hai deciso di seguire.").font(.subheadline).foregroundStyle(PivotTheme.muted)
-            HStack(spacing: 10) {
-                Button("Seguo le lezioni") { setAttendance(true) }.buttonStyle(PivotSecondaryButton())
-                Button("Oggi non vado") { setAttendance(false) }.buttonStyle(PivotSecondaryButton())
-            }.disabled(store.locked)
-            if attendance == false {
-                DisclosureGroup("Lezioni fuori programma") {
-                    ForEach(dayEvents.filter { $0.kind == .university }) { event in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(event.title).font(.subheadline)
-                            Text("\(event.timeSummary) · non prevista oggi").font(.caption).foregroundStyle(PivotTheme.muted)
-                        }.padding(.vertical, 6)
-                    }
-                }.font(.subheadline)
-            }
-        }
-    }
-    private func setAttendance(_ attending: Bool) {
-        let key = PivotDate.key(day)
-        store.change { data in
-            var check = data.checkIns[key] ?? DayCheckIn(id: key)
-            check.universityAttendance = attending
-            data.checkIns[key] = check
+            .refreshable { await calendar.refresh(settings: store.data.settings); await health.refresh(store: store, events: calendar.events, force: true) }
+            .sheet(isPresented: $showDecisions) { DecisionInboxView() }
+            .sheet(isPresented: $showHealth) { healthSheet }
         }
     }
     private func focusCard(_ event: CalendarItem) -> some View {
-        let status = store.data.records[event.id]?.status ?? .pending
+        let isPast = event.end <= Date(), status = store.data.records[event.id]?.status ?? .pending
         return PivotCard(tint: Color(calendarItem: event)) {
             HStack {
-                Label("Adesso / appena terminato", systemImage: event.kind.icon).font(.caption.weight(.semibold)).foregroundStyle(Color(calendarItem: event))
+                Label(isPast ? "Com’è andata?" : (event.start > Date() ? "Il prossimo impegno" : "Adesso"), systemImage: event.kind.icon)
+                    .font(.caption.weight(.semibold)).foregroundStyle(Color.readableCalendar(event))
                 Spacer(); StatusPill(status: status)
             }
             Text(event.title).font(.system(.title2, design: .rounded, weight: .bold)).fixedSize(horizontal: false, vertical: true)
             Label(event.timeSummary, systemImage: "clock").font(.subheadline).foregroundStyle(PivotTheme.muted)
-            if status == .pending || status == .running {
-                Button { toggle(event) } label: { Label(status == .running ? "Termina attività" : "Inizia attività", systemImage: status == .running ? "stop.fill" : "play.fill") }
-                    .buttonStyle(PivotPrimaryButton()).disabled(event.isAllDay || store.locked)
-            }
-            NavigationLink { detail(event) } label: { Label("Dettagli e registrazione", systemImage: "slider.horizontal.3") }.buttonStyle(PivotSecondaryButton())
+            if !event.location.isEmpty { Label(event.location, systemImage: "mappin.and.ellipse").font(.caption).foregroundStyle(PivotTheme.muted) }
+            NavigationLink { CoachView(contextEventID: event.id) } label: {
+                Label(isPast ? "Racconta a Pivot" : "Apri attività", systemImage: isPast ? "bubble.left.fill" : "arrow.right")
+            }.buttonStyle(PivotPrimaryButton())
+            NavigationLink { detail(event) } label: { Text("Dettagli e registrazione").font(.caption).foregroundStyle(PivotTheme.muted) }
+                .accessibilityIdentifier("activity-detail")
+        }.overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 3).fill(Color(calendarItem: event)).frame(width: 5).padding(.vertical, 24) }
+    }
+    private var healthSheet: some View {
+        NavigationStack {
+            PivotScreen {
+                PivotHeader(title: "Salute", subtitle: "Dati disponibili, senza registrare tutto a mano")
+                Text(health.status).font(.subheadline).foregroundStyle(PivotTheme.muted)
+                Button("Collega / aggiorna Salute") { Task { await health.connect(store: store, events: calendar.events) } }.buttonStyle(PivotPrimaryButton()).disabled(health.isRefreshing || store.locked)
+                if let sleep = health.sleep(on: day) {
+                    PivotCard { Label("Sonno rilevato", systemImage: "bed.double.fill"); Text(ActivityTiming.duration(sleep.durationSeconds)).font(.title2.bold()); Text("\(PivotDate.shortDate(sleep.start)) \(PivotDate.time(sleep.start)) – \(PivotDate.time(sleep.end))").font(.caption) }
+                }
+                ForEach(health.workouts.filter { PivotDate.calendar.isDate($0.start, inSameDayAs: day) }) { workout in
+                    let matches = HealthImport.candidates(workout, events: items)
+                    PivotCard {
+                        Label(workout.type == "walk" ? "Camminata" : (workout.type == "hike" ? "Escursione" : "Allenamento"), systemImage: "figure.walk")
+                        Text("\(PivotDate.time(workout.start)) · \(ActivityTiming.duration(workout.durationSeconds))").font(.subheadline)
+                        let linked = items.first { store.data.records[$0.id]?.health?.id == workout.id }
+                        Text(linked.map { "Collegato all’evento: \($0.title)" } ?? (matches.isEmpty ? "Attività generale: non conta come allenamento programmato." : "Collegamento non confermato: controlla i dettagli dell’attività.")).font(.caption).foregroundStyle(PivotTheme.muted)
+                    }
+                }
+            }.navigationTitle("Salute").toolbar { Button("Chiudi") { showHealth = false } }
+        }.presentationDragIndicator(.visible)
+    }
+    private func detail(_ event: CalendarItem) -> some View { EventDetailView(event: event, initial: store.record(for: event), rule: store.rule(for: event)) }
+    private func attendance(_ value: Bool) {
+        store.change { data in
+            let key = PivotDate.key(day); var check = data.checkIns[key] ?? DayCheckIn(id: key)
+            check.universityAttendance = value; data.checkIns[key] = check
         }
-    }
-    private func toggle(_ event: CalendarItem) {
-        var record = store.record(for: event)
-        if record.status == .running {
-            record.actualEnd = Date(); record.status = .completed
-            if let start = record.actualStart { record.activeMinutes = max(0, Int(Date().timeIntervalSince(start) / 60)) }
-        } else { record.actualStart = Date(); record.actualEnd = nil; record.status = .running }
-        record.updatedAt = Date()
-        if store.change({ $0.records[event.id] = record }), [.tutoring, .work].contains(event.kind) && record.status == .completed { finishedTutoring = event }
-    }
-    private func detail(_ event: CalendarItem) -> some View {
-        EventDetailView(event: event, initial: store.record(for: event), rule: store.rule(for: event))
     }
 }
 
 struct DayCheckInView: View {
     @EnvironmentObject var store: PivotStore
+    @EnvironmentObject var health: HealthService
+    @EnvironmentObject var calendar: CalendarService
+    @Environment(\.dismiss) var dismiss
     let day: Date
     @State private var check: DayCheckIn
     @State private var wake: Date
-    @Environment(\.dismiss) var dismiss
     init(day: Date, initial: DayCheckIn?) {
         self.day = day
         _check = State(initialValue: initial ?? .init(id: PivotDate.key(day)))
@@ -165,34 +157,37 @@ struct DayCheckInView: View {
         PivotScreen {
             PivotHeader(title: "Come stai?", subtitle: DisplayDate.label(day).capitalized)
             PivotCard(tint: PivotTheme.amber) {
-                Label("La tua mattina", systemImage: "sun.max.fill").font(.headline).foregroundStyle(PivotTheme.amber)
+                Label("La tua mattina", systemImage: "sun.max.fill").font(.headline)
                 ClockField(title: "Sveglia reale", value: $check.wakeTime, fallback: wake)
                 RatingField(title: "Energia", value: $check.energyMorning)
                 RatingField(title: "Umore", value: $check.moodMorning)
             }
             PivotCard(tint: PivotTheme.blue) {
-                Label("Sonno · dati Apple Watch", systemImage: "bed.double.fill").font(.headline).foregroundStyle(PivotTheme.blue)
-                Text("Copia solo i dati che vedi nell'app Sonno o Fitness. I campi mancanti possono restare vuoti: tempo a letto e tempo dormito non sono la stessa cosa.").font(.caption).foregroundStyle(PivotTheme.muted)
-                ClockField(title: "Ora in cui sei andato a letto", value: sleepBinding(\.bedtime), fallback: day.addingTimeInterval(-8 * 3600))
-                DurationField(title: "Tempo dormito", seconds: sleepBinding(\.durationSeconds), maxHours: 24)
-                IntegerField(title: "Punteggio sonno (0–100)", value: sleepBinding(\.score))
-                TextField("Qualità indicata, es. Buona (facoltativa)", text: sleepBinding(\.quality))
-                IntegerField(title: "Numero di risvegli", value: sleepBinding(\.awakenings))
-                DurationField(title: "Tempo delle interruzioni", seconds: sleepBinding(\.interruptionSeconds), maxHours: 24)
-            }
-            PivotCard(tint: PivotTheme.blue) {
-                Label("La tua sera", systemImage: "moon.stars.fill").font(.headline).foregroundStyle(PivotTheme.blue)
-                RatingField(title: "Energia", value: $check.energyEvening)
-                RatingField(title: "Umore", value: $check.moodEvening)
+                Label("Sonno", systemImage: "bed.double.fill").font(.headline)
+                if check.sleep?.importedFromHealth == true {
+                    Text("Da Salute · \(check.sleep?.durationSeconds.map(ActivityTiming.duration) ?? "—")").font(.title3.weight(.semibold))
+                    if let start = check.sleep?.bedtime { Text("\(PivotDate.shortDate(start)) · \(PivotDate.time(start))").font(.caption).foregroundStyle(PivotTheme.muted) }
+                } else { Text("Puoi leggere i dati da Salute oppure inserire quelli che vedi sull’Apple Watch.").font(.caption).foregroundStyle(PivotTheme.muted) }
+                Button("Leggi da Salute") { Task { await health.connect(store: store, events: calendar.events); if let latest = store.data.checkIns[check.id] { check.sleep = latest.sleep; check.healthWakeTime = latest.healthWakeTime; if check.wakeTime == nil { check.wakeTime = latest.wakeTime } } } }.buttonStyle(PivotSecondaryButton()).disabled(health.isRefreshing)
+                DisclosureGroup("Inserisci / correggi manualmente") {
+                    ClockField(title: "A letto: data e ora", value: sleepBinding(\.bedtime), fallback: day.addingTimeInterval(-8 * 3600))
+                    DurationField(title: "Tempo dormito", seconds: sleepBinding(\.durationSeconds), maxHours: 24)
+                    IntegerField(title: "Punteggio sonno (0–100)", value: sleepBinding(\.score))
+                    TextField("Qualità (facoltativa)", text: sleepBinding(\.quality))
+                    IntegerField(title: "Numero di risvegli", value: sleepBinding(\.awakenings))
+                    DurationField(title: "Interruzioni", seconds: sleepBinding(\.interruptionSeconds), maxHours: 24)
+                }.font(.subheadline)
             }
             PivotCard {
-                SectionHeading(title: "Qualcosa da raccontare?")
-                TextField("Come è andata, cosa ti ha aiutato…", text: $check.notes, axis: .vertical).lineLimit(4...10)
+                DisclosureGroup("La tua sera e le note") {
+                    RatingField(title: "Energia sera", value: $check.energyEvening)
+                    RatingField(title: "Umore sera", value: $check.moodEvening)
+                    TextField("Cosa ti ha aiutato, cosa ti ha bloccato…", text: $check.notes, axis: .vertical).lineLimit(3...8)
+                }.font(.subheadline)
             }
             Button("Salva check-in") {
-                if let sleep = check.sleep,
-                   !(sleep.score.map { (0...100).contains($0) } ?? true) || !(sleep.awakenings.map { (0...1000).contains($0) } ?? true) {
-                    store.error = "Controlla punteggio sonno e numero di risvegli."; return
+                if let sleep = check.sleep, !(sleep.score.map { (0...100).contains($0) } ?? true) || !(sleep.awakenings.map { (0...1000).contains($0) } ?? true) {
+                    store.error = "Controlla punteggio sonno e risvegli."; return
                 }
                 if store.change({ $0.checkIns[check.id] = check }) { dismiss() }
             }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
@@ -200,7 +195,7 @@ struct DayCheckInView: View {
     }
     private func sleepBinding<T>(_ path: WritableKeyPath<SleepRecord, T>) -> Binding<T> {
         Binding(get: { (check.sleep ?? SleepRecord())[keyPath: path] }, set: { value in
-            var sleep = check.sleep ?? SleepRecord(); sleep[keyPath: path] = value; check.sleep = sleep
+            var sleep = check.sleep ?? SleepRecord(); sleep[keyPath: path] = value; sleep.importedFromHealth = false; check.sleep = sleep
         })
     }
 }

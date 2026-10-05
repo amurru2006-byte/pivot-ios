@@ -6,6 +6,7 @@ struct SettingsView: View {
     @EnvironmentObject var store: PivotStore
     @EnvironmentObject var calendar: CalendarService
     @EnvironmentObject var notifications: NotificationService
+    @EnvironmentObject var health: HealthService
     @State private var settings = Settings()
     @State private var folderPicker = false
     @State private var importing = false
@@ -19,6 +20,19 @@ struct SettingsView: View {
         NavigationStack {
             PivotScreen {
                 PivotHeader(title: "Su misura per te", subtitle: "Calendari, promemoria e i tuoi dati al sicuro.")
+                PivotCard(tint: PivotTheme.accent) {
+                    Label("Salute e Apple Watch", systemImage: "heart.text.square.fill").font(.headline)
+                    Text(health.status).font(.subheadline).foregroundStyle(PivotTheme.muted)
+                    Button("Collega / verifica Salute") { Task { await health.connect(store: store, events: calendar.events); settings = store.data.settings } }
+                        .buttonStyle(PivotPrimaryButton()).disabled(health.isRefreshing || store.locked)
+                    Button("Aggiorna dati da Salute") { Task { await health.refresh(store: store, events: calendar.events, force: true) } }
+                        .buttonStyle(PivotSecondaryButton()).disabled(health.isRefreshing || store.data.settings.healthEnabled != true)
+                    Text("Sola lettura, quando apri Pivot. Nessuna registrazione continua. Le camminate fuori dagli orari di allenamento restano attività generale. Per revocare i permessi usa l’app Salute.").font(.caption).foregroundStyle(PivotTheme.muted)
+                    Toggle("Leggi Salute all’apertura", isOn: Binding(get: { settings.healthEnabled == true }, set: { settings.healthEnabled = $0 }))
+                    Toggle("Includi i dati Salute nei backup e resoconti", isOn: Binding(get: { settings.includeHealthInExports == true }, set: { settings.includeHealthInExports = $0 }))
+                    Text("Senza questa scelta i dati importati restano locali. I backup esterni non sono cifrati da Pivot: non condividerli pubblicamente.").font(.caption).foregroundStyle(PivotTheme.muted)
+                    Toggle("Includi la chat con Pivot nei resoconti", isOn: Binding(get: { settings.includeCoachInReports != false }, set: { settings.includeCoachInReports = $0 }))
+                }
                 PivotCard(tint: PivotTheme.blue) {
                     ActionRow(title: "I tuoi dati", subtitle: store.lastExternalBackup == nil ? "Configura il backup in iCloud Drive." : "Copia esterna configurata", icon: "externaldrive.badge.icloud")
                     Text(store.backupStatus).font(.caption).foregroundStyle(store.lastExternalBackup == nil ? PivotTheme.amber : PivotTheme.muted)
@@ -68,11 +82,11 @@ struct SettingsView: View {
                     DisclosureGroup("Orari e frequenza") {
                         VStack(alignment: .leading, spacing: 16) {
                             Stepper("Mattina: dopo \(settings.morningDelayMinutes) min", value: $settings.morningDelayMinutes, in: 10...120, step: 5)
-                            Toggle("Ripeti ogni ora gli avvisi saltati", isOn: $settings.repeatMissedNotifications)
+                            Toggle("Un secondo avviso dopo 30 minuti", isOn: $settings.repeatMissedNotifications)
                             Stepper("Fine avvisi: \(settings.quietStartHour):00", value: $settings.quietStartHour, in: 19...23)
                             Stepper("Ripresa avvisi: \(settings.quietEndHour):00", value: $settings.quietEndHour, in: 5...10)
                             Stepper("Resoconto: \(settings.eveningHour):\(String(format: "%02d", settings.eveningMinute))", value: $settings.eveningHour, in: 19...22)
-                            Text("Pranzo, merenda e cena: 30 e 10 minuti prima. Apri Pivot ogni giorno e dopo aver cambiato il calendario per aggiornare gli avvisi locali. Gli avvisi del Calendario potrebbero duplicarli.").font(.caption).foregroundStyle(PivotTheme.muted)
+                            Text("Pasti: 30 e 10 minuti prima. Altri impegni: 10 minuti prima e una domanda alla fine. Nessun avviso ogni ora. Gli avvisi del Calendario potrebbero duplicarli. Su Apple Watch arrivano secondo le impostazioni notifiche dell’iPhone e di Watch.").font(.caption).foregroundStyle(PivotTheme.muted)
                         }.padding(.top, 12)
                     }.font(.subheadline)
                 }

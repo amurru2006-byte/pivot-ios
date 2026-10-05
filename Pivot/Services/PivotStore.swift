@@ -31,6 +31,9 @@ final class PivotStore: ObservableObject {
             self.error = "Non riesco a leggere lo storico. Non lo sovrascriverò. Esporta il file dall'app File o ripristina un backup valido. Dettaglio: \(error.localizedDescription)"
         }
         if !locked {
+            if data.settings.notificationPolicyVersion == nil {
+                change { data in data.settings.notificationPolicyVersion = 1; data.settings.repeatMissedNotifications = false }
+            }
             let cents = Bundle.main.object(forInfoDictionaryKey: "PivotInitialIncomeCents") as? Int
             let year = Bundle.main.object(forInfoDictionaryKey: "PivotInitialIncomeYear") as? Int
             var ledger = data.ledger ?? AnnualLedger()
@@ -108,7 +111,7 @@ final class PivotStore: ObservableObject {
     }
     private nonisolated static func performExternalBackup(_ snapshot: AppData, bookmark: Data, documents: URL) -> BackupResult {
         do {
-            let bytes = try BackupCodec.encode(StudyFiles.completeBackup(snapshot, directory: documents))
+            let bytes = try BackupCodec.encode(StudyFiles.completeBackup(HealthImport.exportData(snapshot), directory: documents))
             var stale = false
             let folder = try URL(resolvingBookmarkData: bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &stale)
             let access = folder.startAccessingSecurityScopedResource()
@@ -142,7 +145,7 @@ final class PivotStore: ObservableObject {
     func exportURL() async throws -> URL {
         let snapshot = data, sourceFile = file, pdfDirectory = documentsDirectory, isLocked = locked
         return try await Task.detached(priority: .utility) {
-            let bytes = isLocked ? try Data(contentsOf: sourceFile) : try BackupCodec.encode(StudyFiles.completeBackup(snapshot, directory: pdfDirectory))
+            let bytes = isLocked ? try Data(contentsOf: sourceFile) : try BackupCodec.encode(StudyFiles.completeBackup(HealthImport.exportData(snapshot), directory: pdfDirectory))
             let destination = FileManager.default.temporaryDirectory.appendingPathComponent("Backup Pivot.json")
             try bytes.write(to: destination, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             return destination

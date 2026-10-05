@@ -38,9 +38,13 @@ enum Planner {
                 }.sorted { $0.0 < $1.0 }
             for block in blocks + [(dayEnd, dayEnd)] {
                 let slotEnd = min(block.0, dayEnd)
-                if slotEnd.timeIntervalSince(cursor) >= before + duration + after {
+                let available = slotEnd.timeIntervalSince(cursor) - before - after
+                let minimum = targetRule.flexibility == .compressible ? min(duration, Double(max(1, targetRule.minimumMinutes)) * 60) : duration
+                if available >= minimum {
                     let start = cursor.addingTimeInterval(before)
-                    results.append(.init(start: start, end: start.addingTimeInterval(duration), explanation: "Recupero completo: \(target.durationMinutes) minuti. Tragitto prima: \(targetRule.travelBeforeMinutes) minuti; dopo: \(targetRule.travelAfterMinutes) minuti. Nessun altro evento viene spostato."))
+                    let proposedDuration = min(duration, available)
+                    let reduction = proposedDuration < duration ? "Durata ridotta da \(target.durationMinutes) a \(Int(proposedDuration / 60)) min, entro il minimo consentito. " : "Recupero completo: \(target.durationMinutes) minuti. "
+                    results.append(.init(start: start, end: start.addingTimeInterval(proposedDuration), explanation: reduction + "Tragitto prima: \(targetRule.travelBeforeMinutes) minuti; dopo: \(targetRule.travelAfterMinutes) minuti. Nessun altro evento viene spostato."))
                 }
                 cursor = max(cursor, block.1)
                 if cursor >= dayEnd || results.count >= 3 { break }
@@ -51,9 +55,14 @@ enum Planner {
     }
     static func effectiveEvents(_ events: [CalendarItem], data: AppData) -> [CalendarItem] {
         EventCoalescer.unique(events, data: data).map { item in
-            guard let move = data.moves.last(where: { $0.source.id == item.id && !$0.syncedToCalendar }) else { return item }
-            guard CoachPlanner.matchesPlanSnapshot(move.source, item) else { return item }
             var changed = item
+            if let kind = data.rules[item.id]?.kindOverride { changed.kind = kind }
+            else if item.kind == .other, EventCoalescer.normalized(item.title).split(separator: " ").contains("lezione"), data.clients.contains(where: {
+                let name = EventCoalescer.normalized($0.name)
+                return !name.isEmpty && (" " + EventCoalescer.normalized(item.title) + " ").contains(" " + name + " ")
+            }) { changed.kind = .tutoring }
+            guard let move = data.moves.last(where: { $0.source.id == item.id && !$0.syncedToCalendar }) else { return changed }
+            guard CoachPlanner.matchesPlanSnapshot(move.source, item) else { return changed }
             changed.start = move.proposedStart
             changed.end = move.proposedEnd
             return changed
@@ -64,7 +73,10 @@ enum Planner {
             !$0.isAllDay && $0.occurs(on: now) && ![Completion.completed, .partial, .skipped].contains(data.records[$0.id]?.status ?? .pending)
         }
         if let running = relevant.first(where: { data.records[$0.id]?.status == .running }) { return running }
-        if let current = relevant.first(where: { $0.start <= now && $0.end > now && data.records[$0.id]?.status != .completed }) { return current }
+        if let current = relevant.filter({ $0.start <= now && $0.end > now }).sorted(by: {
+            let first = EventContext.priority($0, data: data, now: now), second = EventContext.priority($1, data: data, now: now)
+            return first == second ? $0.start > $1.start : first.rawValue > second.rawValue
+        }).first { return current }
         return relevant.filter { $0.end <= now && (data.records[$0.id] == nil || data.records[$0.id]?.status == .pending) }.max { $0.end < $1.end }
             ?? relevant.first(where: { $0.start > now })
     }
@@ -87,15 +99,15 @@ enum Planner {
         }
     }
     static func overlaps(on day: Date, events: [CalendarItem], data: AppData) -> [(CalendarItem, CalendarItem)] {
-        overlapsInPlannedEvents(on: day, events: plannedEvents(events, data: data))
+        overlapsInPlannedEvents(on: day, events: plannedEvents(events, data: data), data: data)
     }
-    static func overlapsInPlannedEvents(on day: Date, events: [CalendarItem]) -> [(CalendarItem, CalendarItem)] {
+    static func overlapsInPlannedEvents(on day: Date, events: [CalendarItem], data: AppData = AppData()) -> [(CalendarItem, CalendarItem)] {
         let items = events.filter { !$0.isAllDay && $0.occurs(on: day) }.sorted { $0.start < $1.start }
         var pairs: [(CalendarItem, CalendarItem)] = []
         for i in items.indices {
             for j in items.indices where j > i {
                 if items[j].start >= items[i].end { break }
-                if items[i].start < items[j].end { pairs.append((items[i], items[j])) }
+                if items[i].start < items[j].end && EventContext.relation(items[i], items[j], data: data).0 != .included { pairs.append((items[i], items[j])) }
             }
         }
         return pairs

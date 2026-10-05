@@ -7,6 +7,7 @@ struct PivotApp: App {
     @StateObject private var calendar = CalendarService()
     @StateObject private var notifications = NotificationService()
     @StateObject private var coachModel = LocalCoachService()
+    @StateObject private var health = HealthService()
     var body: some Scene {
         WindowGroup {
             RootView()
@@ -14,6 +15,7 @@ struct PivotApp: App {
                 .environmentObject(calendar)
                 .environmentObject(notifications)
                 .environmentObject(coachModel)
+                .environmentObject(health)
                 .preferredColorScheme(.dark)
                 .tint(PivotTheme.accent)
                 .environment(\.locale, Locale(identifier: "it_IT"))
@@ -27,12 +29,15 @@ struct RootView: View {
     @EnvironmentObject var store: PivotStore
     @EnvironmentObject var calendar: CalendarService
     @EnvironmentObject var notifications: NotificationService
+    @EnvironmentObject var health: HealthService
     @Environment(\.scenePhase) var scene
     @State private var selectedTab = PreviewMode.enabled ? PreviewMode.tab : 0
     @State private var previewReady = !PreviewMode.enabled
     @State private var refreshGate = RefreshGate()
     @State private var lessonToConfirm: CalendarItem?
     @State private var deferredLessonIDs: Set<String> = []
+    @State private var question: EventDecision?
+    @State private var offeredQuestion = false
     private let refreshClock = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
     var body: some View {
         Group {
@@ -90,6 +95,17 @@ struct RootView: View {
         .sheet(item: $lessonToConfirm, onDismiss: { promptForLesson() }) { event in
             LessonLogisticsView(event: event, onDefer: { deferredLessonIDs.insert(event.id) })
         }
+        .sheet(item: $question) { value in DecisionInboxView(initialID: value.id) }
+        .sheet(item: $notifications.route) { route in
+            NavigationStack {
+                if let id = route.eventID, let event = Planner.plannedEvents(calendar.events, data: store.data).first(where: { $0.id == id }) {
+                    EventDetailView(event: event, initial: notificationRecord(event, outcome: route.outcome), rule: store.rule(for: event))
+                } else if route.destination == "checkin" {
+                    DayCheckInView(day: Date(), initial: store.data.checkIns[PivotDate.key(Date())])
+                } else if route.destination == "diary" { DiaryView() }
+                else { Text("Questo evento è cambiato. Apri la giornata aggiornata.").padding() }
+            }.presentationDragIndicator(.visible)
+        }
         .alert("Pivot", isPresented: Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })) {
             Button("OK") { store.error = nil }
         } message: { Text(store.error ?? "") }
@@ -118,12 +134,26 @@ struct RootView: View {
                 store.change { $0.lessonPrompts = prompts }
             }
         }
+        if calendar.hasAccess && !store.locked && !store.isRestoring {
+            let decisions = EventContext.refreshed(events: calendar.events, data: store.data, now: Date())
+            if decisions != store.data.decisions { store.change { $0.decisions = decisions } }
+        }
+        await health.refresh(store: store, events: calendar.events)
         promptForLesson()
+        if !offeredQuestion, lessonToConfirm == nil, notifications.route == nil, scene == .active,
+           let value = store.data.decisions?.first(where: { !$0.deferred && $0.relation == .uncertain && $0.date < Date().addingTimeInterval(86400) }) {
+            offeredQuestion = true; question = value
+        }
         await notifications.schedule(events: Planner.plannedEvents(calendar.events, data: store.data), data: store.data)
     }
     private func promptForLesson() {
-        guard !PreviewMode.enabled, scene == .active, !store.locked, !store.isRestoring, lessonToConfirm == nil else { return }
+        guard !PreviewMode.enabled, scene == .active, !store.locked, !store.isRestoring, lessonToConfirm == nil, question == nil, notifications.route == nil else { return }
         lessonToConfirm = LessonLogistics.pending(events: calendar.events, data: store.data, now: Date()).first { !deferredLessonIDs.contains($0.id) }
+    }
+    private func notificationRecord(_ event: CalendarItem, outcome: Completion?) -> EventRecord {
+        var record = store.record(for: event)
+        if let outcome { record.status = outcome }
+        return record
     }
 }
 
