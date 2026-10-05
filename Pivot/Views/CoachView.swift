@@ -37,7 +37,7 @@ struct CoachView: View {
                     Label("È l’allenamento del giorno?", systemImage: "figure.strengthtraining.traditional").font(.headline)
                     Text("Da Salute: \(PivotDate.shortDate(review.workout.start)) · \(PivotDate.time(review.workout.start))–\(PivotDate.time(review.workout.end)) · \(ActivityTiming.duration(review.workout.durationSeconds))").font(.subheadline)
                     Text("Il tipo indica una sessione strutturata; non deduco automaticamente lo sforzo o la colazione.").font(.caption).foregroundStyle(PivotTheme.muted)
-                    ForEach(calendar.events.filter { review.eventIDs.contains($0.id) }) { event in
+                    ForEach(Planner.plannedEvents(calendar.events, data: store.data).filter { review.eventIDs.contains($0.id) }) { event in
                         Button("Sì, è ‘\(event.title)’") { prepareActual(event, workout: review.workout, start: review.workout.start) }.buttonStyle(PivotPrimaryButton()).disabled(store.data.actualWorkoutDraft != nil)
                     }
                     Button("No, è un’altra attività") {

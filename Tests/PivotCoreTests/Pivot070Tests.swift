@@ -80,6 +80,17 @@ final class Pivot070Tests: XCTestCase {
         var changed = wake; changed.start = changed.start.addingTimeInterval(60)
         XCTAssertNotNil(WorkoutContext.validate(value, events: [gym, changed], now: now))
     }
+    func testConfirmedWorkoutKeepsSavedIdentityWhenCalendarCopiesMerge() {
+        var first = gym; first.id = "icloud-saved"; first.eventIdentifier = "icloud-event"; first.calendarIdentifier = "icloud"; first.externalIdentifier = "shared"; first.sourceIdentifier = "icloud"; first.sourceTitle = "iCloud"; first.recurring = false
+        var second = first; second.id = "google-copy"; second.eventIdentifier = "google-event"; second.calendarIdentifier = "google"; second.sourceIdentifier = "google"; second.sourceTitle = "Google"
+        var data = AppData(); data.records[first.id] = EventRecord(id: first.id, snapshot: first)
+        let current = EventCoalescer.unique([first, second], data: data)
+        XCTAssertEqual(current.count, 1); XCTAssertEqual(current[0].id, first.id); XCTAssertEqual(current[0].calendarIdentifier, second.calendarIdentifier)
+        var value = draft(); value.source = current[0]
+        XCTAssertNil(WorkoutContext.validate(value, events: current, now: now))
+        WorkoutContext.applyLocally(value, events: current, data: &data, synced: true, now: now)
+        XCTAssertEqual(data.records[first.id]?.status, .completed); XCTAssertNil(data.records[second.id])
+    }
     func testConfirmationStoresOnlyActualKnownDataAndKeepsBreakfastPending() {
         let breakfast = event("colazione", .meal, 8, 9); var data = AppData(); let value = draft()
         WorkoutContext.applyLocally(value, events: [gym, breakfast], data: &data, synced: false, now: now)
