@@ -62,7 +62,7 @@ struct WorkoutChatCard: View {
         guard !applying, !store.locked, !store.isRestoring, let draft else { return }
         applying = true; defer { applying = false }
         await calendar.refresh(settings: store.data.settings)
-        let confirmedEvents = calendar.events
+        let confirmedEvents = EventCoalescer.unique(calendar.events, data: store.data)
         if let error = WorkoutContext.validate(draft, events: confirmedEvents, now: Date()) { message = error; return }
         let moves = WorkoutContext.moves(draft, events: confirmedEvents)
         var simulated = store.data

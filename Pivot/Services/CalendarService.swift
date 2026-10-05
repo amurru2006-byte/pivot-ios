@@ -110,10 +110,11 @@ private actor CalendarWorker {
     func applyActualWorkout(_ draft: ActualWorkoutDraft, data: AppData) throws {
         guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { throw CalendarFailure.noAccess }
         let fresh = snapshot(settings: data.settings)
-        if let problem = WorkoutContext.validate(draft, events: fresh.events, now: Date()) {
+        let current = EventCoalescer.unique(fresh.events, data: data)
+        if let problem = WorkoutContext.validate(draft, events: current, now: Date()) {
             throw NSError(domain: "PivotCalendar", code: 2, userInfo: [NSLocalizedDescriptionKey: problem])
         }
-        let moves = WorkoutContext.moves(draft, events: fresh.events)
+        let moves = WorkoutContext.moves(draft, events: current)
         // Preflight every occurrence, then commit the complete, explicitly confirmed batch.
         var updates: [(EKEvent, PlanMove)] = []
         for move in moves {
