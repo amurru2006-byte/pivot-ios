@@ -96,6 +96,14 @@ final class Pivot070Tests: XCTestCase {
         XCTAssertNil(HealthImport.exportData(data).workoutReviews); XCTAssertNil(HealthImport.exportData(data).actualWorkoutDraft)
         data.settings.includeHealthInExports = true; XCTAssertNotNil(HealthImport.exportData(data).actualWorkoutDraft)
     }
+    func testHealthDerivedCalendarMovesAreExcludedFromDefaultExports() {
+        var value = draft(); value.health = workout(); var data = AppData()
+        WorkoutContext.applyLocally(value, events: [gym], data: &data, synced: false, now: now)
+        XCTAssertEqual(data.moves.first?.healthDerived, true)
+        XCTAssertTrue(HealthImport.exportData(data).moves.isEmpty)
+        XCTAssertNil(HealthImport.exportData(data).records[gym.id]?.actualStart)
+        data.settings.includeHealthInExports = true; XCTAssertEqual(HealthImport.exportData(data).moves.count, 1)
+    }
     func testConfirmingUnchangedHealthSleepDoesNotRemovePrivacyFlag() {
         var data = AppData(); let value = draft(), key = PivotDate.key(now)
         var sleep = SleepRecord(); sleep.bedtime = value.bedtime; sleep.durationSeconds = 24_000; sleep.importedFromHealth = true

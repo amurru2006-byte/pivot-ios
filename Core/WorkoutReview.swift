@@ -21,6 +21,7 @@ struct ActualWorkoutDraft: Codable, Identifiable {
     var breakfastEnd: Date?
     var contextEvents: [CalendarItem]? = nil
     var wakeEnd: Date? = nil
+    var healthDerived: Bool? = nil
 }
 
 enum WorkoutContext {
@@ -118,6 +119,8 @@ enum WorkoutContext {
         guard validate(draft, events: events, now: now) == nil else { return }
         let moves = moves(draft, events: events)
         for var move in moves {
+            let check = data.checkIns[PivotDate.key(draft.start)]
+            move.healthDerived = draft.health != nil || (check?.sleep?.importedFromHealth == true) || (check?.healthWakeTime != nil && check?.healthWakeTime == draft.wake) ? true : nil
             move.syncedToCalendar = synced
             data.moves.removeAll { !$0.syncedToCalendar && $0.source.id == move.source.id }; data.moves.append(move)
         }

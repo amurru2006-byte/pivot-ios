@@ -100,7 +100,13 @@ enum HealthImport {
         var result = data
         result.workoutReviews = nil
         result.coach?.messages.removeAll { $0.healthDerived == true }
-        if result.actualWorkoutDraft?.health != nil { result.actualWorkoutDraft = nil }
+        if result.actualWorkoutDraft?.health != nil || result.actualWorkoutDraft?.healthDerived == true { result.actualWorkoutDraft = nil }
+        let derivedIDs = Set(result.moves.filter { $0.healthDerived == true }.map { $0.source.id })
+        result.moves.removeAll { $0.healthDerived == true }
+        result.coach?.pendingCalendarChanges.removeAll { $0.move.healthDerived == true }
+        for id in derivedIDs {
+            result.records[id]?.actualStart = nil; result.records[id]?.actualEnd = nil; result.records[id]?.activeMinutes = 0
+        }
         for key in Array(result.checkIns.keys) where result.checkIns[key]?.sleep?.importedFromHealth == true {
             result.checkIns[key]?.sleep = nil
             if result.checkIns[key]?.healthWakeTime == result.checkIns[key]?.wakeTime { result.checkIns[key]?.wakeTime = nil }

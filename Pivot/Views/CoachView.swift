@@ -167,7 +167,11 @@ struct CoachView: View {
         }
         .navigationTitle("Coach")
         .onChange(of: dictation.transcript) { _, value in if !value.isEmpty { input = (dictationPrefix.isEmpty ? "" : dictationPrefix + " ") + value } }
-        .onChange(of: scenePhase) { _, phase in if phase != .active { dictation.stop() } }
+        .onChange(of: scenePhase) { _, phase in
+            // Permission dialogs temporarily make the scene inactive. Let the
+            // request finish; actual backgrounding or leaving still cancels it.
+            if phase == .background || (phase == .inactive && dictation.isListening) { dictation.stop() }
+        }
         .onDisappear { dictation.stop() }
         .toolbar { Button { Task { await calendar.refresh(settings: store.data.settings) } } label: { Image(systemName: "arrow.clockwise") } }
         .sheet(item: $responseRecord, onDismiss: {
@@ -302,11 +306,12 @@ struct CoachView: View {
         let context = EventCoalescer.unique(calendar.events, data: store.data)
         let draft = ActualWorkoutDraft(source: event, health: workout, start: start, end: workout?.end,
             wake: check?.wakeTime.flatMap { $0 <= start ? $0 : nil }, bedtime: check?.sleep?.bedtime,
-            breakfastDone: nil, breakfastStart: nil, breakfastEnd: nil, contextEvents: context.filter { $0.kind == .routine || $0.kind == .meal })
+            breakfastDone: nil, breakfastStart: nil, breakfastEnd: nil, contextEvents: context.filter { $0.kind == .routine || $0.kind == .meal },
+            healthDerived: workout != nil || check?.sleep?.importedFromHealth == true || check?.healthWakeTime != nil ? true : nil)
         store.change { data in
             data.actualWorkoutDraft = draft
             var coach = data.coachState; coach.messages.append(.init(dayKey: PivotDate.key(Date()), role: .coach,
-                text: "Prima di aggiornare ‘\(event.title)’ alle \(PivotDate.time(start)), conferma fine dell’allenamento, sveglia reale, sonno e colazione nel riquadro. Nessun dato mancante sarà inventato.", healthDerived: workout == nil ? nil : true)); data.coachState = coach
+                text: "Prima di aggiornare ‘\(event.title)’ alle \(PivotDate.time(start)), conferma fine dell’allenamento, sveglia reale, sonno e colazione nel riquadro. Nessun dato mancante sarà inventato.", healthDerived: draft.healthDerived)); data.coachState = coach
         }
     }
     private func accept(_ option: CoachOption) {
