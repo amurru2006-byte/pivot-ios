@@ -63,6 +63,13 @@ enum BackupCodec {
               data.moves.allSatisfy({ $0.proposedEnd > $0.proposedStart }),
               data.payments.allSatisfy({ payment in payment.amountCents > 0 && data.income.contains(where: { entry in entry.id == payment.incomeID }) }),
               data.income.allSatisfy({ entry in data.payments.filter { $0.incomeID == entry.id }.reduce(0) { $0 + $1.amountCents } == entry.paidCents }) else { throw BackupError.invalidData }
+        if let reviews = data.workoutReviews {
+            guard Set(reviews.map(\.id)).count == reviews.count,
+                  reviews.allSatisfy({ $0.workout.end > $0.workout.start && $0.workout.durationSeconds > 0 && $0.workout.durationSeconds <= 86400 && ($0.workout.activeCalories.map { $0.isFinite && $0 >= 0 } ?? true) }) else { throw BackupError.invalidData }
+        }
+        if let draft = data.actualWorkoutDraft {
+            guard draft.source.kind == .workout, draft.end.map({ $0 > draft.start }) ?? true else { throw BackupError.invalidData }
+        }
         if let coach = data.coach {
             guard Set(coach.messages.map(\.id)).count == coach.messages.count,
                   Set(coach.options.map(\.id)).count == coach.options.count,

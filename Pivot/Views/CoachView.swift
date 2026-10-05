@@ -14,6 +14,10 @@ struct CoachView: View {
     @State private var applyingID: UUID?
     @State private var responseRecord: EventRecord?
     @State private var returnHomeAfterResponse = false
+    @StateObject private var dictation = DictationService()
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var dictationPrefix = ""
+    private var reviews: [WorkoutReview] { (store.data.workoutReviews ?? []).filter { !$0.dismissed && !$0.resolved } }
     private var contextEvent: CalendarItem? { Planner.plannedEvents(calendar.events, data: store.data).first { $0.id == contextEventID } }
     private var state: CoachState { store.data.coachState }
     private var todayMessages: [CoachMessage] { state.messages.filter { $0.dayKey == PivotDate.key(historyDay) } }
@@ -26,7 +30,33 @@ struct CoachView: View {
 
     var body: some View {
         PivotScreen {
-            PivotHeader(title: "Pivot Coach", subtitle: "Riorganizza senza perdere il controllo")
+            PivotHeader(title: "Parla con Pivot", subtitle: "Racconta cosa è cambiato. Decidi tu cosa applicare.")
+            if store.data.actualWorkoutDraft != nil { WorkoutChatCard() }
+            ForEach(reviews) { review in
+                PivotCard(tint: PivotTheme.blue) {
+                    Label("È l’allenamento del giorno?", systemImage: "figure.strengthtraining.traditional").font(.headline)
+                    Text("Da Salute: \(PivotDate.shortDate(review.workout.start)) · \(PivotDate.time(review.workout.start))–\(PivotDate.time(review.workout.end)) · \(ActivityTiming.duration(review.workout.durationSeconds))").font(.subheadline)
+                    Text("Il tipo indica una sessione strutturata; non deduco automaticamente lo sforzo o la colazione.").font(.caption).foregroundStyle(PivotTheme.muted)
+                    ForEach(calendar.events.filter { review.eventIDs.contains($0.id) }) { event in
+                        Button("Sì, è ‘\(event.title)’") { prepareActual(event, workout: review.workout, start: review.workout.start) }.buttonStyle(PivotPrimaryButton()).disabled(store.data.actualWorkoutDraft != nil)
+                    }
+                    Button("No, è un’altra attività") {
+                        store.change { data in
+                            if let index = data.workoutReviews?.firstIndex(where: { $0.id == review.id }) { data.workoutReviews?[index].dismissed = true }
+                            var coach = data.coachState; coach.messages.append(.init(dayKey: PivotDate.key(Date()), role: .user, text: "L’attività Salute delle \(PivotDate.time(review.workout.start)) non è l’allenamento programmato.", healthDerived: true)); data.coachState = coach
+                        }
+                    }.buttonStyle(PivotSecondaryButton())
+                }
+            }
+            if !WorkoutContext.missingCardio(events: calendar.events, data: store.data, now: Date()).isEmpty {
+                PivotCard {
+                    Label("Cardio da chiarire", systemImage: "figure.walk").font(.headline)
+                    Text("Il cardio previsto non risulta completato. Lo hai fatto senza Apple Watch, vuoi recuperarlo o è saltato? Una camminata breve non lo sostituisce automaticamente.").font(.subheadline)
+                    ForEach(WorkoutContext.missingCardio(events: calendar.events, data: store.data, now: Date())) { event in
+                        Button(event.title + " · segna l’esito") { responseRecord = store.record(for: event) }.buttonStyle(PivotSecondaryButton())
+                    }
+                }
+            }
             if let event = contextEvent {
                 PivotCard(tint: Color(calendarItem: event)) {
                     Label(event.kind.label, systemImage: event.kind.icon).foregroundStyle(Color.readableCalendar(event)).font(.caption)
@@ -67,9 +97,9 @@ struct CoachView: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 SectionHeading(title: "Conversazione")
-                DaySelector(day: $historyDay)
+                DisclosureGroup(DisplayDate.label(historyDay, format: "d MMMM")) { DaySelector(day: $historyDay) }.font(.caption).foregroundStyle(PivotTheme.muted)
                 if todayMessages.isEmpty {
-                    EmptyCard(title: "Raccontami cosa è cambiato", message: "Per esempio: “Ho saltato la palestra, riesco a recuperarla oggi?”", icon: "brain.head.profile")
+                    Text("Puoi scrivere o dettare: “Sono andato in palestra alle 5:50 AM oggi”. Ti chiederò gli orari che mancano prima di cambiare qualcosa.").font(.subheadline).foregroundStyle(PivotTheme.muted)
                 } else {
                     ForEach(todayMessages) { item in bubble(item) }
                 }
@@ -86,12 +116,20 @@ struct CoachView: View {
             }
 
             PivotCard {
-                TextField("Scrivi cosa è saltato o cosa vuoi spostare…", text: $input, axis: .vertical)
+                TextField(dictation.isListening ? "Ti ascolto…" : "Scrivi o detta cosa è cambiato…", text: $input, axis: .vertical)
                     .accessibilityIdentifier("coach-message-input")
                     .lineLimit(2...6).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 14))
-                Button { send(input) } label: { Label("Invia al Coach", systemImage: "paperplane.fill") }
+                HStack {
+                    Button {
+                        if dictation.isListening { dictation.stop() }
+                        else { dictationPrefix = input.trimmingCharacters(in: .whitespacesAndNewlines); Task { await dictation.start() } }
+                    } label: { Label(dictation.isListening ? "Termina" : "Detta", systemImage: dictation.isListening ? "stop.circle.fill" : "mic.fill") }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("coach-dictation")
+                    Button { dictation.stop(); send(input) } label: { Label("Invia", systemImage: "arrow.up") }
                     .accessibilityIdentifier("coach-send")
                     .buttonStyle(PivotPrimaryButton()).disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.locked || coachModel.isGenerating)
+                }
+                if dictation.isListening { Text("Dettatura attiva · controlla il testo prima di inviare").font(.caption).foregroundStyle(PivotTheme.accent) }
+                if let status = dictation.message { Text(status).font(.caption).foregroundStyle(PivotTheme.amber) }
                 if coachModel.isGenerating {
                     HStack {
                         ProgressView()
@@ -128,6 +166,9 @@ struct CoachView: View {
             }.font(.subheadline)
         }
         .navigationTitle("Coach")
+        .onChange(of: dictation.transcript) { _, value in if !value.isEmpty { input = (dictationPrefix.isEmpty ? "" : dictationPrefix + " ") + value } }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { dictation.stop() } }
+        .onDisappear { dictation.stop() }
         .toolbar { Button { Task { await calendar.refresh(settings: store.data.settings) } } label: { Image(systemName: "arrow.clockwise") } }
         .sheet(item: $responseRecord, onDismiss: {
             if returnHomeAfterResponse { returnHomeAfterResponse = false; dismiss() }
@@ -214,6 +255,16 @@ struct CoachView: View {
         guard !clean.isEmpty, !store.locked, !coachModel.isGenerating else { return }
         let now = Date()
         historyDay = now
+        if let start = WorkoutContext.statedStart(clean, now: now) {
+            let candidates = EventCoalescer.unique(calendar.events, data: store.data).filter { $0.kind == .workout && CardioKind.suggested($0.title) == nil && $0.occurs(on: start) }
+            if candidates.count == 1, let event = candidates.first, store.data.actualWorkoutDraft == nil {
+                prepareActual(event, workout: nil, start: start)
+                store.change { data in var coach = data.coachState; coach.messages.append(.init(dayKey: PivotDate.key(now), role: .user, text: clean)); data.coachState = coach }
+                input = ""; return
+            }
+            message = "Ci sono più allenamenti, nessun evento palestra oppure una conferma già aperta. Completa la proposta o apri l’attività precisa: non ne scelgo una a caso."
+            return
+        }
         let result = CoachPlanner.respond(message: clean, events: calendar.events, data: store.data, now: now, targetID: targetID ?? contextEventID)
         let context = contextForModel(now: now)
         let coachReplyID = UUID()
@@ -242,6 +293,19 @@ struct CoachView: View {
         message = result.options.isEmpty ? "Nessuna modifica è stata preparata." : nil
     }
 
+    private func prepareActual(_ event: CalendarItem, workout: HealthWorkoutSummary?, start: Date) {
+        guard store.data.actualWorkoutDraft == nil else { return }
+        let check = store.data.checkIns[PivotDate.key(start)]
+        let context = EventCoalescer.unique(calendar.events, data: store.data)
+        let draft = ActualWorkoutDraft(source: event, health: workout, start: start, end: workout?.end,
+            wake: check?.wakeTime.flatMap { $0 <= start ? $0 : nil }, bedtime: check?.sleep?.bedtime,
+            breakfastDone: nil, breakfastStart: nil, breakfastEnd: nil, contextEvents: context.filter { $0.kind == .routine || $0.kind == .meal })
+        store.change { data in
+            data.actualWorkoutDraft = draft
+            var coach = data.coachState; coach.messages.append(.init(dayKey: PivotDate.key(Date()), role: .coach,
+                text: "Prima di aggiornare ‘\(event.title)’ alle \(PivotDate.time(start)), conferma fine dell’allenamento, sveglia reale, sonno e colazione nel riquadro. Nessun dato mancante sarà inventato.", healthDerived: workout == nil ? nil : true)); data.coachState = coach
+        }
+    }
     private func accept(_ option: CoachOption) {
         guard !store.locked else { return }
         let now = Date()

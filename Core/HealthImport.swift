@@ -98,6 +98,9 @@ enum HealthImport {
     static func exportData(_ data: AppData) -> AppData {
         guard data.settings.includeHealthInExports != true else { return data }
         var result = data
+        result.workoutReviews = nil
+        result.coach?.messages.removeAll { $0.healthDerived == true }
+        if result.actualWorkoutDraft?.health != nil { result.actualWorkoutDraft = nil }
         for key in Array(result.checkIns.keys) where result.checkIns[key]?.sleep?.importedFromHealth == true {
             result.checkIns[key]?.sleep = nil
             if result.checkIns[key]?.healthWakeTime == result.checkIns[key]?.wakeTime { result.checkIns[key]?.wakeTime = nil }

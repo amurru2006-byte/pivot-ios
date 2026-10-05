@@ -7,6 +7,7 @@ struct TodayView: View {
     @State private var day = Date()
     @State private var showDecisions = false
     @State private var showHealth = false
+    @State private var quickRecord: EventRecord?
     private var check: DayCheckIn? { store.data.checkIns[PivotDate.key(day)] }
     private var items: [CalendarItem] {
         Planner.plannedEvents(calendar.events, data: store.data).filter { $0.occurs(on: day) && store.data.records[$0.id]?.status != .skipped }
@@ -28,7 +29,9 @@ struct TodayView: View {
                         Text(DisplayDate.label(day, format: "d MMMM") + " · \(finished.count)/\(items.count) attività segnate").font(.caption).foregroundStyle(PivotTheme.muted)
                     }
                     Spacer()
-                    NavigationLink { CoachView() } label: { Image(systemName: "bubble.left.and.bubble.right.fill").font(.title3).padding(12).background(PivotTheme.accent.opacity(0.1), in: Circle()) }
+                    NavigationLink { CoachView() } label: {
+                        VStack(spacing: 3) { Image(systemName: "bubble.left.and.bubble.right.fill").font(.title3); Text("Pivot").font(.caption2.weight(.semibold)) }.padding(12).background(PivotTheme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 18))
+                    }
                         .accessibilityLabel("Parla con Pivot").accessibilityIdentifier("open-pivot-coach")
                 }
                 if store.locked {
@@ -52,16 +55,20 @@ struct TodayView: View {
                             .foregroundStyle(decisions.isEmpty ? PivotTheme.muted : PivotTheme.amber)
                     }.accessibilityIdentifier("decision-inbox")
                 }.font(.caption.weight(.semibold)).padding(.vertical, 2)
+                if store.data.actualWorkoutDraft != nil || (store.data.workoutReviews ?? []).contains(where: { !$0.resolved && !$0.dismissed }) {
+                    NavigationLink { CoachView() } label: { Label("Pivot ha una domanda sull’allenamento", systemImage: "bubble.left.and.bubble.right") }.buttonStyle(PivotSecondaryButton())
+                }
 
                 VStack(alignment: .leading, spacing: 12) {
-                    SectionHeading(title: "In arrivo", detail: "\(active.filter { $0.id != focused?.id }.count)")
+                    SectionHeading(title: "La tua agenda", detail: "\(active.filter { $0.id != focused?.id }.count)")
+                    Text("Spunta ciò che hai fatto, anche fuori dall’orario previsto.").font(.caption).foregroundStyle(PivotTheme.muted)
                     ForEach(Array(active.filter { $0.id != focused?.id }.prefix(3))) { event in
-                        NavigationLink { detail(event) } label: { EventRow(event: event, record: store.data.records[event.id], day: day) }.buttonStyle(.plain)
+                        agendaRow(event)
                     }
                     if active.filter({ $0.id != focused?.id }).count > 3 {
                         DisclosureGroup("Mostra le altre attività") {
                             ForEach(Array(active.filter { $0.id != focused?.id }.dropFirst(3))) { event in
-                                NavigationLink { detail(event) } label: { EventRow(event: event, record: store.data.records[event.id], day: day) }.buttonStyle(.plain)
+                                agendaRow(event)
                             }
                         }.font(.subheadline)
                     }
@@ -71,7 +78,7 @@ struct TodayView: View {
                     DisclosureGroup("Già segnate · \(finished.count)") {
                         VStack(spacing: 12) {
                             ForEach(finished) { event in
-                                NavigationLink { detail(event) } label: { EventRow(event: event, record: store.data.records[event.id], day: day) }.buttonStyle(.plain)
+                                agendaRow(event)
                             }
                         }.padding(.top, 12)
                     }.font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.muted)
@@ -97,6 +104,7 @@ struct TodayView: View {
             .refreshable { await calendar.refresh(settings: store.data.settings); await health.refresh(store: store, events: calendar.events, force: true) }
             .sheet(isPresented: $showDecisions) { DecisionInboxView() }
             .sheet(isPresented: $showHealth) { healthSheet }
+            .sheet(item: $quickRecord) { record in NavigationStack { EventDetailView(event: record.snapshot, initial: record, rule: store.rule(for: record.snapshot)) }.presentationDragIndicator(.visible) }
         }
     }
     private func focusCard(_ event: CalendarItem) -> some View {
@@ -109,6 +117,7 @@ struct TodayView: View {
             }
             Text(event.title).font(.system(.title2, design: .rounded, weight: .bold)).fixedSize(horizontal: false, vertical: true)
             Label(event.timeSummary, systemImage: "clock").font(.subheadline).foregroundStyle(PivotTheme.muted)
+            Button { complete(event) } label: { Label("Attività svolta", systemImage: "square") }.font(.subheadline).foregroundStyle(PivotTheme.accent).frame(minHeight: 44)
             if !event.location.isEmpty { Label(event.location, systemImage: "mappin.and.ellipse").font(.caption).foregroundStyle(PivotTheme.muted) }
             NavigationLink { CoachView(contextEventID: event.id) } label: {
                 Label(isPast ? "Racconta a Pivot" : "Apri attività", systemImage: isPast ? "bubble.left.fill" : "arrow.right")
@@ -139,6 +148,31 @@ struct TodayView: View {
         }.presentationDragIndicator(.visible)
     }
     private func detail(_ event: CalendarItem) -> some View { EventDetailView(event: event, initial: store.record(for: event), rule: store.rule(for: event)) }
+    private func agendaRow(_ event: CalendarItem) -> some View {
+        let record = store.data.records[event.id], done = [Completion.completed, .partial].contains(record?.status ?? .pending)
+        return HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(event.agendaStart(on: day)).font(.subheadline.weight(.semibold))
+                if !event.isAllDay { Text(event.agendaEnd(on: day)).font(.caption).foregroundStyle(PivotTheme.muted) }
+                Button { if done { quickRecord = store.record(for: event) } else { complete(event) } } label: {
+                    Image(systemName: done ? "checkmark.square.fill" : "square").font(.title3).foregroundStyle(done ? PivotTheme.accent : PivotTheme.muted).frame(width: 44, height: 44)
+                }.buttonStyle(.plain).accessibilityLabel(done ? "Rivedi esito di \(event.title)" : "Segna svolta \(event.title)").accessibilityIdentifier("quick-complete-" + event.id)
+            }.frame(width: 47, alignment: .leading)
+            NavigationLink { detail(event) } label: { EventRow(event: event, record: record, day: day).eventCard }.buttonStyle(.plain).opacity(done ? 0.52 : 1)
+        }
+    }
+    private func complete(_ event: CalendarItem) {
+        guard !store.locked else { return }
+        var record = store.record(for: event)
+        if [.tutoring, .work, .workout].contains(event.kind) || event.title.lowercased().contains("sonno") {
+            record.status = .completed; quickRecord = record; return
+        }
+        record.status = .completed; record.updatedAt = Date()
+        store.change { data in
+            data.records[event.id] = record
+            var coach = data.coachState; coach.messages.append(.init(dayKey: PivotDate.key(day), role: .user, text: "Ho svolto ‘\(event.title)’. Orari reali non indicati.")); data.coachState = coach
+        }
+    }
     private func attendance(_ value: Bool) {
         store.change { data in
             let key = PivotDate.key(day); var check = data.checkIns[key] ?? DayCheckIn(id: key)

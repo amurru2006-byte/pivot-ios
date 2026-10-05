@@ -1,6 +1,22 @@
 import XCTest
 
 final class PivotInteractionTests: XCTestCase {
+    func testSettingsSectionsAndDictationButtonAreReachable() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test"]; app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Impostazioni"].waitForExistence(timeout: 10)); app.tabBars.buttons["Impostazioni"].tap()
+        let health = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Salute e Apple Watch")).firstMatch
+        for _ in 0..<5 { if health.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(health.isHittable); health.tap()
+        XCTAssertTrue(app.buttons["Collega / verifica Salute"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Oggi"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["calendar-updated"].waitForExistence(timeout: 15))
+        let coach = app.buttons["open-pivot-coach"]
+        for _ in 0..<8 { if coach.isHittable { break }; app.swipeDown() }; XCTAssertTrue(coach.isHittable); coach.tap()
+        let dictation = app.buttons["coach-dictation"]
+        for _ in 0..<12 { if dictation.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(dictation.isHittable)
+    }
     func testQuickOutcomeSaveReturnsHomeAndKeepsCompletedActivityInHistory() {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test"]; app.launch()

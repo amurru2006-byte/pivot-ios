@@ -24,7 +24,7 @@ struct DiaryView: View {
                 HStack(alignment: .top, spacing: 9) {
                     MetricTile(title: "Sveglia", value: check?.wakeTime.map(PivotDate.time) ?? "—", icon: "sun.max.fill", color: PivotTheme.amber)
                     MetricTile(title: "Energia sera", value: check?.energyEvening.map { "\($0)/10" } ?? "—", icon: "bolt.fill", color: PivotTheme.blue)
-                    MetricTile(title: "Registrati", value: "\(items.reduce(0) { $0 + (store.data.records[$1.id]?.activeMinutes ?? 0) }) min", icon: "clock.fill")
+                    MetricTile(title: "Tempo segnato", value: ActivityTiming.duration(items.reduce(0) { $0 + (store.data.records[$1.id]?.activeMinutes ?? 0) } * 60), icon: "clock.fill")
                 }
                 NavigationLink { DayCheckInView(day: day, initial: check) } label: {
                     PivotCard { ActionRow(title: "Completa il tuo check-in", subtitle: "Sveglia, energia, umore e note della giornata.", icon: "heart.text.square") }
