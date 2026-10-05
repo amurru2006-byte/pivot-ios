@@ -1,6 +1,23 @@
 import XCTest
 
 final class PivotInteractionTests: XCTestCase {
+    func testQuickOutcomeSaveReturnsHomeAndKeepsCompletedActivityInHistory() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test"]; app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["calendar-updated"].waitForExistence(timeout: 15))
+        let details = app.buttons["Dettagli e registrazione"]
+        for _ in 0..<6 { if details.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(details.isHittable); details.tap()
+        let done = app.buttons["Fatto"]
+        for _ in 0..<6 { if done.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(done.isHittable); done.tap()
+        app.buttons["activity-save"].tap()
+        XCTAssertTrue(app.navigationBars["Pivot"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.navigationBars["Attività"].exists)
+        let history = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Già segnate")).firstMatch
+        for _ in 0..<10 { if history.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(history.isHittable)
+    }
     func testCoachConversationPersistsWithoutDownloadingAI() {
         continueAfterFailure = false
         let app = XCUIApplication()

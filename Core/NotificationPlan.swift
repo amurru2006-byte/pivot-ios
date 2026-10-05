@@ -34,8 +34,11 @@ enum NotificationPlan {
             }
             if event.title.lowercased().contains("sveglia") {
                 let day = PivotDate.key(event.start)
-                let didStart = data.records.values.contains { PivotDate.key($0.snapshot.start) == day && $0.actualStart != nil }
-                if !didStart && data.checkIns[day]?.wakeTime == nil {
+                let didStart = data.records.values.contains {
+                    PivotDate.key($0.snapshot.start) == day && $0.actualStart != nil && $0.health == nil && $0.healthSleep == nil
+                        && !EventCoalescer.normalized($0.snapshot.title).contains("sonno")
+                }
+                if !didStart && (data.checkIns[day]?.energyMorning == nil || data.checkIns[day]?.moodMorning == nil) {
                     add(event.end.addingTimeInterval(Double(data.settings.morningDelayMinutes) * 60), "morning-\(day)", "Come è iniziata la giornata?", "Energia e umore dopo la routine. I dati disponibili del sonno arrivano da Salute.", priority: 0, destination: "checkin")
                 }
                 continue
@@ -54,7 +57,7 @@ enum NotificationPlan {
             let time = calendar.date(bySettingHour: data.settings.eveningHour, minute: data.settings.eveningMinute, second: 0, of: date)!
             add(time, "evening-\(PivotDate.key(date))", "Resoconto della giornata", "Controlla le risposte mancanti e condividi il resoconto quando vuoi.", priority: 0, destination: "diary")
         }
-        // Reserve the finite iOS queue for meals/check-ins before hourly repeats.
+        // Reserve the finite iOS queue for meals/check-ins before optional follow-ups.
         let chosen = requests.sorted {
             if $0.priority != $1.priority { return $0.priority < $1.priority }
             if $0.date != $1.date { return $0.date < $1.date }

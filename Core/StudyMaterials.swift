@@ -74,6 +74,7 @@ enum StudyFiles {
         try validateBackup(data, requireFiles: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         var restored = data
+        var restoredDocumentIDs: [UUID: UUID] = [:]
         for key in Array(restored.records.keys) {
             guard var record = restored.records[key], var session = record.study else { continue }
             for index in session.documents.indices {
@@ -82,9 +83,19 @@ enum StudyFiles {
                 let fresh = UUID()
                 try bytes.write(to: url(for: fresh, directory: directory), options: .atomic)
                 session.documents[index].id = fresh
+                restoredDocumentIDs[old] = fresh
             }
             record.study = session
             restored.records[key] = record
+        }
+        // Drafts refer to the same files as saved sessions. Keep them usable after ID-safe restore.
+        for key in Array((restored.activityDrafts ?? [:]).keys) {
+            guard var draft = restored.activityDrafts?[key], var session = draft.record.study else { continue }
+            session.documents = session.documents.compactMap { document in
+                guard let fresh = restoredDocumentIDs[document.id] else { return nil }
+                var updated = document; updated.id = fresh; return updated
+            }
+            draft.record.study = session; restored.activityDrafts?[key] = draft
         }
         if var library = restored.training {
             for index in library.plans.indices {

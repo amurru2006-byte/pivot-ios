@@ -96,7 +96,7 @@ struct RootView: View {
             LessonLogisticsView(event: event, onDefer: { deferredLessonIDs.insert(event.id) })
         }
         .sheet(item: $question) { value in DecisionInboxView(initialID: value.id) }
-        .sheet(item: $notifications.route) { route in
+        .sheet(item: Binding(get: { lessonToConfirm == nil && question == nil ? notifications.route : nil }, set: { notifications.route = $0 })) { route in
             NavigationStack {
                 if let id = route.eventID, let event = Planner.plannedEvents(calendar.events, data: store.data).first(where: { $0.id == id }) {
                     EventDetailView(event: event, initial: notificationRecord(event, outcome: route.outcome), rule: store.rule(for: event), onSaved: { selectedTab = 0 })

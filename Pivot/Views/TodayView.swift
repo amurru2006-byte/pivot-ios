@@ -55,8 +55,15 @@ struct TodayView: View {
 
                 VStack(alignment: .leading, spacing: 12) {
                     SectionHeading(title: "In arrivo", detail: "\(active.filter { $0.id != focused?.id }.count)")
-                    ForEach(active.filter { $0.id != focused?.id }) { event in
+                    ForEach(Array(active.filter { $0.id != focused?.id }.prefix(3))) { event in
                         NavigationLink { detail(event) } label: { EventRow(event: event, record: store.data.records[event.id], day: day) }.buttonStyle(.plain)
+                    }
+                    if active.filter({ $0.id != focused?.id }).count > 3 {
+                        DisclosureGroup("Mostra le altre attività") {
+                            ForEach(Array(active.filter { $0.id != focused?.id }.dropFirst(3))) { event in
+                                NavigationLink { detail(event) } label: { EventRow(event: event, record: store.data.records[event.id], day: day) }.buttonStyle(.plain)
+                            }
+                        }.font(.subheadline)
                     }
                     if active.isEmpty { Text("Nessuna attività da compilare.").font(.subheadline).foregroundStyle(PivotTheme.muted) }
                 }
