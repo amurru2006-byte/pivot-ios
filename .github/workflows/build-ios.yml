@@ -54,20 +54,21 @@ jobs:
           cp -R build/DerivedData/Build/Products/Release-iphoneos/Pivot.app build/Package/Payload/
           cd build/Package
           zip -qr ../Pivot-unsigned.ipa Payload
-      - name: Carica app scaricabile
-        uses: actions/upload-artifact@v4
-        with:
-          name: Pivot-iPhone-unsigned
-          path: build/Pivot-unsigned.ipa
-          retention-days: 14
-          if-no-files-found: error
       - name: Verifica interfaccia su simulatore iPhone
         run: bash Scripts/preview-ui.sh
       - name: Carica anteprime iPhone
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Pivot-iPhone-previews
           path: build/Previews/*.png
+          retention-days: 14
+          if-no-files-found: ignore
+      - name: Carica app verificata scaricabile
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pivot-iPhone-unsigned
+          path: build/Pivot-unsigned.ipa
           retention-days: 14
           if-no-files-found: error
       - name: Conserva log di compilazione

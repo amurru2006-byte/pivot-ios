@@ -27,6 +27,7 @@ struct SleepRecord: Codable {
     var quality: String = ""
     var awakenings: Int?
     var interruptionSeconds: Int?
+    var importedFromHealth: Bool? = nil
 }
 
 enum CardioKind: String, Codable, CaseIterable {

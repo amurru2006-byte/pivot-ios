@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct CoachView: View {
+    var contextEventID: String? = nil
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var store: PivotStore
     @EnvironmentObject private var calendar: CalendarService
     @EnvironmentObject private var coachModel: LocalCoachService
@@ -10,6 +12,9 @@ struct CoachView: View {
     @State private var deleteHistory = false
     @State private var message: String?
     @State private var applyingID: UUID?
+    @State private var responseRecord: EventRecord?
+    @State private var returnHomeAfterResponse = false
+    private var contextEvent: CalendarItem? { Planner.plannedEvents(calendar.events, data: store.data).first { $0.id == contextEventID } }
     private var state: CoachState { store.data.coachState }
     private var todayMessages: [CoachMessage] { state.messages.filter { $0.dayKey == PivotDate.key(historyDay) } }
     private var missed: [CalendarItem] {
@@ -22,16 +27,27 @@ struct CoachView: View {
     var body: some View {
         PivotScreen {
             PivotHeader(title: "Pivot Coach", subtitle: "Riorganizza senza perdere il controllo")
-            PivotCard(tint: PivotTheme.accent) {
-                Label("Prima Pivot, poi Calendario", systemImage: "checkmark.shield.fill").font(.headline).foregroundStyle(PivotTheme.accent)
-                Text("Il Coach può preparare una modifica locale. Il Calendario cambia soltanto quando la controlli qui e confermi una seconda volta.")
-                    .font(.subheadline).foregroundStyle(PivotTheme.muted)
+            if let event = contextEvent {
+                PivotCard(tint: Color(calendarItem: event)) {
+                    Label(event.kind.label, systemImage: event.kind.icon).foregroundStyle(Color.readableCalendar(event)).font(.caption)
+                    Text(event.end <= Date() ? "Com’è andata ‘\(event.title)’?" : event.title).font(.headline)
+                    Text(event.timeSummary).font(.caption).foregroundStyle(PivotTheme.muted)
+                    if event.end <= Date() {
+                        HStack {
+                            ForEach([Completion.completed, .partial, .skipped], id: \.self) { outcome in
+                                Button(outcome.label) { var value = store.record(for: event); value.status = outcome; responseRecord = value }
+                                    .buttonStyle(PivotSecondaryButton())
+                            }
+                        }
+                    }
+                    Button { responseRecord = store.record(for: event) } label: { Label("Apri i dettagli dell’attività", systemImage: "slider.horizontal.3") }.buttonStyle(PivotSecondaryButton())
+                }
             }
-            modelCard
 
             if !state.pendingCalendarChanges.isEmpty { pendingSection }
 
-            if !missed.isEmpty {
+            if !missed.isEmpty && contextEventID == nil {
+                DisclosureGroup("Attività da recuperare · \(missed.count)") {
                 VStack(alignment: .leading, spacing: 10) {
                     SectionHeading(title: "Da recuperare?")
                     ForEach(missed) { event in
@@ -45,6 +61,7 @@ struct CoachView: View {
                             }
                         }.buttonStyle(PivotSecondaryButton())
                     }
+                }
                 }
             }
 
@@ -105,9 +122,18 @@ struct CoachView: View {
                 }
             }
             if let message { Label(message, systemImage: "info.circle.fill").font(.subheadline).foregroundStyle(PivotTheme.amber) }
+            DisclosureGroup("Modello locale e sicurezza") {
+                modelCard
+                Text("Le proposte restano locali. Il Calendario cambia solo dopo la tua conferma finale.").font(.caption).foregroundStyle(PivotTheme.muted)
+            }.font(.subheadline)
         }
         .navigationTitle("Coach")
         .toolbar { Button { Task { await calendar.refresh(settings: store.data.settings) } } label: { Image(systemName: "arrow.clockwise") } }
+        .sheet(item: $responseRecord, onDismiss: {
+            if returnHomeAfterResponse { returnHomeAfterResponse = false; dismiss() }
+        }) { record in
+            NavigationStack { EventDetailView(event: record.snapshot, initial: record, rule: store.rule(for: record.snapshot), onSaved: { returnHomeAfterResponse = true }) }.presentationDragIndicator(.visible)
+        }
         .confirmationDialog("Eliminare questa conversazione? Anche il resoconto non la includerà più.", isPresented: $deleteHistory, titleVisibility: .visible) {
             Button("Elimina", role: .destructive) {
                 let key = PivotDate.key(historyDay)
@@ -188,7 +214,7 @@ struct CoachView: View {
         guard !clean.isEmpty, !store.locked, !coachModel.isGenerating else { return }
         let now = Date()
         historyDay = now
-        let result = CoachPlanner.respond(message: clean, events: calendar.events, data: store.data, now: now, targetID: targetID)
+        let result = CoachPlanner.respond(message: clean, events: calendar.events, data: store.data, now: now, targetID: targetID ?? contextEventID)
         let context = contextForModel(now: now)
         let coachReplyID = UUID()
         guard store.change({ data in

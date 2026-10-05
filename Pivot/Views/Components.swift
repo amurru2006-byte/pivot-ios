@@ -3,6 +3,24 @@ import UniformTypeIdentifiers
 import UIKit
 
 extension Color {
+    static func readableCalendar(_ item: CalendarItem) -> Color {
+        let source = UIColor(Color(calendarItem: item))
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, alpha: CGFloat = 0
+        source.getRed(&r, green: &g, blue: &b, alpha: &alpha)
+        func linear(_ value: CGFloat) -> Double {
+            let v = Double(value); return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+        }
+        var blend = 0.0
+        // Original color remains on the stripe; text alone is lifted for dark-mode contrast.
+        while blend < 0.85 {
+            let rr = Double(r) + (1 - Double(r)) * blend, gg = Double(g) + (1 - Double(g)) * blend, bb = Double(b) + (1 - Double(b)) * blend
+            if (0.2126 * linear(CGFloat(rr)) + 0.7152 * linear(CGFloat(gg)) + 0.0722 * linear(CGFloat(bb)) + 0.05) / 0.062 >= 4.5 {
+                return Color(.sRGB, red: rr, green: gg, blue: bb)
+            }
+            blend += 0.05
+        }
+        return PivotTheme.text
+    }
     init(calendarItem: CalendarItem) {
         if let rgb = calendarItem.calendarRGB {
             self.init(.sRGB, red: rgb.red, green: rgb.green, blue: rgb.blue, opacity: rgb.alpha)
@@ -282,7 +300,7 @@ struct EventRow: View {
             }.frame(width: 47, alignment: .leading).padding(.top, 4)
             VStack(alignment: .leading, spacing: 9) {
                 HStack {
-                    Label(event.kind.label, systemImage: event.kind.icon).font(.caption).foregroundStyle(Color(calendarItem: event))
+                    Label(event.kind.label, systemImage: event.kind.icon).font(.caption).foregroundStyle(Color.readableCalendar(event))
                     Spacer(minLength: 3)
                     StatusPill(status: record?.status ?? .pending)
                 }
@@ -296,8 +314,8 @@ struct EventRow: View {
                     Image(systemName: "chevron.right").font(.caption2).foregroundStyle(PivotTheme.muted)
                 }
             }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                .background(PivotTheme.surface, in: RoundedRectangle(cornerRadius: 18))
-                .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 2).fill(Color(calendarItem: event)).frame(width: 3).padding(.vertical, 16) }
+                .background(LinearGradient(colors: [Color(calendarItem: event).opacity(0.08), PivotTheme.surface], startPoint: .leading, endPoint: .trailing), in: RoundedRectangle(cornerRadius: 18))
+                .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 3).fill(Color(calendarItem: event)).frame(width: 5).padding(.vertical, 14) }
         }.opacity([Completion.completed, .partial].contains(record?.status ?? .pending) ? 0.52 : 1)
     }
 }

@@ -1,3 +1,16 @@
+## 0.6.0 — contesto, Salute e interfaccia essenziale
+
+- Home focalizzata su una sola attività; eventi successivi con colore sRGB originale, testo contrastato e attività già segnate raccolte separatamente.
+- Relazioni contestuali: pasto incluso in uscita sociale; attività dedicate incompatibili; tragitti e casi ambigui richiedono conferma. Risposte specifiche invalidabili dopo modifiche a orari, titoli, luoghi o categorie.
+- Coda persistente Da decidere, scheda chiudibile con swipe e nessuna serie infinita di pop-up. Una richiesta automatica per sessione; le altre restano nella coda.
+- Priorità esplicite, tipi personalizzabili localmente e riduzioni proposte solo entro minimi consentiti. Modifiche al Calendario ancora soggette a conferma manuale e controllo dello snapshot.
+- HealthKit in sola lettura: sonno e allenamenti importati all’apertura (massimo una lettura automatica ogni 5 minuti), aggiornamento manuale disponibile. Nessun polling in background. Tipologia e almeno 70% di sovrapposizione sono richiesti per un allenamento, e solo un abbinamento unico viene applicato. Le camminate di trasferimento non completano la palestra.
+- Il permesso di lettura HealthKit non è verificabile direttamente: zero risultati non sono trattati come zero sonno o zero attività. Eventuali limiti di firma AltStore sono mostrati come errore, senza alterare dati.
+- Dati Salute importati esclusi per impostazione predefinita da backup esterni e resoconti; consenso separato nelle impostazioni. La chat è escludibile dal resoconto. Backup esterni non cifrati: non pubblicare su GitHub dati personali.
+- Timer facoltativo, esito prima dei dettagli, salvataggio in alto e bozze automatiche separate dagli esiti e dagli incassi. Salvataggio finale chiude l’attività. Un’attività saltata può essere recuperata oppure nascosta nella home, mai eliminata dallo storico.
+- Avvisi con apertura dell’evento e azioni Fatto/Parziale/Più tardi. Nessun ciclo orario; al massimo un secondo avviso opzionale e un riepilogo serale. Coda locale fino a 7 giorni (limite 60 richieste): aggiornare Pivot dopo modifiche esterne.
+- Il calcolo automatico di percorsi MapKit non viene promesso con la firma gratuita. Si apre Mappe e si conferma il tempo: un tragitto sconosciuto non è zero.
+
 ## 0.5.1 — revisione della proposta Claude
 
 - La proposta ricevuta è una specifica, non un'implementazione. È stata confrontata con il Coach 0.5.0: non viene sostituito il modello con un 2B/3B non misurato sull'iPhone.

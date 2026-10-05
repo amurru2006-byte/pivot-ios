@@ -6,6 +6,7 @@ struct EventDetailView: View {
     @EnvironmentObject var store: PivotStore
     @EnvironmentObject var calendar: CalendarService
     private let sourceEvent: CalendarItem
+    private var onSaved: (() -> Void)?
     var event: CalendarItem {
         Planner.effectiveEvents(calendar.events.filter { $0.id == sourceEvent.id || EventCoalescer.savedOccurrence(sourceEvent, $0) }, data: store.data).first { $0.id == sourceEvent.id || EventCoalescer.savedOccurrence(sourceEvent, $0) } ?? sourceEvent
     }
@@ -23,18 +24,23 @@ struct EventDetailView: View {
     @State private var importingMaterial = false
     @State private var documentPreview: StudyDocument?
     @State private var editingLogistics = false
+    @State private var loadedDraft = false
+    @State private var savedFingerprint = ""
+    @State private var skipChoice = false
     var linkedIncome: IncomeEntry? { store.data.income.first { $0.id == record.incomeID || $0.calendarEventID == event.id } }
     var selectedClient: Client? { store.data.clients.first { $0.id == selectedClientID } }
     @Environment(\.dismiss) private var dismiss
 
-    init(event: CalendarItem, initial: EventRecord, rule: EventRule) {
+    init(event: CalendarItem, initial: EventRecord, rule: EventRule, onSaved: (() -> Void)? = nil) {
         self.sourceEvent = event
+        self.onSaved = onSaved
         _record = State(initialValue: initial)
         _rule = State(initialValue: rule)
     }
     var body: some View {
         PivotScreen {
             hero
+            registration
             if !event.notes.isEmpty {
                 PivotCard {
                     DisclosureGroup { Text(event.notes).font(.subheadline).foregroundStyle(PivotTheme.muted).textSelection(.enabled).padding(.top, 10) } label: { Label("Il programma di questa attività", systemImage: "list.bullet.clipboard").font(.subheadline.weight(.semibold)) }
@@ -60,18 +66,19 @@ struct EventDetailView: View {
                 NavigationLink { TrainingView(event: event) } label: { Label("Scheda e diario palestra", systemImage: "dumbbell.fill") }.buttonStyle(PivotSecondaryButton())
             }
             PivotCard {
+                DisclosureGroup("Promemoria personali") {
                 Label("Promemoria per questo evento", systemImage: "pin.fill").font(.headline)
                 TextField("Materiale da portare, cose da ricordare…", text: Binding(get: { record.reminders ?? "" }, set: { record.reminders = $0 }), axis: .vertical).lineLimit(2...6)
                 Text("Queste note valgono solo per questa occorrenza.").font(.caption).foregroundStyle(PivotTheme.muted)
+                }
             }
-            registration
             if event.kind == .meal { meal }
             reflection
             PivotCard {
                 DisclosureGroup { rules.padding(.top, 12) } label: { Label("Regole e tragitto", systemImage: "arrow.triangle.branch").font(.subheadline.weight(.semibold)) }
             }
             if let message { Label(message, systemImage: "info.circle").font(.subheadline).foregroundStyle(PivotTheme.amber) }
-            Button { if save() { dismiss() } } label: { Label("Salva registrazione", systemImage: "checkmark.circle.fill") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
+            Button { finishEditing() } label: { Label("Salva attività", systemImage: "checkmark.circle.fill") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
             if rule.flexibility != .fixed && !event.isAllDay {
                 Button { findRecovery() } label: { Label("Trova uno spazio per recuperare", systemImage: "arrow.triangle.2.circlepath") }.buttonStyle(PivotSecondaryButton()).disabled(store.locked)
             }
@@ -86,13 +93,36 @@ struct EventDetailView: View {
             }
         }
         .navigationTitle("Attività")
+        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Salva") { finishEditing() }.disabled(store.locked) } }
         .onAppear {
+            let firstAppearance = !loadedDraft
+            if firstAppearance {
+                if let draft = store.data.activityDrafts?[event.id] {
+                    // A notification supplies an explicit outcome; don't replace it with an old draft outcome.
+                    let selectedOutcome = record.status
+                    record = draft.record; rule = draft.rule; studentName = draft.studentName; selectedClientID = draft.clientID
+                    lessonAmount = draft.lessonAmount; receivedAmount = draft.receivedAmount; received = draft.received; receiptDate = draft.receiptDate
+                    if selectedOutcome != .pending { record.status = selectedOutcome }
+                }
+                loadedDraft = true; savedFingerprint = fingerprint
+            }
             // A workout diary can change the timer while this detail is underneath it.
-            if event.kind == .workout, let latest = store.data.records[event.id] {
+            if !firstAppearance, event.kind == .workout, let latest = store.data.records[event.id] {
                 record.actualStart = latest.actualStart; record.actualEnd = latest.actualEnd
                 record.activeMinutes = latest.activeMinutes; record.status = latest.status
             }
         }
+        .task(id: fingerprint) {
+            guard loadedDraft else { return }
+            do { try await Task.sleep(nanoseconds: 800_000_000) } catch { return }
+            persistDraft()
+        }
+        .onDisappear { persistDraft() }
+        .confirmationDialog("Vuoi recuperare questa attività?", isPresented: $skipChoice, titleVisibility: .visible) {
+            Button("Cerca un altro spazio") { findRecovery() }
+            Button("Salta definitivamente") { if save() { closeAfterSaving() } }
+            Button("Torna all’attività", role: .cancel) {}
+        } message: { Text("Se la salti sparisce dall’agenda di Pivot, ma resta nello storico. Il Calendario non viene cancellato.") }
         .sheet(isPresented: $editingLogistics, onDismiss: {
             rule = store.rule(for: event)
             record.logistics = store.record(for: event).logistics
@@ -110,20 +140,21 @@ struct EventDetailView: View {
     private var hero: some View {
         PivotCard(tint: Color(calendarItem: event)) {
             HStack {
-                Label(event.kind.label, systemImage: event.kind.icon).font(.subheadline.weight(.semibold)).foregroundStyle(Color(calendarItem: event))
+                Label(event.kind.label, systemImage: event.kind.icon).font(.subheadline.weight(.semibold)).foregroundStyle(Color.readableCalendar(event))
                 Spacer(); StatusPill(status: record.status)
             }
             Text(event.title).font(.system(.title2, design: .rounded, weight: .bold)).fixedSize(horizontal: false, vertical: true)
             Label(event.timeSummary, systemImage: "clock").font(.subheadline).foregroundStyle(PivotTheme.muted)
             Text(event.calendarTitle).font(.caption).foregroundStyle(PivotTheme.muted)
             if !event.location.isEmpty { Label(event.location, systemImage: "mappin.and.ellipse").font(.caption).foregroundStyle(PivotTheme.muted) }
-            if !event.isAllDay { Button {
+            if !event.isAllDay { DisclosureGroup("Timer facoltativo") { Button {
                 if record.status == .running { record.actualEnd = Date(); record.status = .completed; updateMinutes() }
                 else { record.actualStart = Date(); record.actualEnd = nil; record.status = .running }
                 save()
             } label: { Label(record.status == .running ? "Termina attività" : "Inizia attività", systemImage: record.status == .running ? "stop.fill" : "play.fill") }
                 .buttonStyle(PivotPrimaryButton()).disabled(store.locked)
-            }
+                Text("Puoi segnare l’esito anche senza avviare il timer.").font(.caption).foregroundStyle(PivotTheme.muted)
+            }.font(.caption) }
             if let start = record.actualStart { Text("Inizio reale \(PivotDate.time(start))" + (record.actualEnd.map { " · fine \(PivotDate.time($0))" } ?? "")).font(.caption).foregroundStyle(PivotTheme.muted) }
         }
     }
@@ -137,7 +168,13 @@ struct EventDetailView: View {
             if record.status != .pending && record.status != .running {
                 Button("Azzera l'esito") { record.status = .pending }.font(.caption).foregroundStyle(PivotTheme.muted)
             }
-            Divider()
+            if let health = record.health {
+                Label("Dati da Salute · \(ActivityTiming.duration(health.durationSeconds))", systemImage: "heart.text.square").font(.caption).foregroundStyle(PivotTheme.accent)
+            }
+            if let sleep = record.healthSleep, let seconds = sleep.durationSeconds {
+                Label("Sonno da Salute · \(ActivityTiming.duration(seconds))", systemImage: "bed.double.fill").font(.caption).foregroundStyle(PivotTheme.accent)
+            }
+            DisclosureGroup("Orari reali e durata") {
             ClockField(title: "Inizio reale", value: $record.actualStart, fallback: event.start)
             ClockField(title: "Fine reale", value: $record.actualEnd, fallback: event.end)
             if let start = record.actualStart, let end = record.actualEnd, let seconds = ActivityTiming.seconds(start: start, end: end) {
@@ -148,12 +185,13 @@ struct EventDetailView: View {
             Text("Inizio e fine calcolano la durata. Se hai fatto pause, puoi correggere il tempo attivo in ore e minuti.").font(.caption).foregroundStyle(PivotTheme.muted)
                 .onChange(of: record.actualStart) { _, _ in updateMinutes() }
                 .onChange(of: record.actualEnd) { _, _ in updateMinutes() }
+            }.font(.subheadline)
             if record.status == .partial || record.status == .skipped {
                 TextField("Cosa ti ha fermato?", text: $record.reason, axis: .vertical).lineLimit(2...5).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
                 Text("Racconta il motivo: ci aiuta ad adattare il programma.").font(.caption).foregroundStyle(PivotTheme.amber)
             }
             TextField("Note extra, difficoltà o progressi…", text: $record.notes, axis: .vertical).lineLimit(3...8).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
-            RatingField(title: "Energia", value: $record.energy)
+            DisclosureGroup("Energia durante l’attività") { RatingField(title: "Energia", value: $record.energy) }.font(.subheadline)
         }
     }
     private var outcomeButtons: some View {
@@ -299,6 +337,10 @@ struct EventDetailView: View {
     private var rules: some View {
         VStack(alignment: .leading, spacing: 16) {
             Picker("Gestione", selection: $rule.flexibility) { ForEach(EventFlexibility.allCases, id: \.self) { Text($0.label).tag($0) } }
+            Picker("Tipo di attività", selection: Binding(get: { rule.kindOverride ?? event.kind }, set: { rule.kindOverride = $0 })) { ForEach(EventKind.allCases, id: \.self) { Text($0.label).tag($0) } }
+            Picker("Priorità", selection: Binding(get: { rule.priority ?? EventContext.priority(event, data: store.data, now: Date()) }, set: { rule.priority = $0 })) {
+                ForEach(EventPriority.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
             DurationField(title: "Durata minima", seconds: Binding(get: { rule.minimumMinutes * 60 }, set: { rule.minimumMinutes = max(5, ($0 ?? 300) / 60) }), maxHours: 12)
             DurationField(title: "Tragitto prima", seconds: Binding(get: { rule.travelBeforeMinutes * 60 }, set: { rule.travelBeforeMinutes = ($0 ?? 0) / 60 }), maxHours: 4)
             DurationField(title: "Tragitto dopo", seconds: Binding(get: { rule.travelAfterMinutes * 60 }, set: { rule.travelAfterMinutes = ($0 ?? 0) / 60 }), maxHours: 4)
@@ -343,14 +385,43 @@ struct EventDetailView: View {
         var saved = record
         saved.logistics = store.record(for: event).logistics
         let ok = store.change { data in
+            let previousStatus = data.records[event.id]?.status ?? .pending
             if let client, let cents { TutoringLedger.register(event: event, record: &saved, client: client, amountCents: cents, collectedCents: collected, paymentDate: receiptDate, data: &data) }
             data.records[event.id] = saved; data.rules[event.id] = rule
+            if previousStatus != saved.status && saved.status != .pending {
+                var coach = data.coachState
+                coach.messages.append(.init(dayKey: PivotDate.key(event.start), role: .system, text: "\(event.title): \(saved.status.label)." + (saved.reason.isEmpty ? "" : " Motivo: \(saved.reason)")))
+                data.coachState = coach
+            }
         }
         if ok {
             record = saved
+            savedFingerprint = fingerprint
+            store.change { $0.activityDrafts?.removeValue(forKey: event.id) }
             if isLessonDone && saved.tutoringAnswered != true && linkedIncome == nil { message = "Attività salvata. Completa anche il compenso della ripetizione." }
         }
         return ok
+    }
+    private func finishEditing() {
+        if record.status == .skipped { skipChoice = true }
+        else if save() { closeAfterSaving() }
+    }
+    private func closeAfterSaving() { onSaved?(); dismiss() }
+    private var draft: ActivityDraft {
+        ActivityDraft(record: record, rule: rule, studentName: studentName, clientID: selectedClientID, lessonAmount: lessonAmount,
+                      receivedAmount: receivedAmount, received: received, receiptDate: receiptDate)
+    }
+    private var fingerprint: String {
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+        return (try? encoder.encode(draft).base64EncodedString()) ?? ""
+    }
+    private func persistDraft() {
+        guard loadedDraft, fingerprint != savedFingerprint, !store.locked, !store.isRestoring else { return }
+        let value = draft
+        store.change { data in
+            var drafts = data.activityDrafts ?? [:]; drafts[event.id] = value; data.activityDrafts = drafts
+        }
+        savedFingerprint = fingerprint
     }
     private func choose(_ suggestion: RecoverySuggestion) async {
         await calendar.refresh(settings: store.data.settings)
@@ -371,6 +442,9 @@ struct EventDetailView: View {
         }) {
             message = "Proposta applicata in Pivot. Il Calendario non è cambiato: confermala dal Pivot Coach."
             suggestions = []
+            savedFingerprint = fingerprint
+            store.change { $0.activityDrafts?.removeValue(forKey: event.id) }
+            closeAfterSaving()
         }
     }
     private func slotIsAvailable(_ move: PlanMove) -> Bool {

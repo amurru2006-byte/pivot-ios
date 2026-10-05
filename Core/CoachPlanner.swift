@@ -49,6 +49,10 @@ enum CoachPlanner {
         let days = onlyToday || offset > 0 ? 1 : 3
         let suggestions = Planner.recover(target, events: events, data: data, now: earliest, days: days)
         guard !suggestions.isEmpty else {
+            let alternatives = compressionOptions(target: target, events: events, data: data, now: earliest, days: days)
+            if !alternatives.isEmpty {
+                return CoachTurnResult(reply: "Uno spazio completo manca. Posso accorciare solo le attività per cui hai già indicato una durata minima. Controlla tutte le conseguenze prima di accettare.", options: alternatives)
+            }
             let rule = data.rules[target.id] ?? .defaultRule(for: target)
             let reason: String
             if rule.flexibility == .fixed { reason = "è segnato come fisso" }
@@ -70,6 +74,29 @@ enum CoachPlanner {
             reply: "Ho trovato \(options.count == 1 ? "una soluzione" : "due soluzioni") senza toccare gli impegni fissi e senza inventare tempi di viaggio. Scegli tu: l’accettazione modifica prima soltanto Pivot; il Calendario resta invariato finché non dai una seconda conferma.",
             options: options
         )
+    }
+
+    private static func compressionOptions(target: CalendarItem, events: [CalendarItem], data: AppData, now: Date, days: Int) -> [CoachOption] {
+        let canonical = EventCoalescer.unique(events, data: data)
+        guard let source = canonical.first(where: { $0.id == target.id }) else { return [] }
+        var options: [CoachOption] = []
+        for item in canonical where item.id != target.id && item.start > now && !item.isAllDay {
+            // Only explicit minimums, never assume default rules authorize shrinking someone else's event.
+            guard let rule = data.rules[item.id], rule.flexibility == .compressible, rule.travelConfirmed,
+                  rule.minimumMinutes > 0, rule.minimumMinutes < item.durationMinutes,
+                  EventContext.priority(item, data: data, now: now) != .essential,
+                  EventContext.priority(item, data: data, now: now).rawValue <= EventContext.priority(target, data: data, now: now).rawValue,
+                  !data.moves.contains(where: { !$0.syncedToCalendar && $0.source.id == item.id }) else { continue }
+            let shortened = PlanMove(source: item, proposedStart: item.start, proposedEnd: item.start.addingTimeInterval(Double(rule.minimumMinutes) * 60))
+            var simulated = data; simulated.moves.append(shortened)
+            guard let recovery = Planner.recover(target, events: events, data: simulated, now: now, days: days).first else { continue }
+            let move = PlanMove(source: source, proposedStart: recovery.start, proposedEnd: recovery.end)
+            let option = CoachOption(title: "Recupero con una riduzione", explanation: "\(item.title): da \(item.durationMinutes) a \(rule.minimumMinutes) min. \(target.title): \(PivotDate.shortDate(move.proposedStart)) \(PivotDate.time(move.proposedStart))–\(PivotDate.time(move.proposedEnd)).",
+                                     consequences: "Entrambe le modifiche sono visibili e richiedono conferma. " + recovery.explanation, moves: [shortened, move])
+            if validate(option, events: events, data: data, now: now) == nil { options.append(option) }
+            if options.count == 2 { break }
+        }
+        return options
     }
 
     static func validate(_ option: CoachOption, events: [CalendarItem], data: AppData, now: Date) -> String? {
@@ -111,7 +138,7 @@ enum CoachPlanner {
         }
         for date in affectedDays.values {
             let affected = Set(option.moves.map { $0.source.id })
-            guard !Planner.overlapsInPlannedEvents(on: date, events: resulting).contains(where: { affected.contains($0.0.id) || affected.contains($0.1.id) }) else {
+            guard !Planner.overlapsInPlannedEvents(on: date, events: resulting, data: simulated).contains(where: { affected.contains($0.0.id) || affected.contains($0.1.id) }) else {
                 return "La proposta creerebbe una sovrapposizione e quindi è stata bloccata."
             }
         }

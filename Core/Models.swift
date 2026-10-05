@@ -139,6 +139,8 @@ struct EventRecord: Codable, Identifiable {
     var logistics: LessonLogistics? = nil
     var reminders: String? = nil
     var cardio: CardioRecord? = nil
+    var health: HealthWorkoutSummary? = nil
+    var healthSleep: SleepRecord? = nil
     var updatedAt: Date = Date()
 }
 
@@ -154,6 +156,8 @@ struct EventRule: Codable {
     var travelBeforeMinutes: Int = 0
     var travelAfterMinutes: Int = 0
     var travelConfirmed: Bool = false
+    var priority: EventPriority? = nil
+    var kindOverride: EventKind? = nil
     static func defaultRule(for item: CalendarItem) -> EventRule {
         let t = item.title.lowercased()
         switch item.kind {
@@ -178,6 +182,7 @@ struct DayCheckIn: Codable, Identifiable {
     // Optional so backups from 0.2 decode without this field.
     var universityAttendance: Bool? = nil
     var sleep: SleepRecord? = nil
+    var healthWakeTime: Date? = nil
 }
 
 struct Client: Codable, Identifiable {
@@ -270,6 +275,11 @@ struct Settings: Codable {
     var eveningMinute: Int = 45
     var studyPriorityFrom: Date? = nil
     var studyMustTakePriority: Bool = false
+    // Optional additions decode old installations without replacing their settings.
+    var healthEnabled: Bool? = nil
+    var includeHealthInExports: Bool? = nil
+    var includeCoachInReports: Bool? = nil
+    var notificationPolicyVersion: Int? = nil
 }
 
 struct AppData: Codable {
@@ -292,6 +302,20 @@ struct AppData: Codable {
     var lessonPrompts: LessonPromptState? = nil
     // Optional so every existing backup remains readable without a migration.
     var coach: CoachState? = nil
+    var decisions: [EventDecision]? = nil
+    var contextAnswers: [ContextAnswer]? = nil
+    var activityDrafts: [String: ActivityDraft]? = nil
+}
+
+struct ActivityDraft: Codable {
+    var record: EventRecord
+    var rule: EventRule
+    var studentName: String
+    var clientID: UUID?
+    var lessonAmount: String
+    var receivedAmount: String
+    var received: Bool
+    var receiptDate: Date
 }
 
 enum PivotDate {

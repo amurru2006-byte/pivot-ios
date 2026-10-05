@@ -88,6 +88,7 @@ final class PivotInteractionTests: XCTestCase {
         for _ in 0..<4 { if details.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(details.isHittable)
         details.tap()
+        app.buttons["Timer facoltativo"].tap()
         let start = app.buttons["Inizia attività"]
         XCTAssertTrue(start.waitForExistence(timeout: 3))
         start.tap()
@@ -131,7 +132,7 @@ final class PivotInteractionTests: XCTestCase {
         XCTAssertTrue(done.waitForExistence(timeout: 3))
         done.tap()
         app.swipeUp()
-        let save = app.buttons["Salva registrazione"]
+        let save = app.buttons["Salva attività"]
         for _ in 0..<10 { if save.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(save.isHittable)
         save.tap()

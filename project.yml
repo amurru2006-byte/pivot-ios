@@ -8,8 +8,8 @@ settings:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "1,2"
     CODE_SIGNING_ALLOWED: NO
-    MARKETING_VERSION: "0.5.1"
-    CURRENT_PROJECT_VERSION: "12"
+    MARKETING_VERSION: "0.6.0"
+    CURRENT_PROJECT_VERSION: "13"
 packages:
   LLM:
     url: https://github.com/eastriverlee/LLM.swift.git
@@ -38,6 +38,7 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         NSCalendarsFullAccessUsageDescription: Pivot legge i calendari e modifica solo gli eventi che approvi esplicitamente.
+        NSHealthShareUsageDescription: Pivot legge sonno e allenamenti per collegarli ai tuoi eventi. I dati restano sul dispositivo e sono esclusi dalle esportazioni salvo tua scelta.
         LSSupportsOpeningDocumentsInPlace: YES
         UIFileSharingEnabled: YES
         ITSAppUsesNonExemptEncryption: NO
@@ -46,6 +47,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.pivot.personal
         GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_ENTITLEMENTS: Pivot/Pivot.entitlements
   PivotUITests:
     type: bundle.ui-testing
     platform: iOS

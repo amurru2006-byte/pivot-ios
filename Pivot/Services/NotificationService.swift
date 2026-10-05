@@ -4,7 +4,34 @@ import Combine
 
 @MainActor
 final class NotificationService: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
-    override init() { super.init(); UNUserNotificationCenter.current().delegate = self }
+    struct Route: Identifiable {
+        var id = UUID()
+        var eventID: String?
+        var destination: String
+        var outcome: Completion?
+    }
+    @Published var route: Route?
+    override init() {
+        super.init()
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        let done = UNNotificationAction(identifier: "done", title: "Fatto", options: [.foreground])
+        let partial = UNNotificationAction(identifier: "partial", title: "Parziale", options: [.foreground])
+        let deferAction = UNNotificationAction(identifier: "later", title: "Più tardi", options: [])
+        center.setNotificationCategories([UNNotificationCategory(identifier: "event-result", actions: [done, partial, deferAction], intentIdentifiers: [], options: [])])
+    }
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        guard response.actionIdentifier != UNNotificationDismissActionIdentifier else { return }
+        let info = response.notification.request.content.userInfo
+        if response.actionIdentifier == "later" {
+            center.removeDeliveredNotifications(withIdentifiers: [response.notification.request.identifier])
+            return
+        }
+        let eventID = info["eventID"] as? String
+        let destination = info["destination"] as? String ?? "today"
+        let outcome: Completion? = response.actionIdentifier == "done" ? .completed : (response.actionIdentifier == "partial" ? .partial : nil)
+        await MainActor.run { self.route = Route(eventID: eventID, destination: destination, outcome: outcome) }
+    }
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions { [.banner, .list, .sound] }
     @Published private(set) var status = "Notifiche non configurate"
     private var generation = 0
@@ -36,6 +63,8 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
             content.title = request.title
             content.body = request.body
             content.sound = .default
+            content.userInfo = ["eventID": request.eventID ?? "", "destination": request.destination]
+            if request.id.hasPrefix("event-") { content.categoryIdentifier = "event-result" }
             let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, request.date.timeIntervalSinceNow), repeats: false)
             do { try await center.add(.init(identifier: request.id, content: content, trigger: trigger)); count += 1 }
             catch { status = "Alcuni avvisi non sono stati programmati: \(error.localizedDescription)"; return }
@@ -50,13 +79,14 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
             content.title = "Dove fai questa lezione?"
             content.body = "\(PivotDate.shortDate(event.start)) \(PivotDate.time(event.start)) · \(event.title). Apri Pivot per confermare chi si sposta."
             content.sound = .default
+            content.userInfo = ["eventID": event.id, "destination": "event"]
             do {
                 try await center.add(.init(identifier: "lesson-place-\(event.id)", content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: 10, repeats: false)))
                 lastLessonPromptIDs.insert(event.id)
             } catch { status = "Avviso luogo non programmato: \(error.localizedDescription)" }
         }
         await incomeWarning(data: data, center: center)
-        status = "\(count) avvisi programmati, fino a 48 ore. Apri Pivot ogni giorno per aggiornarli. Full immersion e impostazioni di iOS possono ritardare o silenziare gli avvisi."
+        status = "\(count) avvisi programmati, entro 7 giorni e nei limiti della coda iOS. Apri Pivot dopo modifiche al calendario. Full immersion può silenziarli."
     }
     private func incomeWarning(data: AppData, center: UNUserNotificationCenter) async {
         let ledger = data.ledger ?? AnnualLedger()
