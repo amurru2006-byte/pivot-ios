@@ -59,9 +59,21 @@ final class HealthService: ObservableObject {
             var modified = false
             for (workout, candidates) in matches {
                 guard let event = candidates.first, matches.filter({ $0.1.first?.id == event.id }).count == 1,
+                      (CardioKind.suggested(event.title) == nil || WorkoutContext.significantCardio(workout, settings: next.settings)),
+                      workout.durationSeconds >= event.durationMinutes * 30,
                       next.records[event.id]?.health?.id != workout.id,
                       (next.records[event.id]?.status ?? .pending) == .pending else { continue }
                 HealthImport.apply(workout, to: event, data: &next); modified = true
+            }
+            let reviews = WorkoutContext.refreshed(summaries, events: events, data: next, now: Date())
+            if reviews != next.workoutReviews { next.workoutReviews = reviews; modified = true }
+            for review in reviews where !review.resolved && !review.dismissed {
+                var coach = next.coachState
+                let marker = "[Salute \(review.id)]"
+                guard !coach.messages.contains(where: { $0.text.contains(marker) }) else { continue }
+                coach.messages.append(.init(dayKey: PivotDate.key(review.workout.start), role: .coach,
+                    text: "Ho trovato \(WorkoutContext.strength(review.workout) ? "un allenamento di forza" : "un’attività cardio significativa") alle \(PivotDate.time(review.workout.start)), da collegare al programma. È l’allenamento del giorno che hai anticipato o spostato? Confermalo qui sotto: sonno e colazione restano da verificare. \(marker)", healthDerived: true))
+                next.coachState = coach; modified = true
             }
             for offset in -7...0 {
                 guard let date = PivotDate.calendar.date(byAdding: .day, value: offset, to: Date()), let summary = sleep(on: date) else { continue }
@@ -121,6 +133,9 @@ final class HealthService: ObservableObject {
         case .hiking: return "hike"
         case .traditionalStrengthTraining: return "strength"
         case .functionalStrengthTraining: return "functional"
+        case .highIntensityIntervalTraining: return "hiit"
+        case .running: return "run"
+        case .cycling: return "cycle"
         case .other: return "other"
         default: return "unsupported"
         }

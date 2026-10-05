@@ -53,6 +53,7 @@ final class CalendarService: ObservableObject {
         isRefreshing = false
     }
     func apply(_ move: PlanMove, data: AppData) async throws { try await worker.apply(move, data: data) }
+    func applyActualWorkout(_ draft: ActualWorkoutDraft, data: AppData) async throws { try await worker.applyActualWorkout(draft, data: data) }
 }
 
 private struct CalendarFilter: Equatable {
@@ -105,6 +106,29 @@ private actor CalendarWorker {
                 sourceIdentifier: event.calendar.source.sourceIdentifier, sourceTitle: event.calendar.source.title, calendarModifiedAt: event.lastModifiedDate, recurring: recurring, occurrenceAnchor: anchor, calendarRGB: Self.rgb(event.calendar.cgColor), calendarCreatedAt: event.creationDate)
         }.sorted { $0.start < $1.start }
         return CalendarSnapshot(hasAccess: true, choices: choices, events: events)
+    }
+    func applyActualWorkout(_ draft: ActualWorkoutDraft, data: AppData) throws {
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { throw CalendarFailure.noAccess }
+        let fresh = snapshot(settings: data.settings)
+        if let problem = WorkoutContext.validate(draft, events: fresh.events, now: Date()) {
+            throw NSError(domain: "PivotCalendar", code: 2, userInfo: [NSLocalizedDescriptionKey: problem])
+        }
+        let moves = WorkoutContext.moves(draft, events: fresh.events)
+        // Preflight every occurrence, then commit the complete, explicitly confirmed batch.
+        var updates: [(EKEvent, PlanMove)] = []
+        for move in moves {
+            let predicate = eventStore.predicateForEvents(withStart: move.source.start.addingTimeInterval(-1), end: move.source.end.addingTimeInterval(1), calendars: nil)
+            guard let event = eventStore.events(matching: predicate).first(where: {
+                $0.eventIdentifier == move.source.eventIdentifier && $0.calendar.calendarIdentifier == move.source.calendarIdentifier &&
+                abs($0.startDate.timeIntervalSince(move.source.start)) < 1 && abs($0.endDate.timeIntervalSince(move.source.end)) < 1
+            }), event.calendar.allowsContentModifications,
+               CoachPlanner.modificationDateMatches(move.source.calendarModifiedAt, event.lastModifiedDate) else { throw CalendarFailure.changed }
+            updates.append((event, move))
+        }
+        do {
+            for (event, move) in updates { event.startDate = move.proposedStart; event.endDate = move.proposedEnd; try eventStore.save(event, span: .thisEvent, commit: false) }
+            try eventStore.commit()
+        } catch { eventStore.reset(); throw error }
     }
     func apply(_ move: PlanMove, data: AppData) throws {
         guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { throw CalendarFailure.noAccess }

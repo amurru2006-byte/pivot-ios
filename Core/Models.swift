@@ -232,6 +232,7 @@ struct CoachMessage: Codable, Identifiable, Equatable {
     var role: CoachRole
     var text: String
     var createdAt = Date()
+    var healthDerived: Bool? = nil
 }
 
 struct CoachOption: Codable, Identifiable {
@@ -264,7 +265,7 @@ struct CoachState: Codable {
     var memories: [CoachMemory] = []
 }
 
-struct Settings: Codable {
+struct Settings: Codable, Equatable {
     var excludedCalendarIDs: [String] = []
     var excludedCalendarTitles: [String] = []
     var excludeHolidays: Bool = true
@@ -281,6 +282,8 @@ struct Settings: Codable {
     var includeHealthInExports: Bool? = nil
     var includeCoachInReports: Bool? = nil
     var notificationPolicyVersion: Int? = nil
+    var cardioReviewMinimumMinutes: Int? = nil
+    var cardioReviewMinimumCalories: Int? = nil
 }
 
 struct AppData: Codable {
@@ -306,6 +309,8 @@ struct AppData: Codable {
     var decisions: [EventDecision]? = nil
     var contextAnswers: [ContextAnswer]? = nil
     var activityDrafts: [String: ActivityDraft]? = nil
+    var workoutReviews: [WorkoutReview]? = nil
+    var actualWorkoutDraft: ActualWorkoutDraft? = nil
 }
 
 struct ActivityDraft: Codable {

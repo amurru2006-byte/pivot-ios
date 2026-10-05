@@ -111,7 +111,7 @@ struct PivotHeader: View {
     let subtitle: String
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.system(.largeTitle, design: .rounded, weight: .bold))
+            Text(title).font(.system(.title, design: .rounded, weight: .bold))
             Text(subtitle).font(.subheadline).foregroundStyle(PivotTheme.muted)
         }
     }
@@ -298,6 +298,10 @@ struct EventRow: View {
                 Text(event.agendaStart(on: day)).font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.text)
                 if !event.isAllDay { Text(event.agendaEnd(on: day)).font(.caption).foregroundStyle(PivotTheme.muted) }
             }.frame(width: 47, alignment: .leading).padding(.top, 4)
+            eventCard
+        }.opacity([Completion.completed, .partial].contains(record?.status ?? .pending) ? 0.52 : 1)
+    }
+    var eventCard: some View {
             VStack(alignment: .leading, spacing: 9) {
                 HStack {
                     Label(event.kind.label, systemImage: event.kind.icon).font(.caption).foregroundStyle(Color.readableCalendar(event))
@@ -316,6 +320,5 @@ struct EventRow: View {
             }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
                 .background(LinearGradient(colors: [Color(calendarItem: event).opacity(0.08), PivotTheme.surface], startPoint: .leading, endPoint: .trailing), in: RoundedRectangle(cornerRadius: 18))
                 .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 3).fill(Color(calendarItem: event)).frame(width: 5).padding(.vertical, 14) }
-        }.opacity([Completion.completed, .partial].contains(record?.status ?? .pending) ? 0.52 : 1)
     }
 }
