@@ -129,8 +129,10 @@ enum WorkoutContext {
         check.wakeTime = draft.wake
         if let bedtime = draft.bedtime {
             var sleep = check.sleep ?? SleepRecord()
-            if sleep.bedtime != bedtime || check.healthWakeTime != draft.wake { sleep.durationSeconds = nil }
-            sleep.bedtime = bedtime; sleep.importedFromHealth = false; check.sleep = sleep
+            if sleep.bedtime != bedtime || check.healthWakeTime != draft.wake {
+                sleep = SleepRecord(); sleep.bedtime = bedtime
+            }
+            check.sleep = sleep
         }
         data.checkIns[key] = check
         for move in moves.dropFirst() {

@@ -1,3 +1,12 @@
+## 0.7.0 — attività pratiche e Coach più semplice
+
+- Agenda con pulsanti di esito sotto gli orari; il timer è facoltativo. Il lavoro richiede ancora la registrazione del compenso, il sonno e gli allenamenti aprono i dettagli adatti.
+- Impostazioni divise per argomento e salvate immediatamente. Coach compatto, dettatura italiana sul dispositivo quando supportata: testo modificabile prima dell’invio, nessun audio conservato. Il microfono si ferma uscendo dalla chat o passando in background.
+- Gli allenamenti di forza da Salute da collegare a un giorno ON generano una domanda nel Coach all’apertura/aggiornamento. I filtri di camminata (inizialmente 20 minuti e 100 kcal attive, modificabili) evitano i tragitti brevi: non sono una misura medica dell’intensità. Nessun collegamento automatico fuori orario; la domanda può essere chiusa e ripresa.
+- «Sono andato in pale alle 5.50 AM oggi» apre una verifica degli orari reali, sveglia, preparazione, eventuale sonno e colazione. La data oltre mezzanotte è esplicita; i dati sconosciuti non vengono inventati. Le sole occorrenze confermate in chat possono essere aggiornate insieme sul Calendario, dopo rilettura e verifica di conflitti. La colazione non fatta resta da registrare/recuperare.
+- Cardio ancora da chiarire nel riepilogo serale; itinerari e altri impegni restano protetti. Le letture Salute avvengono in primo piano, non come monitoraggio continuo.
+- Modello opzionale invariato, Qwen3 0.6B Q4_K_M: un solo turno alla volta, prompt limitato, nessuna inferenza senza proposte, richiesta di stop dopo 20 secondi, pausa con risparmio energetico o stato termico serio/critico. Il modello non è il motore delle modifiche; consiglia solo ID già verificati. «Test su questo iPhone» misura tre selezioni artificiali e il tempo reale, senza toccare dati o Calendario. Non certifica comprensione generale, disponibilità RAM o prestazioni di iPhone 15 non testati fisicamente.
+
 ## 0.6.0 — contesto, Salute e interfaccia essenziale
 
 - Home focalizzata su una sola attività; eventi successivi con colore sRGB originale, testo contrastato e attività già segnate raccolte separatamente.

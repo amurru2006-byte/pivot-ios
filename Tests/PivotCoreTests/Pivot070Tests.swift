@@ -96,11 +96,28 @@ final class Pivot070Tests: XCTestCase {
         XCTAssertNil(HealthImport.exportData(data).workoutReviews); XCTAssertNil(HealthImport.exportData(data).actualWorkoutDraft)
         data.settings.includeHealthInExports = true; XCTAssertNotNil(HealthImport.exportData(data).actualWorkoutDraft)
     }
+    func testConfirmingUnchangedHealthSleepDoesNotRemovePrivacyFlag() {
+        var data = AppData(); let value = draft(), key = PivotDate.key(now)
+        var sleep = SleepRecord(); sleep.bedtime = value.bedtime; sleep.durationSeconds = 24_000; sleep.importedFromHealth = true
+        var check = DayCheckIn(id: key); check.sleep = sleep; check.wakeTime = value.wake; check.healthWakeTime = value.wake; data.checkIns[key] = check
+        WorkoutContext.applyLocally(value, events: [gym], data: &data, synced: false, now: now)
+        XCTAssertEqual(data.checkIns[key]?.sleep?.importedFromHealth, true)
+        XCTAssertNil(HealthImport.exportData(data).checkIns[key]?.sleep)
+    }
     func testEveningQuestionOnlyForUnansweredCardio() {
         let walk = event("cardio camminata", .workout, 18, 19), evening = date("2026-10-05T22:00:00+02:00")
         XCTAssertTrue(WorkoutContext.missingCardio(events: [walk], data: AppData(), now: now).isEmpty)
         XCTAssertEqual(WorkoutContext.missingCardio(events: [walk], data: AppData(), now: evening).count, 1)
         var data = AppData(); var record = EventRecord(id: walk.id, snapshot: walk); record.status = .skipped; record.reason = "Imprevisto"; data.records[walk.id] = record
         XCTAssertTrue(WorkoutContext.missingCardio(events: [walk], data: data, now: evening).isEmpty)
+    }
+    func testEveningNotificationRoutesMissingCardioToCoach() {
+        let walk = event("cardio camminata", .workout, 18, 19)
+        let planned = NotificationPlan.requests(events: [walk], data: AppData(), now: now)
+        let evening = planned.first { $0.id == "evening-2026-10-05" }
+        XCTAssertEqual(evening?.destination, "coach")
+        XCTAssertTrue(evening?.body.contains("cardio") == true)
+        var data = AppData(); var record = EventRecord(id: walk.id, snapshot: walk); record.status = .completed; data.records[walk.id] = record
+        XCTAssertEqual(NotificationPlan.requests(events: [walk], data: data, now: now).first { $0.id == "evening-2026-10-05" }?.destination, "diary")
     }
 }

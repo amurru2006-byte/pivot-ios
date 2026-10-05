@@ -14,22 +14,27 @@ final class DictationService: ObservableObject {
     private var timeout: Task<Void, Never>?
     private var installedTap = false
     private var starting = false
+    private var generation = 0
     func start() async {
         guard !isListening, !starting else { return }
         starting = true; defer { starting = false }
+        let token = generation
         let permission = await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
         }
+        guard token == generation else { return }
         guard permission == .authorized else { message = "Consenti il riconoscimento vocale nelle impostazioni di iOS, oppure usa il microfono della tastiera."; return }
         let mic = await withCheckedContinuation { continuation in
             AVAudioSession.sharedInstance().requestRecordPermission { continuation.resume(returning: $0) }
         }
+        guard token == generation else { return }
         guard mic else { message = "Consenti il microfono nelle impostazioni di iOS."; return }
         guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "it_IT")), recognizer.isAvailable, recognizer.supportsOnDeviceRecognition else {
             message = "Dettatura locale italiana non disponibile. Puoi usare il microfono della tastiera di iPhone."; return
         }
         do {
             stop(); message = nil; transcript = ""
+            let recordingToken = generation
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playAndRecord, mode: .measurement, options: [.duckOthers, .defaultToSpeaker])
             try session.setActive(true)
@@ -42,7 +47,7 @@ final class DictationService: ObservableObject {
             installedTap = true; engine.prepare(); try engine.start(); isListening = true
             task = recognizer.recognitionTask(with: request) { [weak self] result, error in
                 Task { @MainActor in
-                    guard let self, self.isListening else { return }
+                    guard let self, self.isListening, self.generation == recordingToken else { return }
                     if let result { self.transcript = result.bestTranscription.formattedString }
                     if error != nil || result?.isFinal == true {
                         if error != nil && self.transcript.isEmpty { self.message = "Dettatura interrotta. Riprova oppure usa la tastiera." }
@@ -57,6 +62,7 @@ final class DictationService: ObservableObject {
         } catch { stop(); message = error.localizedDescription }
     }
     func stop() {
+        generation += 1
         isListening = false; timeout?.cancel(); timeout = nil
         engine.stop()
         if installedTap { engine.inputNode.removeTap(onBus: 0); installedTap = false }
