@@ -218,6 +218,7 @@ struct PlanMove: Codable, Identifiable {
     var source: CalendarItem
     var proposedStart: Date
     var proposedEnd: Date
+    var healthDerived: Bool? = nil
     var syncedToCalendar: Bool = false
     var createdAt: Date = Date()
 }

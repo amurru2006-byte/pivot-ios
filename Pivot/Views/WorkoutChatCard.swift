@@ -77,7 +77,7 @@ struct WorkoutChatCard: View {
             guard store.change({ data in
                 WorkoutContext.applyLocally(draft, events: confirmedEvents, data: &data, synced: calendarWrite, now: Date())
                 var coach = data.coachState
-                coach.messages.append(.init(dayKey: PivotDate.key(Date()), role: .user, text: "Confermo \(draft.source.title) alle \(PivotDate.time(draft.start)), sveglia alle \(draft.wake.map(PivotDate.time) ?? "—"). \(calendarWrite ? "Aggiorna anche il Calendario." : "Salva solo in Pivot.")", healthDerived: draft.health == nil ? nil : true))
+                coach.messages.append(.init(dayKey: PivotDate.key(Date()), role: .user, text: "Confermo \(draft.source.title) alle \(PivotDate.time(draft.start)), sveglia alle \(draft.wake.map(PivotDate.time) ?? "—"). \(calendarWrite ? "Aggiorna anche il Calendario." : "Salva solo in Pivot.")", healthDerived: draft.healthDerived ?? (draft.health == nil ? nil : true)))
                 coach.messages.append(.init(dayKey: PivotDate.key(Date()), role: .coach, text: "Allenamento registrato. \(calendarWrite ? "Calendario aggiornato per le sole occorrenze confermate." : "Calendario invariato.") \(draft.breakfastDone == false ? "La colazione resta da fare: controlla lo spazio disponibile." : "Colazione confermata.")"))
                 data.coachState = coach
             }) else { message = "Salvataggio locale non riuscito. Aggiorna prima di riprovare."; return }
