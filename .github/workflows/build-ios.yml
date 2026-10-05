@@ -50,6 +50,20 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tee build/build.log
       - name: Prepara IPA per AltStore o Sideloadly
         run: |
+          # An entirely unsigned binary loses its declared capabilities when
+          # AltStore inspects it. Carry HealthKit in an ad-hoc signature; this
+          # is NOT a developer/distribution signature and still requires AltStore.
+          codesign --force --sign - --generate-entitlement-der \
+            --entitlements Pivot/Pivot.entitlements \
+            build/DerivedData/Build/Products/Release-iphoneos/Pivot.app
+          codesign --display --entitlements :- \
+            build/DerivedData/Build/Products/Release-iphoneos/Pivot.app \
+            > build/packaged-entitlements.plist 2>/dev/null
+          python3 - <<'PY'
+          import plistlib
+          with open('build/packaged-entitlements.plist', 'rb') as file:
+              assert plistlib.load(file).get('com.apple.developer.healthkit') is True
+          PY
           mkdir -p build/Package/Payload
           cp -R build/DerivedData/Build/Products/Release-iphoneos/Pivot.app build/Package/Payload/
           cd build/Package
@@ -81,4 +95,5 @@ jobs:
             build/preview-build.log
             build/interaction-tests.log
             build/export-validation.xlsx
+            build/packaged-entitlements.plist
           if-no-files-found: ignore
