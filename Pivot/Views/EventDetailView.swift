@@ -93,7 +93,7 @@ struct EventDetailView: View {
             }
         }
         .navigationTitle("Attività")
-        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Salva") { finishEditing() }.disabled(store.locked) } }
+        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Salva") { finishEditing() }.accessibilityIdentifier("activity-save").disabled(store.locked) } }
         .onAppear {
             let firstAppearance = !loadedDraft
             if firstAppearance {
@@ -170,6 +170,8 @@ struct EventDetailView: View {
             }
             if let health = record.health {
                 Label("Dati da Salute · \(ActivityTiming.duration(health.durationSeconds))", systemImage: "heart.text.square").font(.caption).foregroundStyle(PivotTheme.accent)
+                if let calories = health.activeCalories { Text("\(Int(calories.rounded())) kcal attive").font(.caption).foregroundStyle(PivotTheme.muted) }
+                if let bpm = health.averageBPM { Text("Battito medio: \(bpm) bpm").font(.caption).foregroundStyle(PivotTheme.muted) }
             }
             if let sleep = record.healthSleep, let seconds = sleep.durationSeconds {
                 Label("Sonno da Salute · \(ActivityTiming.duration(seconds))", systemImage: "bed.double.fill").font(.caption).foregroundStyle(PivotTheme.accent)
@@ -421,7 +423,7 @@ struct EventDetailView: View {
         return (try? encoder.encode(draft).base64EncodedString()) ?? ""
     }
     private func persistDraft() {
-        guard loadedDraft, fingerprint != savedFingerprint, !store.locked, !store.isRestoring else { return }
+        guard loadedDraft, !fingerprint.isEmpty, fingerprint != savedFingerprint, !store.locked, !store.isRestoring else { return }
         let value = draft
         store.change { data in
             var drafts = data.activityDrafts ?? [:]; drafts[event.id] = value; data.activityDrafts = drafts

@@ -31,7 +31,14 @@ enum Report {
             if let r = record {
                 if let start = r.actualStart { lines.append("Inizio reale: \(PivotDate.time(start))") }
                 if let end = r.actualEnd { lines.append("Fine reale: \(PivotDate.time(end))") }
-                lines.append("Tempo registrato: \(r.activeMinutes) minuti")
+                let excludedHealth = data.settings.includeHealthInExports != true && (original.records[event.id]?.health != nil || original.records[event.id]?.healthSleep != nil)
+                if excludedHealth && r.activeMinutes == 0 { lines.append("Tempi e dati Salute esclusi da questa esportazione.") }
+                else { lines.append("Tempo registrato: \(ActivityTiming.duration(r.activeMinutes * 60))") }
+                if let health = r.health, r.cardio == nil {
+                    if let calories = health.activeCalories { lines.append("Calorie attive da Salute: \(calories) kcal") }
+                    if let bpm = health.averageBPM { lines.append("Battito medio da Salute: \(bpm) bpm") }
+                    if let km = health.distanceKM { lines.append("Distanza da Salute: \(km) km") }
+                }
                 if !r.reason.isEmpty { lines.append("Motivo: \(r.reason)") }
                 if !r.notes.isEmpty { lines.append("Note: \(r.notes)") }
                 if let reminders = r.reminders, !reminders.isEmpty { lines.append("Promemoria dell'evento: \(reminders)") }

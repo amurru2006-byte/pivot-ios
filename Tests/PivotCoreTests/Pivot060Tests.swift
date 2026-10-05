@@ -124,6 +124,14 @@ final class Pivot060Tests: XCTestCase {
         XCTAssertFalse(notifications.contains { $0.id == "event-lezione-1" })
         XCTAssertEqual(notifications.first(where: { $0.id == "evening-2026-10-05" })?.destination, "diary")
     }
+    func testImportedWakeDoesNotSuppressUnansweredMorningMood() {
+        let wake = event("sveglia", .routine, 8, 9)
+        var data = AppData(); data.checkIns["2026-10-05"] = DayCheckIn(id: "2026-10-05", wakeTime: wake.start, healthWakeTime: wake.start)
+        let requests = NotificationPlan.requests(events: [wake], data: data, now: wake.start.addingTimeInterval(-3600))
+        XCTAssertTrue(requests.contains { $0.id == "morning-2026-10-05" && $0.date >= wake.end })
+        data.checkIns["2026-10-05"]?.energyMorning = 7; data.checkIns["2026-10-05"]?.moodMorning = 7
+        XCTAssertFalse(NotificationPlan.requests(events: [wake], data: data, now: wake.start.addingTimeInterval(-3600)).contains { $0.id.hasPrefix("morning-") })
+    }
     func testOldDataDecodesWithoutNewOptionalFields() throws {
         let data = try BackupCodec.decode(BackupCodec.encode(AppData()))
         XCTAssertNil(data.decisions); XCTAssertNil(data.activityDrafts); XCTAssertNil(data.settings.healthEnabled)
@@ -162,5 +170,19 @@ final class Pivot060Tests: XCTestCase {
         let item = event("lezione Sara", .other, 10, 11)
         var data = AppData(); var rule = EventRule.defaultRule(for: item); rule.kindOverride = .tutoring; data.rules[item.id] = rule
         XCTAssertEqual(Planner.effectiveEvents([item], data: data)[0].kind, .tutoring); XCTAssertEqual(item.kind, .other)
+    }
+    func testBackupRestoreRemapsPDFReferencesInDrafts() throws {
+        let item = event("studio", .study, 10, 12)
+        let pdf = Data("%PDF-1.4\n%%EOF\n".utf8), doc = StudyDocument(name: "giorno.pdf", byteCount: 15)
+        var document = doc; document.byteCount = pdf.count
+        var record = EventRecord(id: item.id, snapshot: item); record.study = StudySession(documents: [document])
+        var data = AppData(); data.records[item.id] = record; data.studyPDFs = [document.id.uuidString: pdf]
+        data.activityDrafts = [item.id: ActivityDraft(record: record, rule: .defaultRule(for: item), studentName: "", lessonAmount: "", receivedAmount: "", received: false, receiptDate: item.start)]
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let restored = try StudyFiles.installBackup(data, directory: directory)
+        let newID = try XCTUnwrap(restored.records[item.id]?.study?.documents.first?.id)
+        XCTAssertNotEqual(newID, document.id)
+        XCTAssertEqual(restored.activityDrafts?[item.id]?.record.study?.documents.first?.id, newID)
     }
 }

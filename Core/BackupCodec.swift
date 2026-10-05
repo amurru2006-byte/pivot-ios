@@ -26,6 +26,11 @@ enum BackupCodec {
         var data = try decoder.decode(AppData.self, from: bytes)
         try StudyFiles.validateBackup(data)
         try data.training?.validate()
+        guard (data.contextAnswers ?? []).allSatisfy({ answer in
+                  answer.travelMinutes.map { (0...1440).contains($0) } ?? true
+              }), (data.activityDrafts ?? [:]).allSatisfy({ pair in
+                  pair.key == pair.value.record.id && (pair.value.record.cardio?.isValid ?? true)
+              }) else { throw BackupError.invalidData }
         guard data.records.values.allSatisfy({ $0.cardio?.isValid ?? true }),
               data.checkIns.values.allSatisfy({ check in
                   guard let sleep = check.sleep else { return true }
