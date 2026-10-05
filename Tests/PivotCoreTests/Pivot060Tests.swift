@@ -129,6 +129,35 @@ final class Pivot060Tests: XCTestCase {
         XCTAssertNil(data.decisions); XCTAssertNil(data.activityDrafts); XCTAssertNil(data.settings.healthEnabled)
         XCTAssertNil(data.settings.includeHealthInExports)
     }
+    func testShorteningRequiresExplicitPermissionNotADefaultMinimum() {
+        let study = event("studio", .study, 8, 10), fixed = event("lezione", .tutoring, 13, 15)
+        var data = AppData(); var rule = EventRule.defaultRule(for: study); rule.travelConfirmed = true
+        data.rules[study.id] = rule
+        let now = event("adesso", .other, 12, 13).start
+        let full = Planner.recover(study, events: [fixed], data: data, now: now, days: 1)
+        XCTAssertEqual(full.first?.start, fixed.end)
+        data.rules[study.id]?.compressionApproved = true
+        let shortened = Planner.recover(study, events: [fixed], data: data, now: now, days: 1)
+        XCTAssertEqual(shortened.first?.start, now)
+        XCTAssertEqual(shortened.first?.end, fixed.start)
+    }
+    func testLongPausedWorkoutDoesNotMatchAShortSlot() {
+        let slot = event("camminata", .workout, 10, 11)
+        let summary = HealthWorkoutSummary(id: "paused", start: slot.start, end: slot.start.addingTimeInterval(3 * 3600), type: "walk", durationSeconds: 1800)
+        XCTAssertTrue(HealthImport.candidates(summary, events: [slot]).isEmpty)
+    }
+    func testUnsupportedWorkoutDoesNotCompleteGym() {
+        let gym = event("palestra", .workout, 10, 11)
+        let summary = HealthWorkoutSummary(id: "run", start: gym.start, end: gym.end, type: "unsupported", durationSeconds: 3600)
+        XCTAssertTrue(HealthImport.candidates(summary, events: [gym]).isEmpty)
+    }
+    func testSleepSubtractsAwakeUnionWithoutDoubleCounting() {
+        let start = date("2026-10-05T01:00:00+02:00"), end = date("2026-10-05T08:00:00+02:00")
+        let awake = HealthInterval(start: start.addingTimeInterval(3600), end: start.addingTimeInterval(4200))
+        let summary = HealthImport.sleep(asleep: [.init(start: start, end: end)], awake: [awake, awake], endingOn: end)
+        XCTAssertEqual(summary?.durationSeconds, 7 * 3600 - 600)
+        XCTAssertEqual(summary?.awakenings, 1)
+    }
     func testCategoryOverrideStaysLocal() {
         let item = event("lezione Sara", .other, 10, 11)
         var data = AppData(); var rule = EventRule.defaultRule(for: item); rule.kindOverride = .tutoring; data.rules[item.id] = rule

@@ -73,7 +73,7 @@ enum HealthImport {
             guard correctType else { return false }
             let overlap = min(event.end, workout.end).timeIntervalSince(max(event.start, workout.start))
             // A station-university walk outside the workout slot is never a scheduled workout.
-            return overlap > 0 && overlap >= Double(max(1, workout.durationSeconds)) * 0.7
+            return overlap > 0 && overlap >= max(1, workout.end.timeIntervalSince(workout.start)) * 0.7
         }.sorted { $0.start < $1.start }
     }
     static func apply(_ summary: HealthWorkoutSummary, to event: CalendarItem, data: inout AppData) {

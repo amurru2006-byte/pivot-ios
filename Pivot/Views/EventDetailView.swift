@@ -341,7 +341,12 @@ struct EventDetailView: View {
             Picker("Priorità", selection: Binding(get: { rule.priority ?? EventContext.priority(event, data: store.data, now: Date()) }, set: { rule.priority = $0 })) {
                 ForEach(EventPriority.allCases, id: \.self) { Text($0.label).tag($0) }
             }
-            DurationField(title: "Durata minima", seconds: Binding(get: { rule.minimumMinutes * 60 }, set: { rule.minimumMinutes = max(5, ($0 ?? 300) / 60) }), maxHours: 12)
+            if rule.flexibility == .compressible {
+                Toggle("Puoi proporre di accorciarla", isOn: Binding(get: { rule.compressionApproved == true }, set: { rule.compressionApproved = $0 }))
+                if rule.compressionApproved == true {
+                    DurationField(title: "Durata minima che accetti", seconds: Binding(get: { rule.minimumMinutes * 60 }, set: { rule.minimumMinutes = max(5, ($0 ?? 300) / 60) }), maxHours: 12)
+                }
+            }
             DurationField(title: "Tragitto prima", seconds: Binding(get: { rule.travelBeforeMinutes * 60 }, set: { rule.travelBeforeMinutes = ($0 ?? 0) / 60 }), maxHours: 4)
             DurationField(title: "Tragitto dopo", seconds: Binding(get: { rule.travelAfterMinutes * 60 }, set: { rule.travelAfterMinutes = ($0 ?? 0) / 60 }), maxHours: 4)
             Toggle("Tempi di tragitto verificati", isOn: $rule.travelConfirmed)

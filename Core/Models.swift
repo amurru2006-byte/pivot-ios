@@ -158,6 +158,7 @@ struct EventRule: Codable {
     var travelConfirmed: Bool = false
     var priority: EventPriority? = nil
     var kindOverride: EventKind? = nil
+    var compressionApproved: Bool? = nil
     static func defaultRule(for item: CalendarItem) -> EventRule {
         let t = item.title.lowercased()
         switch item.kind {
