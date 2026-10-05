@@ -15,7 +15,6 @@ struct SettingsView: View {
     @State private var exporting = false
     @State private var exportFile: URL?
     @State private var message: String?
-    @State private var saveTask: Task<Void, Never>?
     private var installedVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—" }
     var body: some View {
         NavigationStack {
@@ -43,11 +42,10 @@ struct SettingsView: View {
             }.navigationTitle("Impostazioni")
                 .onAppear { settings = store.data.settings }
                 .onChange(of: settings) { _, _ in
-                    saveTask?.cancel()
-                    saveTask = Task {
-                        try? await Task.sleep(nanoseconds: 400_000_000)
-                        guard !Task.isCancelled, settings != store.data.settings else { return }
-                        await saveSettings()
+                    guard settings != store.data.settings else { return }
+                    if store.change({ $0.settings = settings }) {
+                        let saved = settings
+                        Task { await calendar.refresh(settings: saved) }
                     }
                 }
                 .sheet(isPresented: $folderPicker) { FolderPicker { store.selectBackupFolder($0) } }

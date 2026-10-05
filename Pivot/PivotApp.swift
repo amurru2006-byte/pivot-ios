@@ -30,6 +30,7 @@ struct RootView: View {
     @EnvironmentObject var calendar: CalendarService
     @EnvironmentObject var notifications: NotificationService
     @EnvironmentObject var health: HealthService
+    @EnvironmentObject var coachModel: LocalCoachService
     @Environment(\.scenePhase) var scene
     @State private var selectedTab = PreviewMode.enabled ? PreviewMode.tab : 0
     @State private var previewReady = !PreviewMode.enabled
@@ -38,6 +39,7 @@ struct RootView: View {
     @State private var deferredLessonIDs: Set<String> = []
     @State private var question: EventDecision?
     @State private var offeredQuestion = false
+    @State private var offeredWorkoutIDs: Set<String> = []
     private let refreshClock = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
     var body: some View {
         Group {
@@ -89,7 +91,13 @@ struct RootView: View {
             }
         }
         .onReceive(refreshClock) { _ in if scene == .active { requestRefresh() } }
-        .onChange(of: scene) { _, value in if value == .active { requestRefresh() } }
+        .onChange(of: scene) { _, value in if value == .active { requestRefresh() } else { coachModel.stop() } }
+        .onReceive(NotificationCenter.default.publisher(for: ProcessInfo.thermalStateDidChangeNotification)) { _ in
+            if ProcessInfo.processInfo.thermalState == .serious || ProcessInfo.processInfo.thermalState == .critical { coachModel.stop() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
+            if ProcessInfo.processInfo.isLowPowerModeEnabled { coachModel.stop() }
+        }
         .onChange(of: store.data.updatedAt) { _, _ in requestRefresh() }
         .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged).debounce(for: .milliseconds(400), scheduler: RunLoop.main)) { _ in requestRefresh() }
         .sheet(item: $lessonToConfirm, onDismiss: { promptForLesson() }) { event in
@@ -103,6 +111,7 @@ struct RootView: View {
                 } else if route.destination == "checkin" {
                     DayCheckInView(day: Date(), initial: store.data.checkIns[PivotDate.key(Date())])
                 } else if route.destination == "diary" { DiaryView() }
+                else if route.destination == "coach" { CoachView() }
                 else { Text("Questo evento è cambiato. Apri la giornata aggiornata.").padding() }
             }.presentationDragIndicator(.visible)
         }
@@ -140,6 +149,13 @@ struct RootView: View {
         }
         await health.refresh(store: store, events: calendar.events)
         promptForLesson()
+        let pendingWorkouts = store.data.workoutReviews?.filter { !$0.resolved && !$0.dismissed } ?? []
+        if scene == .active, !store.locked, !store.isRestoring,
+           lessonToConfirm == nil, question == nil, notifications.route == nil,
+           pendingWorkouts.contains(where: { !offeredWorkoutIDs.contains($0.id) }) {
+            offeredWorkoutIDs.formUnion(pendingWorkouts.map(\.id))
+            notifications.route = .init(eventID: nil, destination: "coach", outcome: nil)
+        }
         if !offeredQuestion, lessonToConfirm == nil, notifications.route == nil, scene == .active,
            let value = store.data.decisions?.first(where: { !$0.deferred && $0.relation == .uncertain && $0.date < Date().addingTimeInterval(86400) }) {
             offeredQuestion = true; question = value

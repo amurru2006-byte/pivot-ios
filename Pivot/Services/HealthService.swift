@@ -96,7 +96,12 @@ final class HealthService: ObservableObject {
                     modified = true
                 }
             }
-            if modified { store.change { data in data.records = next.records; data.checkIns = next.checkIns } }
+            if modified {
+                store.change { data in
+                    data.records = next.records; data.checkIns = next.checkIns
+                    data.workoutReviews = next.workoutReviews; data.coach = next.coach
+                }
+            }
             lastRefresh = Date()
             status = summaries.isEmpty && sleepSamples.isEmpty ? "Nessun dato leggibile. Potrebbero mancare dati o permessi: controlla Salute → profilo → App → Pivot." : "Aggiornato alle \(PivotDate.time(Date())) · sola lettura"
         } catch { status = "Dati non aggiornati: \(error.localizedDescription)" }

@@ -62,11 +62,12 @@ struct WorkoutChatCard: View {
         guard !applying, !store.locked, !store.isRestoring, let draft else { return }
         applying = true; defer { applying = false }
         await calendar.refresh(settings: store.data.settings)
-        if let error = WorkoutContext.validate(draft, events: calendar.events, now: Date()) { message = error; return }
-        let moves = WorkoutContext.moves(draft, events: calendar.events)
+        let confirmedEvents = calendar.events
+        if let error = WorkoutContext.validate(draft, events: confirmedEvents, now: Date()) { message = error; return }
+        let moves = WorkoutContext.moves(draft, events: confirmedEvents)
         var simulated = store.data
-        WorkoutContext.applyLocally(draft, events: calendar.events, data: &simulated, synced: false, now: Date())
-        let overlaps = Planner.overlapsInPlannedEvents(on: draft.start, events: Planner.plannedEvents(calendar.events, data: simulated), data: simulated).filter { pair in moves.contains { $0.source.id == pair.0.id || $0.source.id == pair.1.id } }
+        WorkoutContext.applyLocally(draft, events: confirmedEvents, data: &simulated, synced: false, now: Date())
+        let overlaps = Planner.overlapsInPlannedEvents(on: draft.start, events: Planner.plannedEvents(confirmedEvents, data: simulated), data: simulated).filter { pair in moves.contains { $0.source.id == pair.0.id || $0.source.id == pair.1.id } }
         if calendarWrite && !overlaps.isEmpty {
             message = "Prima di aggiornare il Calendario chiarisci: " + overlaps.map { "\($0.0.title) / \($0.1.title)" }.joined(separator: ", ") + ". Puoi salvare i dati reali solo in Pivot e riorganizzare gli impegni con il Coach."; return
         }
@@ -74,7 +75,7 @@ struct WorkoutChatCard: View {
             // This is the explicit chat approval; no language-model output can call the writer.
             if calendarWrite { try await calendar.applyActualWorkout(draft, data: store.data) }
             guard store.change({ data in
-                WorkoutContext.applyLocally(draft, events: calendar.events, data: &data, synced: calendarWrite, now: Date())
+                WorkoutContext.applyLocally(draft, events: confirmedEvents, data: &data, synced: calendarWrite, now: Date())
                 var coach = data.coachState
                 coach.messages.append(.init(dayKey: PivotDate.key(Date()), role: .user, text: "Confermo \(draft.source.title) alle \(PivotDate.time(draft.start)), sveglia alle \(draft.wake.map(PivotDate.time) ?? "—"). \(calendarWrite ? "Aggiorna anche il Calendario." : "Salva solo in Pivot.")", healthDerived: draft.health == nil ? nil : true))
                 coach.messages.append(.init(dayKey: PivotDate.key(Date()), role: .coach, text: "Allenamento registrato. \(calendarWrite ? "Calendario aggiornato per le sole occorrenze confermate." : "Calendario invariato.") \(draft.breakfastDone == false ? "La colazione resta da fare: controlla lo spazio disponibile." : "Colazione confermata.")"))

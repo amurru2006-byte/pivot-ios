@@ -55,7 +55,8 @@ enum NotificationPlan {
         for day in 0...6 {
             let date = calendar.date(byAdding: .day, value: day, to: now)!
             let time = calendar.date(bySettingHour: data.settings.eveningHour, minute: data.settings.eveningMinute, second: 0, of: date)!
-            add(time, "evening-\(PivotDate.key(date))", "Resoconto della giornata", "Controlla le risposte mancanti e condividi il resoconto quando vuoi.", priority: 0, destination: "diary")
+            let missingCardio = WorkoutContext.missingCardio(events: events, data: data, now: time)
+            add(time, "evening-\(PivotDate.key(date))", "Resoconto della giornata", missingCardio.isEmpty ? "Controlla le risposte mancanti e condividi il resoconto quando vuoi." : "Controlla anche il cardio da chiarire: il Coach ti chiede se l’hai svolto o recuperato.", priority: 0, destination: missingCardio.isEmpty ? "diary" : "coach")
         }
         // Reserve the finite iOS queue for meals/check-ins before optional follow-ups.
         let chosen = requests.sorted {

@@ -210,6 +210,8 @@ struct CoachView: View {
                 Label("Modello locale attivo", systemImage: "cpu.fill").font(.headline).foregroundStyle(PivotTheme.blue)
                 Text("Qwen3 0,6B può consigliare una delle soluzioni verificate. Non può inventare orari né applicare modifiche. Se la risposta non supera i controlli, resta il pianificatore sicuro.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
+                Button(coachModel.isGenerating ? "Modello impegnato…" : "Test su questo iPhone") { Task { await coachModel.testOnDevice() } }
+                    .buttonStyle(PivotSecondaryButton()).disabled(coachModel.isGenerating)
             case .downloading(let progress):
                 Label("Download e caricamento del modello", systemImage: "arrow.down.circle.fill").font(.headline)
                 ProgressView(value: progress)
@@ -227,6 +229,7 @@ struct CoachView: View {
                 Label("Modalità sicura attiva", systemImage: "checkmark.shield.fill").font(.headline)
                 Text("Questa build usa il motore deterministico; nessuna funzione di pianificazione è bloccata.").font(.caption).foregroundStyle(PivotTheme.muted)
             }
+            if let report = coachModel.performanceReport { Text(report).font(.caption).foregroundStyle(PivotTheme.muted) }
         }
     }
 
