@@ -99,7 +99,7 @@ struct RootView: View {
         .sheet(item: $notifications.route) { route in
             NavigationStack {
                 if let id = route.eventID, let event = Planner.plannedEvents(calendar.events, data: store.data).first(where: { $0.id == id }) {
-                    EventDetailView(event: event, initial: notificationRecord(event, outcome: route.outcome), rule: store.rule(for: event))
+                    EventDetailView(event: event, initial: notificationRecord(event, outcome: route.outcome), rule: store.rule(for: event), onSaved: { selectedTab = 0 })
                 } else if route.destination == "checkin" {
                     DayCheckInView(day: Date(), initial: store.data.checkIns[PivotDate.key(Date())])
                 } else if route.destination == "diary" { DiaryView() }

@@ -39,7 +39,7 @@ enum Planner {
             for block in blocks + [(dayEnd, dayEnd)] {
                 let slotEnd = min(block.0, dayEnd)
                 let available = slotEnd.timeIntervalSince(cursor) - before - after
-                let minimum = targetRule.flexibility == .compressible ? min(duration, Double(max(1, targetRule.minimumMinutes)) * 60) : duration
+                let minimum = targetRule.flexibility == .compressible && targetRule.compressionApproved == true ? min(duration, Double(max(1, targetRule.minimumMinutes)) * 60) : duration
                 if available >= minimum {
                     let start = cursor.addingTimeInterval(before)
                     let proposedDuration = min(duration, available)

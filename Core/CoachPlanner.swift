@@ -82,7 +82,7 @@ enum CoachPlanner {
         var options: [CoachOption] = []
         for item in canonical where item.id != target.id && item.start > now && !item.isAllDay {
             // Only explicit minimums, never assume default rules authorize shrinking someone else's event.
-            guard let rule = data.rules[item.id], rule.flexibility == .compressible, rule.travelConfirmed,
+            guard let rule = data.rules[item.id], rule.flexibility == .compressible, rule.compressionApproved == true, rule.travelConfirmed,
                   rule.minimumMinutes > 0, rule.minimumMinutes < item.durationMinutes,
                   EventContext.priority(item, data: data, now: now) != .essential,
                   EventContext.priority(item, data: data, now: now).rawValue <= EventContext.priority(target, data: data, now: now).rawValue,
@@ -114,6 +114,9 @@ enum CoachPlanner {
                   rule.travelBeforeMinutes >= 0, rule.travelAfterMinutes >= 0 else { return "‘\(current.title)’ non è spostabile oppure ha il tragitto da confermare." }
             let duration = move.proposedEnd.timeIntervalSince(move.proposedStart)
             let originalDuration = current.end.timeIntervalSince(current.start)
+            guard duration >= originalDuration - 1 || (rule.flexibility == .compressible && rule.compressionApproved == true) else {
+                return "La riduzione di questa attività non è stata autorizzata."
+            }
             guard duration >= Double(max(1, rule.minimumMinutes)) * 60,
                   rule.flexibility == .compressible || abs(duration - originalDuration) < 1 else {
                 return "La proposta riduce una durata non autorizzata."
