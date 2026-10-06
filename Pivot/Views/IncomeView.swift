@@ -267,6 +267,7 @@ struct IncomeDetailView: View {
                                 data.income[index].paymentTiming = timing
                                 data.income[index].promisedPaymentDate = timing == .chosenDate ? promisedDate : nil
                                 data.income[index].paymentDeferralAfter = timing == .nextLesson ? max(Date(), entry.date) : nil
+                                data.income[index].lastKnownPaymentDate = nil
                                 if rememberCadence { StudentPayments.remember(timing, for: entry.clientID, data: &data) }
                             }
                             message = "Scadenza aggiornata. Nessun incasso è stato aggiunto."
