@@ -253,7 +253,7 @@ struct TrainingSessionView: View {
             else { try TrainingEdits.add(to: &updated, exercise: exercise, library: library) }
             if applyToPlan {
                 guard let plan = library.plans.first(where: { $0.id == session.planID }),
-                      let day = plan.payload.days.firstIndex(where: { $0.name == session.dayName }) else { throw TrainingError.invalidPlan }
+                      let day = plan.payload.days.firstIndex(where: { day in session.dayID.map { $0 == day.id } ?? (day.name == session.dayName) }) else { throw TrainingError.invalidPlan }
                 var payload = plan.payload
                 if let id = replacementID, let index = payload.days[day].exercises.firstIndex(where: { $0.id == id }) { payload.days[day].exercises[index] = exercise }
                 else if !payload.days[day].exercises.contains(where: { $0.id == exercise.id }) { payload.days[day].exercises.append(exercise) }

@@ -9,6 +9,11 @@ struct TrainingExercise: Codable, Identifiable, Equatable {
     var restSeconds: Int
     var coachNotes: String
     var catalogID: String? = nil
+    var isValid: Bool {
+        !id.isEmpty && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !reps.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (1...30).contains(sets) && (0...3600).contains(restSeconds)
+    }
 }
 
 struct TrainingDay: Codable, Identifiable, Equatable {
@@ -28,8 +33,7 @@ struct TrainingPlanPayload: Codable, Equatable {
             guard !day.id.isEmpty, !day.name.isEmpty, (1...40).contains(day.exercises.count),
                   Set(day.exercises.map(\.id)).count == day.exercises.count else { throw TrainingError.invalidPlan }
             for exercise in day.exercises {
-                guard !exercise.id.isEmpty, !exercise.name.isEmpty, !exercise.reps.isEmpty,
-                      (1...30).contains(exercise.sets), (0...3600).contains(exercise.restSeconds) else { throw TrainingError.invalidPlan }
+                guard exercise.isValid else { throw TrainingError.invalidPlan }
             }
         }
     }
@@ -75,6 +79,7 @@ struct TrainingSession: Codable, Identifiable {
     var exercises: [TrainingExerciseLog]
     var notes: String = ""
     var updatedAt = Date()
+    var dayID: String? = nil
 }
 
 struct TrainingLibrary: Codable {
@@ -96,7 +101,7 @@ struct TrainingLibrary: Codable {
             }
             return TrainingExerciseLog(exercise: exercise, sets: sets)
         }
-        return TrainingSession(planID: plan.id, dayName: day.name, calendarEventID: eventID, start: now, exercises: logs)
+        return TrainingSession(planID: plan.id, dayName: day.name, calendarEventID: eventID, start: now, exercises: logs, dayID: day.id)
     }
     func validate() throws {
         guard plans.count <= 6, Set(plans.map(\.id)).count == plans.count,
@@ -110,7 +115,7 @@ struct TrainingLibrary: Codable {
             guard session.end.map({ $0 >= session.start }) ?? true,
                   Set(session.exercises.map(\.id)).count == session.exercises.count else { throw TrainingError.invalidPlan }
             for log in session.exercises {
-                guard Set(log.sets.map(\.number)).count == log.sets.count,
+                guard log.exercise.isValid, Set(log.sets.map(\.number)).count == log.sets.count,
                       log.sets.allSatisfy({ set in (1...30).contains(set.number)
                           && (set.kg.map { $0.isFinite && (0...2000).contains($0) } ?? true)
                           && (set.reps.map { (0...1000).contains($0) } ?? true)

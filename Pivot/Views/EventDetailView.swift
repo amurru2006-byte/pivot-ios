@@ -5,10 +5,13 @@ import UIKit
 struct EventDetailView: View {
     @EnvironmentObject var store: PivotStore
     @EnvironmentObject var calendar: CalendarService
+    @EnvironmentObject var agenda: AgendaService
     private let sourceEvent: CalendarItem
     private var onSaved: (() -> Void)?
     var event: CalendarItem {
-        Planner.effectiveEvents(calendar.events.filter { $0.id == sourceEvent.id || EventCoalescer.savedOccurrence(sourceEvent, $0) }, data: store.data).first { $0.id == sourceEvent.id || EventCoalescer.savedOccurrence(sourceEvent, $0) } ?? sourceEvent
+        agenda.effective.first { $0.id == sourceEvent.id }
+            ?? agenda.effective.first { EventCoalescer.savedOccurrence(sourceEvent, $0) }
+            ?? sourceEvent
     }
     @State private var record: EventRecord
     @State private var rule: EventRule
@@ -115,6 +118,7 @@ struct EventDetailView: View {
                     if selectedOutcome != .pending { record.status = selectedOutcome }
                 }
                 recognizeStudent()
+                if store.data.activityDrafts?[event.id] == nil && record.timingFromCalendar == true { suggestLessonAmount() }
                 if store.data.activityDrafts?[event.id]?.paymentTiming == nil { paymentTiming = selectedClient?.paymentCadence?.timing ?? .everyLesson }
                 paymentClientID = selectedClientID
                 loadedDraft = true; savedFingerprint = fingerprint
@@ -181,6 +185,7 @@ struct EventDetailView: View {
             SectionHeading(title: "Come è andata?")
             Button {
                 EventAutofill.complete(&record, event: event)
+                suggestLessonAmount()
             } label: { Label("Fatto come previsto · autocompila", systemImage: "checkmark.square.fill") }
                 .buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("activity-autofill")
             if record.timingFromCalendar == true {
@@ -367,6 +372,9 @@ struct EventDetailView: View {
                     if selectedClient == nil { TextField(event.kind == .work ? "Nome cliente / lavoro" : "Nome dello studente", text: $studentName).textContentType(.name).accessibilityIdentifier("student-name") }
                 }
                 TextField("Importo concordato in euro (anche 0)", text: $lessonAmount).keyboardType(.decimalPad).accessibilityIdentifier("lesson-amount")
+                if record.timingFromCalendar == true, let client = selectedClient, client.rateCents > 0 {
+                    Text("Compenso suggerito dalla tariffa salvata: \(Money.display(client.rateCents))/ora. Correggilo se avete concordato un importo diverso; nessun pagamento è dato per ricevuto.").font(.caption).foregroundStyle(PivotTheme.muted)
+                }
                 Toggle("Ho già ricevuto un pagamento", isOn: $received)
                 if received {
                     TextField("Euro ricevuti oggi (anche lezioni precedenti)", text: $receivedAmount).keyboardType(.decimalPad).accessibilityIdentifier("lesson-received-amount")
@@ -417,6 +425,12 @@ struct EventDetailView: View {
         studentName = result.name
         selectedClientID = result.client?.id
         studentFromCalendar = !result.name.isEmpty
+    }
+    private func suggestLessonAmount() {
+        guard lessonAmount.isEmpty, linkedIncome == nil, [.tutoring, .work].contains(event.kind),
+              let client = selectedClient, client.rateCents > 0, record.activeMinutes > 0 else { return }
+        let cents = Money.lessonAmount(rateCents: client.rateCents, minutes: record.activeMinutes)
+        lessonAmount = String(format: "%.2f", Double(cents) / 100).replacingOccurrences(of: ".", with: ",")
     }
     @discardableResult private func save() -> Bool {
         if let start = record.actualStart, let end = record.actualEnd, ActivityTiming.seconds(start: start, end: end) == nil {

@@ -47,7 +47,7 @@ enum TrainingEdits {
         // Recorded sessions contain their own prescription snapshots and remain unchanged.
     }
     static func replace(in session: inout TrainingSession, exerciseID: String, with replacement: TrainingExercise, library: TrainingLibrary) throws {
-        guard let index = session.exercises.firstIndex(where: { $0.id == exerciseID }),
+        guard replacement.isValid, let index = session.exercises.firstIndex(where: { $0.id == exerciseID }),
               !session.exercises[index].sets.contains(where: \.done),
               replacement.id == exerciseID || !session.exercises.contains(where: { $0.id == replacement.id }) else { throw TrainingError.invalidPlan }
         var updated = session
@@ -55,7 +55,7 @@ enum TrainingEdits {
         session = updated
     }
     static func add(to session: inout TrainingSession, exercise: TrainingExercise, library: TrainingLibrary) throws {
-        guard !session.exercises.contains(where: { $0.id == exercise.id }), session.exercises.count < 40 else { throw TrainingError.invalidPlan }
+        guard exercise.isValid, !session.exercises.contains(where: { $0.id == exercise.id }), session.exercises.count < 40 else { throw TrainingError.invalidPlan }
         session.exercises.append(newLog(exercise, library: library, before: session.start))
     }
     private static func newLog(_ exercise: TrainingExercise, library: TrainingLibrary, before date: Date) -> TrainingExerciseLog {
