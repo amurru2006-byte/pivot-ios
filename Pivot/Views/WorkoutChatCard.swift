@@ -61,6 +61,7 @@ struct WorkoutChatCard: View {
     private func confirm(calendarWrite: Bool) async {
         guard !applying, !store.locked, !store.isRestoring, let draft else { return }
         applying = true; defer { applying = false }
+        guard await store.flushPendingWrites() else { message = "Completa prima il salvataggio nelle Impostazioni."; return }
         await calendar.refresh(settings: store.data.settings)
         let confirmedEvents = EventCoalescer.unique(calendar.events, data: store.data)
         if let error = WorkoutContext.validate(draft, events: confirmedEvents, now: Date()) { message = error; return }

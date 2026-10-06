@@ -8,8 +8,8 @@ settings:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "1,2"
     CODE_SIGNING_ALLOWED: NO
-    MARKETING_VERSION: "0.7.0"
-    CURRENT_PROJECT_VERSION: "14"
+    MARKETING_VERSION: "0.7.1"
+    CURRENT_PROJECT_VERSION: "15"
 packages:
   LLM:
     url: https://github.com/eastriverlee/LLM.swift.git

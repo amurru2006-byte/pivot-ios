@@ -52,8 +52,11 @@ enum WorkoutContext {
         return result.filter { $0.workout.start >= now.addingTimeInterval(-30 * 86400) }
     }
     static func missingCardio(events: [CalendarItem], data: AppData, now: Date) -> [CalendarItem] {
+        missingCardioInPlanned(events: Planner.plannedEvents(events, data: data), data: data, now: now)
+    }
+    static func missingCardioInPlanned(events: [CalendarItem], data: AppData, now: Date) -> [CalendarItem] {
         guard PivotDate.calendar.component(.hour, from: now) >= data.settings.eveningHour else { return [] }
-        return Planner.plannedEvents(events, data: data).filter {
+        return events.filter {
             $0.occurs(on: now) && $0.kind == .workout && CardioKind.suggested($0.title) != nil && $0.end <= now &&
             ![Completion.completed, .partial, .skipped].contains(data.records[$0.id]?.status ?? .pending)
         }

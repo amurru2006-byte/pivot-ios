@@ -1,7 +1,7 @@
 name: Compila Pivot per iPhone
 on:
   push:
-    branches: [main]
+    branches: [main, 'codex/pivot-0.7.1-performance']
   workflow_dispatch:
 permissions:
   contents: read
@@ -67,7 +67,7 @@ jobs:
           mkdir -p build/Package/Payload
           cp -R build/DerivedData/Build/Products/Release-iphoneos/Pivot.app build/Package/Payload/
           cd build/Package
-          zip -qr ../Pivot-unsigned.ipa Payload
+          zip -qr ../Pivot-0.7.1.ipa Payload
       - name: Verifica interfaccia su simulatore iPhone
         run: bash Scripts/preview-ui.sh
       - name: Carica anteprime iPhone
@@ -82,7 +82,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Pivot-iPhone-unsigned
-          path: build/Pivot-unsigned.ipa
+          path: build/Pivot-0.7.1.ipa
           retention-days: 14
           if-no-files-found: error
       - name: Conserva log di compilazione

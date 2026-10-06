@@ -16,6 +16,9 @@ struct EventDetailView: View {
     @State private var suggestions: [RecoverySuggestion] = []
     @State private var studentName = ""
     @State private var selectedClientID: UUID? = nil
+    @State private var studentFromCalendar = false
+    @State private var ambiguousStudent = false
+    @State private var editingStudent = false
     @State private var lessonAmount = ""
     @State private var receivedAmount = ""
     @State private var received = false
@@ -104,6 +107,7 @@ struct EventDetailView: View {
                     lessonAmount = draft.lessonAmount; receivedAmount = draft.receivedAmount; received = draft.received; receiptDate = draft.receiptDate
                     if selectedOutcome != .pending { record.status = selectedOutcome }
                 }
+                recognizeStudent()
                 loadedDraft = true; savedFingerprint = fingerprint
             }
             // A workout diary can change the timer while this detail is underneath it.
@@ -126,6 +130,7 @@ struct EventDetailView: View {
         .sheet(isPresented: $editingLogistics, onDismiss: {
             rule = store.rule(for: event)
             record.logistics = store.record(for: event).logistics
+            recognizeStudent()
         }) { LessonLogisticsView(event: event) }
         .fileImporter(isPresented: $importingPDF, allowedContentTypes: [.pdf]) { result in
             switch result {
@@ -320,12 +325,22 @@ struct EventDetailView: View {
                 NavigationLink { IncomeDetailView(entryID: entry.id) } label: { Label(entry.outstandingCents > 0 ? "Registra il pagamento mancante" : "Vedi il pagamento", systemImage: "arrow.right.circle") }
                 Text("Salvare ancora questa attività non aggiunge un secondo incasso.").font(.caption).foregroundStyle(PivotTheme.muted)
             } else {
-                Picker(event.kind == .work ? "Cliente" : "Studente", selection: $selectedClientID) {
-                    Text("Inserisci il nome").tag(nil as UUID?)
-                    ForEach(store.data.clients) { Text($0.name).tag(Optional($0.id)) }
+                if studentFromCalendar && !editingStudent {
+                    Label(selectedClient?.name ?? studentName, systemImage: "person.fill.checkmark")
+                        .accessibilityIdentifier("recognized-student")
+                    Text("Riconosciuto dal calendario").font(.caption).foregroundStyle(PivotTheme.muted)
+                    Button("Cambia studente") { editingStudent = true }.font(.caption)
+                } else {
+                    if ambiguousStudent {
+                        Text("Il titolo corrisponde a più studenti: scegli quello giusto.").font(.caption).foregroundStyle(PivotTheme.amber)
+                    }
+                    Picker(event.kind == .work ? "Cliente" : "Studente", selection: $selectedClientID) {
+                        Text("Altro / nuovo nome").tag(nil as UUID?)
+                        ForEach(store.data.clients) { Text($0.name).tag(Optional($0.id)) }
+                    }.accessibilityIdentifier("student-picker")
+                    if selectedClient == nil { TextField(event.kind == .work ? "Nome cliente / lavoro" : "Nome dello studente", text: $studentName).textContentType(.name).accessibilityIdentifier("student-name") }
                 }
-                if selectedClient == nil { TextField(event.kind == .work ? "Nome cliente / lavoro" : "Nome dello studente", text: $studentName).textContentType(.name) }
-                TextField("Importo concordato in euro (anche 0)", text: $lessonAmount).keyboardType(.decimalPad)
+                TextField("Importo concordato in euro (anche 0)", text: $lessonAmount).keyboardType(.decimalPad).accessibilityIdentifier("lesson-amount")
                 Toggle("Ho già ricevuto un pagamento", isOn: $received)
                 if received {
                     TextField("Euro ricevuti", text: $receivedAmount).keyboardType(.decimalPad)
@@ -364,6 +379,17 @@ struct EventDetailView: View {
     private func updateMinutes() {
         if let start = record.actualStart, let end = record.actualEnd { record.activeMinutes = max(0, Int(end.timeIntervalSince(start) / 60)) }
     }
+    private func recognizeStudent() {
+        guard [.tutoring, .work].contains(event.kind), selectedClientID == nil,
+              studentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let title = record.logistics.flatMap { $0.isConfirmed(for: event) ? $0.studentName : nil } ?? event.title
+        let result = StudentRecognition.recognize(title: title, clients: store.data.clients)
+        ambiguousStudent = result.ambiguous
+        guard !result.ambiguous else { return }
+        studentName = result.name
+        selectedClientID = result.client?.id
+        studentFromCalendar = !result.name.isEmpty
+    }
     @discardableResult private func save() -> Bool {
         if let start = record.actualStart, let end = record.actualEnd, ActivityTiming.seconds(start: start, end: end) == nil {
             message = "La fine reale deve essere successiva all'inizio. Controlla anche la data se l'attività supera mezzanotte."; return false
@@ -381,7 +407,8 @@ struct EventDetailView: View {
             cents = amount
             let name = selectedClient?.name ?? studentName.trimmingCharacters(in: .whitespacesAndNewlines)
             guard amount == 0 || !name.isEmpty else { message = "Indica lo studente per registrare il guadagno."; return false }
-            client = selectedClient ?? Client(name: name, rateCents: 0)
+            guard amount == 0 || !ambiguousStudent || selectedClient != nil || !studentName.isEmpty else { message = "Scegli lo studente per questa lezione."; return false }
+            client = selectedClient ?? StudentRecognition.existingClient(named: name, clients: store.data.clients) ?? Client(name: name, rateCents: 0)
             if received {
                 guard let paid = Money.cents(from: receivedAmount), paid > 0, paid <= amount else { message = "L'incasso deve essere positivo e non superiore all'importo della lezione."; return false }
                 collected = paid

@@ -69,7 +69,10 @@ enum Planner {
         }
     }
     static func preferredEvent(_ events: [CalendarItem], data: AppData, now: Date) -> CalendarItem? {
-        let relevant = plannedEvents(events, data: data).filter {
+        preferredPlannedEvent(plannedEvents(events, data: data), data: data, now: now)
+    }
+    static func preferredPlannedEvent(_ events: [CalendarItem], data: AppData, now: Date) -> CalendarItem? {
+        let relevant = events.filter {
             !$0.isAllDay && $0.occurs(on: now) && ![Completion.completed, .partial, .skipped].contains(data.records[$0.id]?.status ?? .pending)
         }
         if let running = relevant.first(where: { data.records[$0.id]?.status == .running }) { return running }

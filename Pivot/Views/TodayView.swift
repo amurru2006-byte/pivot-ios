@@ -4,21 +4,25 @@ struct TodayView: View {
     @EnvironmentObject var store: PivotStore
     @EnvironmentObject var calendar: CalendarService
     @EnvironmentObject var health: HealthService
+    @EnvironmentObject var agenda: AgendaService
     @State private var day = Date()
     @State private var showDecisions = false
     @State private var showHealth = false
     @State private var quickRecord: EventRecord?
+    @State private var lessonToConfirm: CalendarItem?
     private var check: DayCheckIn? { store.data.checkIns[PivotDate.key(day)] }
     private var items: [CalendarItem] {
-        Planner.plannedEvents(calendar.events, data: store.data).filter { $0.occurs(on: day) && store.data.records[$0.id]?.status != .skipped }
+        agenda.planned.filter { $0.occurs(on: day) && store.data.records[$0.id]?.status != .skipped }
     }
     private var active: [CalendarItem] { items.filter { ![Completion.completed, .partial].contains(store.data.records[$0.id]?.status ?? .pending) } }
     private var finished: [CalendarItem] { items.filter { [Completion.completed, .partial].contains(store.data.records[$0.id]?.status ?? .pending) } }
     private var focused: CalendarItem? {
-        PivotDate.calendar.isDateInToday(day) ? Planner.preferredEvent(active, data: store.data, now: Date()) : active.first
+        PivotDate.calendar.isDateInToday(day) ? Planner.preferredPlannedEvent(active, data: store.data, now: Date()) : active.first
     }
     private var decisions: [EventDecision] { (store.data.decisions ?? []).filter { PivotDate.calendar.isDate($0.date, inSameDayAs: day) } }
     var body: some View {
+        let items = self.items, active = self.active, finished = self.finished, focused = self.focused
+        let remaining = active.filter { $0.id != focused?.id }
         NavigationStack {
             PivotScreen {
                 DaySelector(day: $day)
@@ -34,7 +38,9 @@ struct TodayView: View {
                     }
                         .accessibilityLabel("Parla con Pivot").accessibilityIdentifier("open-pivot-coach")
                 }
-                if store.locked {
+                if store.isLoading {
+                    ProgressView("Carico il tuo storico…")
+                } else if store.locked {
                     EmptyCard(title: "Storico da ripristinare", message: "Recupera il backup nelle Impostazioni. I dati originali sono protetti.", icon: "lock.shield")
                 } else if !calendar.hasAccess {
                     PivotCard {
@@ -58,16 +64,19 @@ struct TodayView: View {
                 if store.data.actualWorkoutDraft != nil || (store.data.workoutReviews ?? []).contains(where: { !$0.resolved && !$0.dismissed }) {
                     NavigationLink { CoachView() } label: { Label("Pivot ha una domanda sull’allenamento", systemImage: "bubble.left.and.bubble.right") }.buttonStyle(PivotSecondaryButton())
                 }
+                if let lesson = LessonLogistics.pendingEffective(events: agenda.effective, data: store.data, now: Date()).first {
+                    Button { lessonToConfirm = lesson } label: { Label("Conferma luogo: " + lesson.title, systemImage: "person.2.fill") }.buttonStyle(PivotSecondaryButton())
+                }
 
                 VStack(alignment: .leading, spacing: 12) {
-                    SectionHeading(title: "La tua agenda", detail: "\(active.filter { $0.id != focused?.id }.count)")
+                    SectionHeading(title: "La tua agenda", detail: "\(remaining.count)")
                     Text("Spunta ciò che hai fatto, anche fuori dall’orario previsto.").font(.caption).foregroundStyle(PivotTheme.muted)
-                    ForEach(Array(active.filter { $0.id != focused?.id }.prefix(3))) { event in
+                    ForEach(Array(remaining.prefix(3))) { event in
                         agendaRow(event)
                     }
-                    if active.filter({ $0.id != focused?.id }).count > 3 {
+                    if remaining.count > 3 {
                         DisclosureGroup("Mostra le altre attività") {
-                            ForEach(Array(active.filter { $0.id != focused?.id }.dropFirst(3))) { event in
+                            ForEach(Array(remaining.dropFirst(3))) { event in
                                 agendaRow(event)
                             }
                         }.font(.subheadline)
@@ -104,6 +113,7 @@ struct TodayView: View {
             .refreshable { await calendar.refresh(settings: store.data.settings); await health.refresh(store: store, events: calendar.events, force: true) }
             .sheet(isPresented: $showDecisions) { DecisionInboxView() }
             .sheet(isPresented: $showHealth) { healthSheet }
+            .sheet(item: $lessonToConfirm) { event in LessonLogisticsView(event: event) }
             .sheet(item: $quickRecord) { record in NavigationStack { EventDetailView(event: record.snapshot, initial: record, rule: store.rule(for: record.snapshot)) }.presentationDragIndicator(.visible) }
         }
     }

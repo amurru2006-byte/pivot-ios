@@ -1,6 +1,36 @@
 import XCTest
 
 final class PivotInteractionTests: XCTestCase {
+    func testCalendarStudentIsRecognizedAndPaymentUsesSavedPerson() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--student-recognition-test"]; app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["calendar-updated"].waitForExistence(timeout: 15))
+        let details = app.buttons["Dettagli e registrazione"]
+        for _ in 0..<6 { if details.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(details.isHittable); details.tap()
+        let recognized = app.descendants(matching: .any)["recognized-student"]
+        for _ in 0..<8 { if recognized.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(recognized.exists)
+        XCTAssertTrue(recognized.label.contains("Giulia Rossi"))
+        XCTAssertFalse(app.textFields["student-name"].exists)
+        let amount = app.textFields["lesson-amount"]
+        XCTAssertTrue(amount.isHittable); amount.tap(); amount.typeText("18")
+        if app.buttons["Fine"].waitForExistence(timeout: 3) { app.buttons["Fine"].tap() }
+        let done = app.buttons["Fatto"]
+        for _ in 0..<8 { if done.isHittable { break }; app.swipeDown() }
+        XCTAssertTrue(done.isHittable); done.tap()
+        app.buttons["activity-save"].tap()
+        XCTAssertTrue(app.navigationBars["Pivot"].waitForExistence(timeout: 5))
+        // Backgrounding flushes pending writes; reopening must retain the linked lesson.
+        XCUIDevice.shared.press(.home); app.activate()
+        app.tabBars.buttons["Entrate"].tap()
+        let student = app.staticTexts["Giulia Rossi"].firstMatch
+        for _ in 0..<8 { if student.exists { break }; app.swipeUp() }
+        XCTAssertTrue(student.exists)
+        app.terminate(); app.launch(); app.tabBars.buttons["Entrate"].tap()
+        for _ in 0..<8 { if app.staticTexts["Giulia Rossi"].firstMatch.exists { break }; app.swipeUp() }
+        XCTAssertTrue(app.staticTexts["Giulia Rossi"].firstMatch.exists)
+    }
     func testSettingsSectionsAndDictationButtonAreReachable() {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test"]; app.launch()
