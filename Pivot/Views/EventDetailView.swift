@@ -179,6 +179,13 @@ struct EventDetailView: View {
     private var registration: some View {
         PivotCard {
             SectionHeading(title: "Come è andata?")
+            Button {
+                EventAutofill.complete(&record, event: event)
+            } label: { Label("Fatto come previsto · autocompila", systemImage: "checkmark.square.fill") }
+                .buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("activity-autofill")
+            if record.timingFromCalendar == true {
+                Text("Orari suggeriti dal calendario, non misurati. Puoi correggerli: le tue modifiche resteranno salvate.").font(.caption).foregroundStyle(PivotTheme.blue)
+            }
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 6) { outcomeButtons }
                 VStack(spacing: 8) { outcomeButtons }
@@ -195,8 +202,8 @@ struct EventDetailView: View {
                 Label("Sonno da Salute · \(ActivityTiming.duration(seconds))", systemImage: "bed.double.fill").font(.caption).foregroundStyle(PivotTheme.accent)
             }
             DisclosureGroup("Orari reali e durata") {
-            ClockField(title: "Inizio reale", value: $record.actualStart, fallback: event.start)
-            ClockField(title: "Fine reale", value: $record.actualEnd, fallback: event.end)
+            ClockField(title: "Inizio reale", value: Binding(get: { record.actualStart }, set: { record.actualStart = $0; record.timingFromCalendar = false; updateMinutes() }), fallback: event.start)
+            ClockField(title: "Fine reale", value: Binding(get: { record.actualEnd }, set: { record.actualEnd = $0; record.timingFromCalendar = false; updateMinutes() }), fallback: event.end)
             if let start = record.actualStart, let end = record.actualEnd, let seconds = ActivityTiming.seconds(start: start, end: end) {
                 Text("Durata calcolata: \(ActivityTiming.duration(seconds))").font(.subheadline).foregroundStyle(PivotTheme.accent)
             }
@@ -210,8 +217,11 @@ struct EventDetailView: View {
                 TextField("Cosa ti ha fermato?", text: $record.reason, axis: .vertical).lineLimit(2...5).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
                 Text("Racconta il motivo: ci aiuta ad adattare il programma.").font(.caption).foregroundStyle(PivotTheme.amber)
             }
-            TextField("Note extra, difficoltà o progressi…", text: $record.notes, axis: .vertical).lineLimit(3...8).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
-            DisclosureGroup("Energia durante l’attività") { RatingField(title: "Energia", value: $record.energy) }.font(.subheadline)
+            TextField("Note extra, difficoltà o progressi…", text: $record.notes, axis: .vertical).lineLimit(3...8).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12)).accessibilityIdentifier("activity-notes")
+            DisclosureGroup("Energia e stanchezza durante l’attività") {
+                RatingField(title: "Energia", value: $record.energy, metric: .energy, referenceDate: event.start)
+                RatingField(title: "Stanchezza", value: $record.fatigue, metric: .fatigue, referenceDate: event.start)
+            }.font(.subheadline)
         }
     }
     private var outcomeButtons: some View {
@@ -226,8 +236,8 @@ struct EventDetailView: View {
     private var meal: some View {
         PivotCard(tint: PivotTheme.amber) {
             Label("Il tuo pasto", systemImage: "fork.knife").font(.headline).foregroundStyle(PivotTheme.amber)
-            RatingField(title: "Fame prima", value: $record.hungerBefore)
-            RatingField(title: "Fame dopo", value: $record.hungerAfter)
+            RatingField(title: "Fame prima", value: $record.hungerBefore, metric: .hungerBefore, referenceDate: event.start)
+            RatingField(title: "Fame dopo", value: $record.hungerAfter, metric: .hungerAfter, referenceDate: event.start)
             Picker("Piano rispettato", selection: Binding(get: { record.followedMeal.map { $0 ? 1 : 2 } ?? 0 }, set: { record.followedMeal = $0 == 0 ? nil : $0 == 1 })) {
                 Text("Non indicato").tag(0); Text("Sì").tag(1); Text("No").tag(2)
             }

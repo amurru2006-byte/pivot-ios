@@ -38,7 +38,7 @@ struct DiaryView: View {
                                     if !record.notes.isEmpty { Text(record.notes).font(.caption).foregroundStyle(PivotTheme.muted).lineLimit(3).padding(.leading, 59) }
                                 }
                             }
-                        }.buttonStyle(.plain)
+                        }.buttonStyle(.plain).accessibilityIdentifier("diary-event-\(item.id)")
                     }
                 }
                 if let check, !check.notes.isEmpty { PivotCard { SectionHeading(title: "Le tue parole"); Text(check.notes).font(.subheadline).textSelection(.enabled) } }

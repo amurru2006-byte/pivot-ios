@@ -1,6 +1,71 @@
 import XCTest
 
 final class PivotInteractionTests: XCTestCase {
+    func testAutofilledActivityRetainsManualCorrectionAfterRelaunch() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--student-recognition-test", "--autofill-test"]; app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["calendar-updated"].waitForExistence(timeout: 15))
+        let details = app.buttons["Dettagli e registrazione"]
+        for _ in 0..<8 { if details.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(details.isHittable); details.tap()
+        let autofill = app.buttons["activity-autofill"]
+        XCTAssertTrue(autofill.waitForExistence(timeout: 5)); autofill.tap()
+        app.buttons["activity-save"].tap()
+        XCTAssertTrue(app.navigationBars["Pivot"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Diario"].tap()
+        let firstRow = app.buttons["diary-event-student-test"]
+        XCTAssertTrue(firstRow.waitForExistence(timeout: 10))
+        for _ in 0..<12 { if firstRow.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(firstRow.isHittable); firstRow.tap()
+        var notes = app.textFields["activity-notes"]
+        if !notes.exists { notes = app.textViews["activity-notes"] }
+        for _ in 0..<8 { if notes.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(notes.isHittable); notes.tap(); notes.typeText("Correzione manuale conservata")
+        if app.buttons["Fine"].exists { app.buttons["Fine"].tap() }
+        app.buttons["activity-save"].tap()
+        XCUIDevice.shared.press(.home); app.activate(); app.terminate(); app.launch()
+        app.tabBars.buttons["Diario"].tap()
+        let row = app.buttons["diary-event-student-test"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        for _ in 0..<12 { if row.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(row.isHittable); row.tap()
+        let saved = app.descendants(matching: .any)["activity-notes"]
+        for _ in 0..<8 { if saved.exists { break }; app.swipeUp() }
+        XCTAssertTrue(String(describing: saved.value).contains("Correzione manuale conservata"))
+    }
+    func testTrainingRevisionStatisticsAndOfflineExtraPickerAreReachable() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--training-test", "--training-edit-test"]; app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 10)); app.tabBars.buttons["Palestra"].tap()
+        let importer = app.buttons["import-training-fixture"]
+        for _ in 0..<10 { if importer.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(importer.isHittable); importer.tap()
+        XCTAssertTrue(app.buttons["Usa questa scheda"].waitForExistence(timeout: 8)); app.buttons["Usa questa scheda"].tap()
+        let editor = app.buttons["edit-training-plan"]
+        for _ in 0..<10 { if editor.isHittable { break }; app.swipeDown() }
+        XCTAssertTrue(editor.isHittable); editor.tap()
+        let name = app.textFields["training-plan-name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5)); name.tap(); name.typeText(" aggiornata")
+        if app.buttons["Fine"].exists { app.buttons["Fine"].tap() }
+        let save = app.buttons["training-plan-save"]
+        for _ in 0..<8 { if save.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(save.isHittable); save.tap()
+        XCTAssertTrue(app.staticTexts["Scheda TEST aggiornata"].waitForExistence(timeout: 5))
+        let statistics = app.buttons["exercise-statistics-test-exercise"]
+        for _ in 0..<8 { if statistics.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(statistics.isHittable); statistics.tap()
+        XCTAssertTrue(app.navigationBars["Progressi"].waitForExistence(timeout: 5))
+        app.navigationBars.buttons.firstMatch.tap()
+        let day = app.buttons["workout-day-test-a"]
+        for _ in 0..<10 { if day.isHittable { break }; app.swipeDown() }
+        XCTAssertTrue(day.isHittable); day.tap()
+        XCTAssertTrue(app.buttons["Inizia allenamento"].waitForExistence(timeout: 5)); app.buttons["Inizia allenamento"].tap()
+        let extra = app.buttons["add-workout-exercise"]
+        for _ in 0..<12 { if extra.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(extra.isHittable); extra.tap()
+        XCTAssertTrue(app.navigationBars["Scegli esercizio"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "876")).firstMatch.waitForExistence(timeout: 8))
+    }
     func testWeeklyHabitAndOneReceiptForPreviousLessonPersist() {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--payment-schedule-test"]; app.launch()

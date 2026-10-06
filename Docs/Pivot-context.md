@@ -22,6 +22,10 @@ Pagamenti: alcuni studenti pagano sempre settimanalmente, altri a ogni lezione. 
 
 ## Da affrontare dopo la stabilità
 
+Richieste aggiunte durante lo sviluppo: spunta = fatto come previsto, con orari e durata suggeriti dal calendario ma senza sensazioni, incassi o serie inventati. Nessuna autocompilazione alla riapertura: le modifiche salvate dell'utente restano autorevoli. Due riferimenti sulle valutazioni: obiettivo dorato e media blu; media delle medie delle quattro settimane ISO complete precedenti, settimane senza dati omesse. Obiettivo energia iniziale 7/10 modificabile, scelto come default perché l'utente ha confermato la configurabilità ma non ha indicato un numero.
+
+Palestra: modifiche alla scheda con versioni e ripristino; nuova scheda/obiettivo separato, anche senza PDF; sessioni e prescrizioni storiche conservate. Esercizi extra e sostituzioni per singolo allenamento oppure anche per la scheda. Le serie già fatte non vengono riassegnate a un altro esercizio. Catalogo offline ampliabile (876 record, molti nomi inglesi), identificativi stabili e ricerca per nome/muscoli/attrezzo. Statistiche dalla palestra e dal diario esercizio: cronologia, carico, volume, progressione e stima Epley prudente. Illustrazione anatomica locale della panca piana; foto dimostrative del catalogo aperte su richiesta. La scheda effettiva del coach e gli altri disegni anatomici personali restano da fornire/preparare; non inventare la scheda.
+
 AI esterna: valutare un servizio online oppure un server su computer/iPad. Nessun backend, account, costo o invio di dati personali è stato attivato in questa versione. Per un server personale servono modello/hardware disponibili, connessione e disponibilità del dispositivo; non si presume che il computer possa restare sempre acceso.
 
 Recuperare progressivamente con l’utente i restanti obiettivi personali, le abitudini, lo studio/esami e le funzionalità future. Questa nota non è un elenco completo della precedente conversazione.

@@ -28,6 +28,7 @@ struct SettingsView: View {
                     settingsLink("Notifiche", subtitle: "Quando e come avvisarti", icon: "bell.fill") { notificationSettings }
                     settingsLink("Backup e privacy", subtitle: "Proteggi il tuo storico", icon: "externaldrive.fill") { backupSettings }
                     settingsLink("Studio ed esami", subtitle: "Priorità e recuperi", icon: "graduationcap.fill") { studySettings }
+                    settingsLink("Energia e riferimenti", subtitle: "Obiettivi dei valori da 0 a 10", icon: "chart.dots.scatter") { ratingSettings }
                     settingsLink("Prestazioni e salvataggio", subtitle: "Tempi di caricamento e stato dei dati", icon: "speedometer") { PerformanceView() }
                 }
                 Text("Le impostazioni si salvano automaticamente.").font(.caption).foregroundStyle(PivotTheme.muted)
@@ -73,6 +74,19 @@ struct SettingsView: View {
                         pendingRestore = nil
                     }
                 } message: { Text("Il backup sostituirà i dati attuali. Pivot conserva una copia locale dei dati precedenti; un file non valido non verrà applicato.") }
+        }
+    }
+    private var ratingSettings: some View {
+        PivotCard {
+            ForEach(RatingMetric.allCases) { metric in
+                Picker(metric.label, selection: Binding(get: { metric.target(in: settings) ?? -1 }, set: { value in
+                    var targets = settings.ratingTargets ?? [:]; targets[metric.rawValue] = value; settings.ratingTargets = targets
+                })) {
+                    Text("Nessun obiettivo").tag(-1)
+                    ForEach(0...10, id: \.self) { Text("\($0)/10").tag($0) }
+                }
+            }
+            Text("Obiettivo dorato, media storica blu. La media usa le 4 settimane complete precedenti alla settimana dell'evento: prima la media di ogni settimana, poi la media delle settimane con dati. I valori non indicati non sono zeri. Questi riferimenti non compilano le tue sensazioni.").font(.caption).foregroundStyle(PivotTheme.muted)
         }
     }
     private var healthSettings: some View {

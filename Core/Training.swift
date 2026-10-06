@@ -8,6 +8,7 @@ struct TrainingExercise: Codable, Identifiable, Equatable {
     var reps: String
     var restSeconds: Int
     var coachNotes: String
+    var catalogID: String? = nil
 }
 
 struct TrainingDay: Codable, Identifiable, Equatable {
@@ -37,8 +38,16 @@ struct TrainingPlanPayload: Codable, Equatable {
 struct TrainingPlan: Codable, Identifiable {
     var id = UUID()
     var payload: TrainingPlanPayload
-    var document: StudyDocument
+    var document: StudyDocument?
     var importedAt = Date()
+    var revisions: [TrainingPlanRevision]? = nil
+}
+
+struct TrainingPlanRevision: Codable, Identifiable {
+    var id = UUID()
+    var payload: TrainingPlanPayload
+    var date: Date
+    var note: String
 }
 
 struct TrainingSet: Codable, Identifiable {
@@ -93,7 +102,10 @@ struct TrainingLibrary: Codable {
         guard plans.count <= 6, Set(plans.map(\.id)).count == plans.count,
               activePlanID == nil || plans.contains(where: { $0.id == activePlanID }),
               Set(sessions.map(\.id)).count == sessions.count else { throw TrainingError.invalidPlan }
-        for plan in plans { try plan.payload.validate() }
+        for plan in plans {
+            try plan.payload.validate()
+            for revision in plan.revisions ?? [] { try revision.payload.validate() }
+        }
         for session in sessions {
             guard session.end.map({ $0 >= session.start }) ?? true,
                   Set(session.exercises.map(\.id)).count == session.exercises.count else { throw TrainingError.invalidPlan }

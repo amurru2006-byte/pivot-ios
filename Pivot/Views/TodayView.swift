@@ -186,13 +186,14 @@ struct TodayView: View {
     private func complete(_ event: CalendarItem) {
         guard !store.locked else { return }
         var record = store.record(for: event)
+        EventAutofill.complete(&record, event: event)
         if [.tutoring, .work, .workout].contains(event.kind) || event.title.lowercased().contains("sonno") {
             record.status = .completed; quickRecord = record; return
         }
         record.status = .completed; record.updatedAt = Date()
         store.change { data in
             data.records[event.id] = record
-            var coach = data.coachState; coach.messages.append(.init(dayKey: PivotDate.key(day), role: .user, text: "Ho svolto ‘\(event.title)’. Orari reali non indicati.")); data.coachState = coach
+            var coach = data.coachState; coach.messages.append(.init(dayKey: PivotDate.key(day), role: .user, text: "Ho svolto ‘\(event.title)’ come previsto. Gli orari suggeriti dal calendario restano correggibili.")); data.coachState = coach
         }
     }
     private func attendance(_ value: Bool) {
@@ -222,8 +223,9 @@ struct DayCheckInView: View {
             PivotCard(tint: PivotTheme.amber) {
                 Label("La tua mattina", systemImage: "sun.max.fill").font(.headline)
                 ClockField(title: "Sveglia reale", value: $check.wakeTime, fallback: wake)
-                RatingField(title: "Energia", value: $check.energyMorning)
-                RatingField(title: "Umore", value: $check.moodMorning)
+                RatingField(title: "Energia", value: $check.energyMorning, metric: .energy, referenceDate: day)
+                RatingField(title: "Stanchezza", value: $check.fatigueMorning, metric: .fatigue, referenceDate: day)
+                RatingField(title: "Umore", value: $check.moodMorning, metric: .mood, referenceDate: day)
             }
             PivotCard(tint: PivotTheme.blue) {
                 Label("Sonno", systemImage: "bed.double.fill").font(.headline)
@@ -243,8 +245,9 @@ struct DayCheckInView: View {
             }
             PivotCard {
                 DisclosureGroup("La tua sera e le note") {
-                    RatingField(title: "Energia sera", value: $check.energyEvening)
-                    RatingField(title: "Umore sera", value: $check.moodEvening)
+                    RatingField(title: "Energia sera", value: $check.energyEvening, metric: .energy, referenceDate: day)
+                    RatingField(title: "Stanchezza sera", value: $check.fatigueEvening, metric: .fatigue, referenceDate: day)
+                    RatingField(title: "Umore sera", value: $check.moodEvening, metric: .mood, referenceDate: day)
                     TextField("Cosa ti ha aiutato, cosa ti ha bloccato…", text: $check.notes, axis: .vertical).lineLimit(3...8)
                 }.font(.subheadline)
             }

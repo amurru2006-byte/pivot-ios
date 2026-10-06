@@ -31,6 +31,9 @@ enum BackupCodec {
         var data = try decoder.decode(AppData.self, from: bytes)
         try StudyFiles.validateBackup(data)
         try data.training?.validate()
+        guard (data.settings.ratingTargets ?? [:]).values.allSatisfy({ (-1...10).contains($0) }),
+              data.records.values.allSatisfy({ [$0.energy, $0.fatigue, $0.hungerBefore, $0.hungerAfter].allSatisfy { $0.map { (0...10).contains($0) } ?? true } }),
+              data.checkIns.values.allSatisfy({ [$0.energyMorning, $0.energyEvening, $0.fatigueMorning, $0.fatigueEvening, $0.moodMorning, $0.moodEvening].allSatisfy { $0.map { (0...10).contains($0) } ?? true } }) else { throw BackupError.invalidData }
         guard (data.contextAnswers ?? []).allSatisfy({ answer in
                   answer.travelMinutes.map { (0...1440).contains($0) } ?? true
               }), (data.activityDrafts ?? [:]).allSatisfy({ pair in
