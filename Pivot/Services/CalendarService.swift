@@ -168,6 +168,15 @@ private actor CalendarWorker {
         // Exercise the production refresh path with a slow import, not PreviewMode.
         Thread.sleep(forTimeInterval: 4)
         let day = PivotDate.calendar.startOfDay(for: Date())
+        if ProcessInfo.processInfo.arguments.contains("--payment-schedule-test") {
+            let monday = StudentPayments.week(containing: Date()).start
+            let items = [0, 2, 4].map { offset -> CalendarItem in
+                let start = PivotDate.calendar.date(byAdding: .day, value: offset, to: monday)!.addingTimeInterval(16 * 3600)
+                let key = "payment-test-\(offset)"
+                return CalendarItem(id: key, eventIdentifier: key, calendarIdentifier: "interaction", calendarTitle: "Lavoro", title: "Ripetizioni con Giulia Rossi", start: start, end: start.addingTimeInterval(3600), location: "", notes: "", colorHex: "#7EE6CD", isAllDay: false, writable: false, kind: .tutoring)
+            }
+            return CalendarSnapshot(hasAccess: true, choices: [.init(id: "interaction", title: "Lavoro", colorHex: "#7EE6CD", holiday: false)], events: items)
+        }
         if ProcessInfo.processInfo.arguments.contains("--student-recognition-test") {
             let start = day.addingTimeInterval(10 * 3600)
             let event = CalendarItem(id: "student-test", eventIdentifier: "student-test", calendarIdentifier: "interaction", calendarTitle: "Lavoro", title: "Ripetizioni con Giulia Rossi", start: start, end: start.addingTimeInterval(3600), location: "", notes: "", colorHex: "#7EE6CD", isAllDay: false, writable: false, kind: .tutoring)

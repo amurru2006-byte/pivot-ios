@@ -8,6 +8,7 @@ struct PlannedNotification {
     var priority: Int
     var eventID: String? = nil
     var destination: String = "event"
+    var clientID: String? = nil
 }
 
 enum NotificationPlan {
@@ -18,11 +19,11 @@ enum NotificationPlan {
         let horizon = now.addingTimeInterval(7 * 86400)
         let calendar = PivotDate.calendar
         var requests: [PlannedNotification] = []
-        func add(_ date: Date, _ id: String, _ title: String, _ body: String, priority: Int = 1, eventID: String? = nil, destination: String = "event") {
+        func add(_ date: Date, _ id: String, _ title: String, _ body: String, priority: Int = 1, eventID: String? = nil, destination: String = "event", clientID: String? = nil) {
             guard date > now, date < horizon else { return }
             let hour = calendar.component(.hour, from: date)
             guard hour >= data.settings.quietEndHour && hour < data.settings.quietStartHour else { return }
-            requests.append(.init(date: date, id: id, title: title, body: body, priority: priority, eventID: eventID, destination: destination))
+            requests.append(.init(date: date, id: id, title: title, body: body, priority: priority, eventID: eventID, destination: destination, clientID: clientID))
         }
         // Use the same deduplicated, attendance-aware program as the home screen.
         for event in events where !event.isAllDay {
@@ -54,6 +55,26 @@ enum NotificationPlan {
             if data.settings.repeatMissedNotifications {
                 add(event.end.addingTimeInterval(1800), "event-\(event.id)-30", "Quando hai un momento", "Com’è andata: \(event.title)? Dopo questo avviso resta nel riepilogo serale.", priority: 2, eventID: event.id)
             }
+        }
+        // Payment promises are independent of the activity questionnaire. Weekly
+        // payers have one grouped deadline, never an unpaid warning after each lesson.
+        for due in StudentPayments.dues(planned: events, data: data) {
+            guard let expected = due.date else { continue }
+            var reminder = expected
+            if expected <= now {
+                let morning = calendar.date(bySettingHour: data.settings.quietEndHour, minute: 0, second: 0, of: now)!
+                reminder = morning > now ? morning : calendar.date(byAdding: .day, value: 1, to: morning)!
+            }
+            let hour = calendar.component(.hour, from: reminder)
+            if hour < data.settings.quietEndHour {
+                reminder = calendar.date(bySettingHour: data.settings.quietEndHour, minute: 0, second: 0, of: reminder)!
+            } else if hour >= data.settings.quietStartHour {
+                let next = calendar.date(byAdding: .day, value: 1, to: reminder)!
+                reminder = calendar.date(bySettingHour: data.settings.quietEndHour, minute: 0, second: 0, of: next)!
+            }
+            let text = due.isOverdue(at: now) ? "È rimasto un saldo da una lezione precedente." : (due.timing == .weekly ? "Ultima lezione prevista della settimana." : "È la data concordata per il pagamento.")
+            add(reminder, "payment-" + due.id, "Pagamento di " + due.clientName,
+                text + " " + Money.display(due.amountCents) + " ancora da ricevere. Registra solo i soldi realmente ricevuti.", priority: 0, destination: "payment", clientID: due.clientID.uuidString)
         }
         for day in 0...6 {
             let date = calendar.date(byAdding: .day, value: day, to: now)!

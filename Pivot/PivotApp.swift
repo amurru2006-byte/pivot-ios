@@ -129,6 +129,8 @@ struct RootView: View {
                 } else if route.destination == "checkin" {
                     DayCheckInView(day: Date(), initial: store.data.checkIns[PivotDate.key(Date())])
                 } else if route.destination == "diary" { DiaryView() }
+                else if route.destination == "payment", let id = route.clientID, let client = store.data.clients.first(where: { $0.id.uuidString == id }) { ClientDetailView(client: client) }
+                else if route.destination == "payment" { IncomeView() }
                 else if route.destination == "coach" { CoachView() }
                 else { Text("Questo evento è cambiato. Apri la giornata aggiornata.").padding() }
             }.presentationDragIndicator(.visible)

@@ -64,6 +64,18 @@ struct TodayView: View {
                 if store.data.actualWorkoutDraft != nil || (store.data.workoutReviews ?? []).contains(where: { !$0.resolved && !$0.dismissed }) {
                     NavigationLink { CoachView() } label: { Label("Pivot ha una domanda sull’allenamento", systemImage: "bubble.left.and.bubble.right") }.buttonStyle(PivotSecondaryButton())
                 }
+                let endOfDay = PivotDate.calendar.date(byAdding: .day, value: 1, to: PivotDate.calendar.startOfDay(for: day))!
+                let duePayments = agenda.paymentDues.filter { $0.date.map { $0 < endOfDay } ?? false }
+                ForEach(Array(duePayments.prefix(3))) { due in
+                    if let client = store.data.clients.first(where: { $0.id == due.clientID }) {
+                        NavigationLink { ClientDetailView(client: client) } label: {
+                            PivotCard(tint: PivotTheme.amber) {
+                                Label("\(due.clientName): \(Money.display(due.amountCents)) da ricevere", systemImage: "eurosign.circle")
+                                PaymentDueLabel(due: due)
+                            }
+                        }.buttonStyle(.plain)
+                    }
+                }
                 if let lesson = LessonLogistics.pendingEffective(events: agenda.effective, data: store.data, now: Date()).first {
                     Button { lessonToConfirm = lesson } label: { Label("Conferma luogo: " + lesson.title, systemImage: "person.2.fill") }.buttonStyle(PivotSecondaryButton())
                 }

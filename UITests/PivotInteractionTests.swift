@@ -1,6 +1,42 @@
 import XCTest
 
 final class PivotInteractionTests: XCTestCase {
+    func testWeeklyHabitAndOneReceiptForPreviousLessonPersist() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--payment-schedule-test"]; app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["calendar-updated"].waitForExistence(timeout: 15))
+        let details = app.buttons["Dettagli e registrazione"]
+        for _ in 0..<6 { if details.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(details.isHittable); details.tap()
+        let amount = app.textFields["lesson-amount"]
+        for _ in 0..<8 { if amount.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(amount.isHittable); amount.tap(); amount.typeText("18"); app.buttons["Fine"].tap()
+        let received = app.switches["Ho già ricevuto un pagamento"]
+        for _ in 0..<5 { if received.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(received.isHittable); received.tap()
+        let receipt = app.textFields["lesson-received-amount"]
+        for _ in 0..<5 { if receipt.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(receipt.isHittable); receipt.tap(); receipt.typeText("36"); app.buttons["Fine"].tap()
+        let timing = app.descendants(matching: .any)["payment-timing"]
+        for _ in 0..<5 { if timing.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(timing.exists)
+        XCTAssertTrue((timing.label + String(describing: timing.value)).contains("settimana"))
+        let done = app.buttons["Fatto"]
+        for _ in 0..<10 { if done.isHittable { break }; app.swipeDown() }
+        XCTAssertTrue(done.isHittable); done.tap(); app.buttons["activity-save"].tap()
+        XCTAssertTrue(app.navigationBars["Pivot"].waitForExistence(timeout: 5))
+        XCUIDevice.shared.press(.home); app.activate(); app.tabBars.buttons["Entrate"].tap()
+        let student = app.buttons["client-detail-44444444-4444-4444-8444-444444444444"]
+        for _ in 0..<10 { if student.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(student.isHittable); student.tap()
+        XCTAssertTrue(app.staticTexts["student-balance-clear"].waitForExistence(timeout: 5))
+        app.terminate(); app.launch(); app.tabBars.buttons["Entrate"].tap()
+        for _ in 0..<10 { if student.isHittable { break }; app.swipeUp() }
+        student.tap()
+        XCTAssertTrue(app.staticTexts["student-balance-clear"].waitForExistence(timeout: 5))
+        let habit = app.descendants(matching: .any)["student-payment-cadence"]
+        XCTAssertTrue((habit.label + String(describing: habit.value)).contains("settimana"))
+    }
     func testCalendarStudentIsRecognizedAndPaymentUsesSavedPerson() {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--student-recognition-test"]; app.launch()

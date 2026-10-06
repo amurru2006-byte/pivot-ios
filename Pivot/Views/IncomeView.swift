@@ -2,6 +2,7 @@ import SwiftUI
 
 struct IncomeView: View {
     @EnvironmentObject var store: PivotStore
+    @EnvironmentObject var agenda: AgendaService
     @State private var addingClient = false
     @State private var addingLesson = false
     @State private var selectedYear: Int? = nil
@@ -80,6 +81,7 @@ struct IncomeView: View {
                                         VStack(alignment: .leading, spacing: 6) {
                                             Text(entry.clientName).font(.headline).foregroundStyle(PivotTheme.text)
                                             Text("\(DisplayDate.label(entry.date, format: "d MMM")) · \(entry.minutes) min").font(.caption).foregroundStyle(PivotTheme.muted)
+                                            PaymentDueLabel(due: agenda.paymentDues.first { $0.entryIDs.contains(entry.id) })
                                         }
                                         Spacer()
                                         Text(Money.display(entry.outstandingCents)).font(.headline).foregroundStyle(PivotTheme.amber)
@@ -104,7 +106,7 @@ struct IncomeView: View {
                                     Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(PivotTheme.muted)
                                 }
                             }
-                        }.buttonStyle(.plain)
+                        }.buttonStyle(.plain).accessibilityIdentifier("client-detail-" + client.id.uuidString)
                     }
                     if !store.data.clients.isEmpty { Button { addingClient = true } label: { Label("Aggiungi studente", systemImage: "person.badge.plus") }.buttonStyle(PivotSecondaryButton()).disabled(store.locked) }
                 }
@@ -148,6 +150,7 @@ struct ClientForm: View {
     @Environment(\.dismiss) var dismiss
     @State private var name = ""
     @State private var rate = ""
+    @State private var cadence: PaymentCadence = .everyLesson
     var body: some View {
         NavigationStack {
             PivotScreen {
@@ -160,10 +163,13 @@ struct ClientForm: View {
                         TextField("Ad esempio 18", text: $rate).keyboardType(.decimalPad)
                         Text("€/h").foregroundStyle(PivotTheme.muted)
                     }.padding(14).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
+                    Picker("Come ti paga di solito?", selection: $cadence) {
+                        ForEach(PaymentCadence.allCases, id: \.self) { Text($0.label).tag($0) }
+                    }
                 }
                 Button("Aggiungi studente") {
                     guard let cents = Money.cents(from: rate), cents > 0 else { return }
-                    let client = Client(name: name.trimmingCharacters(in: .whitespacesAndNewlines), rateCents: cents)
+                    let client = Client(name: name.trimmingCharacters(in: .whitespacesAndNewlines), rateCents: cents, paymentCadence: cadence)
                     if store.change({ $0.clients.append(client) }) { dismiss() }
                 }.buttonStyle(PivotPrimaryButton()).disabled(store.locked || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (Money.cents(from: rate) ?? 0) <= 0)
             }.navigationTitle("Studente")
@@ -182,6 +188,9 @@ struct LessonForm: View {
     @State private var amount = ""
     @State private var alreadyPaid = false
     @State private var notes = ""
+    @State private var paymentTiming: PaymentTiming = .everyLesson
+    @State private var promisedDate = Date()
+    @State private var rememberCadence = false
     init(clients: [Client]) { self.clients = clients; _clientID = State(initialValue: clients.first?.id ?? UUID()) }
     var selected: Client? { clients.first { $0.id == clientID } }
     var calculated: Int { Money.lessonAmount(rateCents: selected?.rateCents ?? 0, minutes: minutes) }
@@ -206,17 +215,21 @@ struct LessonForm: View {
                     TextField("Importo diverso in euro, se serve", text: $amount).keyboardType(.decimalPad).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
                     Toggle("Già pagata", isOn: $alreadyPaid)
                     if alreadyPaid { Text("L'incasso verrà registrato con la data di oggi.").font(.caption).foregroundStyle(PivotTheme.muted) }
+                    if !alreadyPaid { PaymentTermsFields(timing: $paymentTiming, promisedDate: $promisedDate, remember: $rememberCadence, studentName: selected?.name ?? "") }
                 }
                 PivotCard { TextField("Note della lezione…", text: $notes, axis: .vertical).lineLimit(3...6) }
                 Button("Registra lezione") {
                     guard let client = selected, let cents = finalAmount, cents > 0 else { return }
-                    let entry = IncomeEntry(clientID: client.id, clientName: client.name, date: date, minutes: minutes, amountCents: cents, paidCents: alreadyPaid ? cents : 0, notes: notes)
+                    let entry = IncomeEntry(clientID: client.id, clientName: client.name, date: date, minutes: minutes, amountCents: cents, paidCents: alreadyPaid ? cents : 0, notes: notes, paymentTiming: paymentTiming, promisedPaymentDate: paymentTiming == .chosenDate ? promisedDate : nil)
                     if store.change({ data in
                         data.income.append(entry)
+                        if rememberCadence { StudentPayments.remember(paymentTiming, for: client.id, data: &data) }
                         if alreadyPaid { data.payments.append(.init(incomeID: entry.id, clientName: client.name, date: Date(), amountCents: cents)) }
                     }) { dismiss() }
                 }.buttonStyle(PivotPrimaryButton()).disabled(store.locked || (finalAmount ?? 0) <= 0 || selected == nil)
             }.navigationTitle("Lezione")
+                .onAppear { paymentTiming = store.data.clients.first { $0.id == clientID }?.paymentCadence?.timing ?? .everyLesson }
+                .onChange(of: clientID) { _, id in paymentTiming = store.data.clients.first { $0.id == id }?.paymentCadence?.timing ?? .everyLesson; rememberCadence = false }
                 .toolbar { Button("Annulla") { dismiss() } }
         }
     }
@@ -224,10 +237,14 @@ struct LessonForm: View {
 
 struct IncomeDetailView: View {
     @EnvironmentObject var store: PivotStore
+    @EnvironmentObject var agenda: AgendaService
     let entryID: UUID
     @State private var payment = ""
     @State private var paymentDate = Date()
     @State private var message: String?
+    @State private var timing: PaymentTiming = .everyLesson
+    @State private var promisedDate = Date()
+    @State private var rememberCadence = false
     var entry: IncomeEntry? { store.data.income.first { $0.id == entryID } }
     var body: some View {
         PivotScreen {
@@ -238,14 +255,32 @@ struct IncomeDetailView: View {
                     Text(Money.display(entry.outstandingCents > 0 ? entry.outstandingCents : entry.amountCents)).font(.system(.largeTitle, design: .rounded, weight: .bold)).foregroundStyle(entry.outstandingCents > 0 ? PivotTheme.amber : PivotTheme.accent)
                     HStack { Text("Totale \(Money.display(entry.amountCents))"); Spacer(); Text("Ricevuto \(Money.display(entry.paidCents))") }.font(.caption).foregroundStyle(PivotTheme.muted)
                     if !entry.notes.isEmpty { Text(entry.notes).font(.subheadline) }
+                    PaymentDueLabel(due: agenda.paymentDues.first { $0.entryIDs.contains(entry.id) })
                 }
                 if entry.outstandingCents > 0 {
+                    PivotCard {
+                        Text("Quando riceverai il resto?").font(.headline)
+                        PaymentTermsFields(timing: $timing, promisedDate: $promisedDate, remember: $rememberCadence, studentName: entry.clientName)
+                        Button("Salva promemoria") {
+                            store.change { data in
+                                guard let index = data.income.firstIndex(where: { $0.id == entryID }) else { return }
+                                data.income[index].paymentTiming = timing
+                                data.income[index].promisedPaymentDate = timing == .chosenDate ? promisedDate : nil
+                                data.income[index].paymentDeferralAfter = timing == .nextLesson ? max(Date(), entry.date) : nil
+                                if rememberCadence { StudentPayments.remember(timing, for: entry.clientID, data: &data) }
+                            }
+                            message = "Scadenza aggiornata. Nessun incasso è stato aggiunto."
+                        }.buttonStyle(PivotSecondaryButton()).disabled(store.locked)
+                    }
                     PivotCard {
                         SectionHeading(title: "Registra un pagamento")
                         DatePicker("Data pagamento", selection: $paymentDate)
                         TextField("Importo ricevuto in euro", text: $payment).keyboardType(.decimalPad).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
                         Button("Registra importo") { collect(entry, cents: Money.cents(from: payment) ?? 0) }.buttonStyle(PivotPrimaryButton()).disabled(store.locked || (Money.cents(from: payment) ?? 0) <= 0)
                         Button("Registra il saldo completo") { collect(entry, cents: entry.outstandingCents) }.buttonStyle(PivotSecondaryButton()).disabled(store.locked)
+                    }
+                    if let client = store.data.clients.first(where: { $0.id == entry.clientID }) {
+                        NavigationLink("Paga più lezioni / vedi il saldo dello studente") { ClientDetailView(client: client) }.buttonStyle(PivotSecondaryButton())
                     }
                 }
                 let payments = store.data.payments.filter { $0.incomeID == entry.id }.sorted { $0.date > $1.date }
@@ -257,7 +292,9 @@ struct IncomeDetailView: View {
                 }
             } else { EmptyCard(title: "Lezione non disponibile", message: "Torna alle entrate per scegliere una lezione.", icon: "eurosign.circle") }
             if let message { Label(message, systemImage: "info.circle").font(.subheadline).foregroundStyle(PivotTheme.amber) }
-        }.navigationTitle("Pagamento")
+        }.navigationTitle("Pagamento").onAppear {
+            if let entry { timing = StudentPayments.timing(for: entry, data: store.data); promisedDate = entry.promisedPaymentDate ?? Date() }
+        }
     }
     private func collect(_ entry: IncomeEntry, cents: Int) {
         guard cents > 0 && cents <= entry.outstandingCents else { message = "Inserisci un importo positivo, non superiore al saldo mancante."; return }
@@ -271,6 +308,7 @@ struct IncomeDetailView: View {
 
 struct ClientDetailView: View {
     @EnvironmentObject var store: PivotStore
+    @EnvironmentObject var agenda: AgendaService
     let client: Client
     var entries: [IncomeEntry] { store.data.income.filter { $0.clientID == client.id }.sorted { $0.date > $1.date } }
     var body: some View {
@@ -279,6 +317,19 @@ struct ClientDetailView: View {
             HStack(spacing: 10) {
                 MetricTile(title: "Ricevuto", value: Money.display(entries.reduce(0) { $0 + $1.paidCents }), icon: "checkmark.circle.fill")
                 MetricTile(title: "Da incassare", value: Money.display(entries.reduce(0) { $0 + $1.outstandingCents }), icon: "clock.fill", color: PivotTheme.amber)
+            }
+            PivotCard {
+                Picker("Come ti paga di solito?", selection: Binding(get: { store.data.clients.first { $0.id == client.id }?.paymentCadence ?? .everyLesson }, set: { value in
+                    store.change { data in if let index = data.clients.firstIndex(where: { $0.id == client.id }) { data.clients[index].paymentCadence = value } }
+                })) {
+                    ForEach(PaymentCadence.allCases, id: \.self) { Text($0.label).tag($0) }
+                }.accessibilityIdentifier("student-payment-cadence")
+                Text("Questa preferenza verrà proposta nelle prossime lezioni. Un rinvio scelto per una singola lezione rimane separato.").font(.caption).foregroundStyle(PivotTheme.muted)
+            }
+            if StudentPayments.balance(clientID: client.id, data: store.data) > 0 {
+                StudentBalancePaymentView(clientID: client.id, clientName: client.name)
+            } else {
+                Text("Non ci sono saldi da incassare per questo studente.").font(.caption).accessibilityIdentifier("student-balance-clear")
             }
             SectionHeading(title: "Le lezioni")
             if entries.isEmpty { EmptyCard(title: "Pronto per la prima lezione", message: "Registra una lezione dalla schermata Entrate.", icon: "person.2.fill") }
@@ -289,6 +340,7 @@ struct ClientDetailView: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("\(DisplayDate.label(entry.date, format: "d MMM yyyy")) · \(entry.minutes) min").font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.text)
                                 Text(entry.outstandingCents == 0 ? "Pagata · \(Money.display(entry.amountCents))" : "Da incassare · \(Money.display(entry.outstandingCents))").font(.caption).foregroundStyle(entry.outstandingCents == 0 ? PivotTheme.accent : PivotTheme.amber)
+                                if entry.outstandingCents > 0 { PaymentDueLabel(due: agenda.paymentDues.first { $0.entryIDs.contains(entry.id) }) }
                             }
                             Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(PivotTheme.muted)
                         }

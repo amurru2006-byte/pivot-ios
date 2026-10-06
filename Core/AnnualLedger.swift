@@ -26,7 +26,7 @@ struct AnnualLedger: Codable {
 
 enum TutoringLedger {
     // Repeated saves of the same calendar occurrence never generate a second lesson/payment.
-    @discardableResult static func register(event: CalendarItem, record: inout EventRecord, client: Client, amountCents: Int, collectedCents: Int, paymentDate: Date, data: inout AppData) -> UUID? {
+    @discardableResult static func register(event: CalendarItem, record: inout EventRecord, client: Client, amountCents: Int, collectedCents: Int, paymentDate: Date, data: inout AppData, timing: PaymentTiming? = nil, promisedDate: Date? = nil) -> UUID? {
         guard [.tutoring, .work].contains(event.kind), amountCents >= 0, collectedCents >= 0, collectedCents <= amountCents else { return nil }
         if let existing = data.income.first(where: { $0.id == record.incomeID || $0.calendarEventID == event.id }) {
             record.incomeID = existing.id; record.tutoringAnswered = true
@@ -34,7 +34,7 @@ enum TutoringLedger {
         }
         record.tutoringAnswered = true
         guard amountCents > 0 else { return nil }
-        let entry = IncomeEntry(clientID: client.id, clientName: client.name, date: record.actualEnd ?? event.end, minutes: max(1, record.activeMinutes > 0 ? record.activeMinutes : event.durationMinutes), amountCents: amountCents, paidCents: collectedCents, notes: record.notes, calendarEventID: event.id)
+        let entry = IncomeEntry(clientID: client.id, clientName: client.name, date: record.actualEnd ?? event.end, minutes: max(1, record.activeMinutes > 0 ? record.activeMinutes : event.durationMinutes), amountCents: amountCents, paidCents: collectedCents, notes: record.notes, calendarEventID: event.id, paymentTiming: timing, promisedPaymentDate: promisedDate)
         if !data.clients.contains(where: { $0.id == client.id }) { data.clients.append(client) }
         data.income.append(entry)
         if collectedCents > 0 { data.payments.append(.init(incomeID: entry.id, clientName: client.name, date: paymentDate, amountCents: collectedCents)) }

@@ -35,6 +35,8 @@ final class PivotStore: ObservableObject {
         }
     })
     private let backupQueue = DispatchQueue(label: "app.pivot.external-backup", qos: .utility)
+    private var pendingExternalBackup: AppData?
+    private var externalBackupRunning = false
     private let bookmarkKey = "pivot.externalBackupFolder.v1"
     private let lastBackupKey = "pivot.lastExternalBackup.v1"
     private var backgroundSaveID: UIBackgroundTaskIdentifier = .invalid
@@ -43,6 +45,7 @@ final class PivotStore: ObservableObject {
         var storageName = "Pivot"
         #if DEBUG && targetEnvironment(simulator)
         if ProcessInfo.processInfo.arguments.contains("--student-recognition-test") { storageName = "PivotStudentTests" }
+        if ProcessInfo.processInfo.arguments.contains("--payment-schedule-test") { storageName = "PivotPaymentTests" }
         #endif
         directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(storageName, isDirectory: true)
         file = directory.appendingPathComponent("pivot-data.json")
@@ -66,6 +69,18 @@ final class PivotStore: ObservableObject {
             #if DEBUG && targetEnvironment(simulator)
             if !locked, ProcessInfo.processInfo.arguments.contains("--student-recognition-test"), data.clients.isEmpty {
                 change { $0.clients = [Client(name: "Giulia Rossi", rateCents: 1800)] }
+            }
+            if !locked, ProcessInfo.processInfo.arguments.contains("--payment-schedule-test"), data.clients.isEmpty {
+                let client = Client(id: UUID(uuidString: "44444444-4444-4444-8444-444444444444")!, name: "Giulia Rossi", rateCents: 1800, paymentCadence: .weekly)
+                let monday = StudentPayments.week(containing: Date()).start.addingTimeInterval(17 * 3600)
+                change { data in
+                    data.clients = [client]
+                    data.income = [IncomeEntry(clientID: client.id, clientName: client.name, date: monday, minutes: 60, amountCents: 1800, calendarEventID: "payment-test-0")]
+                    let event = CalendarItem(id: "payment-test-0", eventIdentifier: "payment-test-0", calendarIdentifier: "interaction", calendarTitle: "Lavoro", title: "Ripetizioni con Giulia Rossi", start: monday.addingTimeInterval(-3600), end: monday, location: "", notes: "", colorHex: "#7EE6CD", isAllDay: false, writable: false, kind: .tutoring)
+                    var record = EventRecord(id: event.id, snapshot: event)
+                    record.status = .completed; record.tutoringAnswered = true; record.incomeID = data.income[0].id
+                    data.records[event.id] = record
+                }
             }
             #endif
         }
@@ -142,21 +157,33 @@ final class PivotStore: ObservableObject {
     }
 
     private func writeExternal(_ snapshot: AppData) {
-        guard let bookmark = UserDefaults.standard.data(forKey: bookmarkKey) else { return }
+        guard UserDefaults.standard.data(forKey: bookmarkKey) != nil else { return }
+        pendingExternalBackup = snapshot
         backupStatus = "Aggiornamento della copia esterna…"
-        // Cloud-backed folders can stall on file hydration. Keep all their I/O
-        // off the UI queue, in write order, including the backup made on upgrade.
+        startNextExternalBackup()
+    }
+    private func startNextExternalBackup() {
+        guard !externalBackupRunning, let snapshot = pendingExternalBackup,
+              let bookmark = UserDefaults.standard.data(forKey: bookmarkKey) else { return }
+        pendingExternalBackup = nil
+        externalBackupRunning = true
+        // A slow cloud folder retains at most the in-flight and latest snapshots,
+        // not a growing queue of complete historical states/PDF exports.
         let pdfDirectory = documentsDirectory
         backupQueue.async { [weak self] in
             let result = Self.performExternalBackup(snapshot, bookmark: bookmark, documents: pdfDirectory)
             DispatchQueue.main.async {
                 guard let self else { return }
-                if let updatedBookmark = result.bookmark { UserDefaults.standard.set(updatedBookmark, forKey: self.bookmarkKey) }
-                if let date = result.date {
-                    self.lastExternalBackup = date
-                    UserDefaults.standard.set(date, forKey: self.lastBackupKey)
+                self.externalBackupRunning = false
+                if UserDefaults.standard.data(forKey: self.bookmarkKey) == bookmark {
+                    if let updatedBookmark = result.bookmark { UserDefaults.standard.set(updatedBookmark, forKey: self.bookmarkKey) }
+                    if let date = result.date {
+                        self.lastExternalBackup = date
+                        UserDefaults.standard.set(date, forKey: self.lastBackupKey)
+                    }
+                    self.backupStatus = self.pendingExternalBackup == nil ? result.status : "Aggiornamento della copia esterna…"
                 }
-                self.backupStatus = result.status
+                self.startNextExternalBackup()
             }
         }
     }

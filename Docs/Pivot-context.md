@@ -8,6 +8,8 @@ Dispositivo principale: iPhone 15. Il modello AI locale è stato scaricato. La 0
 
 Quando registra una ripetizione e il guadagno, lo studente deve essere ricavato dal titolo del calendario, senza riscrivere il nome. Un cliente esistente va riutilizzato solo se il riconoscimento è univoco. Importo e incasso restano scelte esplicite.
 
+Pagamenti: alcuni studenti pagano sempre settimanalmente, altri a ogni lezione. È richiesta un’abitudine persistente per studente e una scelta separata per una sola lezione: prossima lezione o data scelta. Il residuo di un pagamento parziale non scompare. I settimanali non sono in ritardo prima dell’ultima lezione prevista della settimana, da lunedì a domenica. Promemoria locali e saldo dello studente; un incasso può coprire più lezioni, dalla più vecchia, ma non viene mai inventato alla scadenza. Un anticipo superiore al saldo già guadagnato non viene registrato come compenso.
+
 ## Intervento 0.7.1
 
 - Salvataggi locali seriali, atomici, raggruppati e fuori dal thread dell’interfaccia; stato visibile, retry e attesa prima di esportazioni/ripristino/modifiche al calendario.
@@ -15,6 +17,7 @@ Quando registra una ripetizione e il guadagno, lo studente deve essere ricavato 
 - Riepiloghi e pianificatore Coach in background. Nessun questionario automatico che copra la schermata; conferme disponibili dall’agenda/Coach e dalle notifiche aperte volontariamente.
 - AI locale con contesto e risposta limitati; memoria liberata lasciando il Coach, in background, per pressione memoria/calore/risparmio energia e dopo inattività. Il file AI non viene cancellato.
 - Riconoscimento studenti dal calendario, gestione esplicita dell’ambiguità e riutilizzo del cliente nei pagamenti.
+- Abitudini di pagamento e rinvii per lezione, scadenze dal calendario e promemoria sul saldo ancora dovuto. Pagamenti cumulativi/partiali con registrazioni in centesimi; il denaro conta solo alla ricezione esplicita.
 - Impostazioni → Prestazioni e salvataggio mostra tempi e contatori senza contenuti personali.
 
 ## Da affrontare dopo la stabilità
