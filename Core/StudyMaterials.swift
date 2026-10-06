@@ -35,7 +35,7 @@ enum StudyFiles {
         guard bytes.starts(with: Data("%PDF-".utf8)), bytes.suffix(2048).range(of: Data("%%EOF".utf8)) != nil else { throw StudyFileError.invalidPDF }
     }
     static func documents(in data: AppData) -> [StudyDocument] {
-        data.records.values.flatMap { $0.study?.documents ?? [] } + (data.training?.plans.map(\.document) ?? [])
+        data.records.values.flatMap { $0.study?.documents ?? [] } + (data.training?.plans.compactMap(\.document) ?? [])
     }
     static func url(for id: UUID, directory: URL) -> URL {
         directory.appendingPathComponent(id.uuidString).appendingPathExtension("pdf")
@@ -99,11 +99,11 @@ enum StudyFiles {
         }
         if var library = restored.training {
             for index in library.plans.indices {
-                let old = library.plans[index].document.id
+                guard let old = library.plans[index].document?.id else { continue }
                 guard let bytes = data.studyPDFs?[old.uuidString] else { throw StudyFileError.invalidBackup }
                 let fresh = UUID()
                 try bytes.write(to: url(for: fresh, directory: directory), options: .atomic)
-                library.plans[index].document.id = fresh
+                library.plans[index].document?.id = fresh
             }
             restored.training = library
         }

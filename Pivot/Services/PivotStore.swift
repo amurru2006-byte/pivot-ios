@@ -46,6 +46,8 @@ final class PivotStore: ObservableObject {
         #if DEBUG && targetEnvironment(simulator)
         if ProcessInfo.processInfo.arguments.contains("--student-recognition-test") { storageName = "PivotStudentTests" }
         if ProcessInfo.processInfo.arguments.contains("--payment-schedule-test") { storageName = "PivotPaymentTests" }
+        if ProcessInfo.processInfo.arguments.contains("--autofill-test") { storageName = "PivotAutofillTests" }
+        if ProcessInfo.processInfo.arguments.contains("--training-edit-test") { storageName = "PivotTrainingEditTests" }
         #endif
         directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(storageName, isDirectory: true)
         file = directory.appendingPathComponent("pivot-data.json")
@@ -303,7 +305,7 @@ final class PivotStore: ObservableObject {
     func installTrainingPlan(_ plan: TrainingPlan) throws {
         var library = data.training ?? TrainingLibrary()
         guard library.plans.count < 6 else { throw TrainingError.invalidPlan }
-        guard StudyFiles.documents(in: data).reduce(0, { $0 + $1.byteCount }) + plan.document.byteCount <= StudyFiles.maximumLibraryBytes else { throw StudyFileError.libraryFull }
+        guard StudyFiles.documents(in: data).reduce(0, { $0 + $1.byteCount }) + (plan.document?.byteCount ?? 0) <= StudyFiles.maximumLibraryBytes else { throw StudyFileError.libraryFull }
         library.plans.append(plan); library.activePlanID = plan.id
         try library.validate()
         guard change({ $0.training = library }) else { throw BackupError.invalidData }
@@ -321,6 +323,7 @@ final class PivotStore: ObservableObject {
             if let event = event ?? session.calendarEventID.flatMap({ data.records[$0]?.snapshot }) {
                 var record = data.records[event.id] ?? EventRecord(id: event.id, snapshot: event)
                 record.actualStart = session.start; record.actualEnd = session.end
+                record.timingFromCalendar = false
                 record.activeMinutes = max(0, Int((session.end ?? Date()).timeIntervalSince(session.start) / 60))
                 record.status = session.end == nil ? .running : .completed
                 record.updatedAt = Date(); data.records[event.id] = record

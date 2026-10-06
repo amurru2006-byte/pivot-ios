@@ -38,6 +38,7 @@ enum HealthReconciliation {
             if sleepEvents.count == 1, let event = sleepEvents.first, (next.records[event.id]?.status ?? .pending) == .pending {
                 var record = next.records[event.id] ?? EventRecord(id: event.id, snapshot: event)
                 record.status = .completed; record.actualStart = summary.start; record.actualEnd = summary.end
+                record.timingFromCalendar = false
                 record.activeMinutes = summary.durationSeconds / 60; record.healthSleep = check.sleep
                 next.records[event.id] = record; modified = true
             }
