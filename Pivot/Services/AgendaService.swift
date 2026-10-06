@@ -5,6 +5,7 @@ import Combine
 final class AgendaService: ObservableObject {
     @Published private(set) var planned: [CalendarItem] = []
     @Published private(set) var effective: [CalendarItem] = []
+    @Published private(set) var paymentDues: [PaymentDue] = []
     @Published private(set) var revision: UInt64 = 0
     private var request: UInt64 = 0
     private let gate = RefreshGate(delayNanoseconds: 80_000_000)
@@ -21,11 +22,13 @@ final class AgendaService: ObservableObject {
                 let planned = Planner.plannedEffectiveEvents(effective, data: data)
                 let prompts = hasAccess ? LessonPromptState.observed(events, data: data, now: now) : data.lessonPrompts
                 let decisions = hasAccess ? EventContext.refreshedPlanned(events: planned, data: data, now: now) : (data.decisions ?? [])
-                return (effective, planned, prompts, decisions)
+                let dues = StudentPayments.dues(planned: planned, data: data)
+                return (effective, planned, prompts, decisions, dues)
             }.value
             guard token == self.request, version == store.data.updatedAt else { return }
             if self.effective != snapshot.0 { self.effective = snapshot.0 }
             if self.planned != snapshot.1 { self.planned = snapshot.1 }
+            if self.paymentDues != snapshot.4 { self.paymentDues = snapshot.4 }
             self.revision &+= 1
             diagnostics.record("Agenda", seconds: ProcessInfo.processInfo.systemUptime - start)
             if !store.locked, snapshot.2 != data.lessonPrompts || snapshot.3 != data.decisions {

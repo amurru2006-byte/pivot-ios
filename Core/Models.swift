@@ -190,6 +190,7 @@ struct Client: Codable, Identifiable {
     var id = UUID()
     var name: String
     var rateCents: Int
+    var paymentCadence: PaymentCadence? = nil
 }
 
 struct IncomeEntry: Codable, Identifiable {
@@ -202,6 +203,9 @@ struct IncomeEntry: Codable, Identifiable {
     var paidCents: Int = 0
     var notes: String = ""
     var calendarEventID: String? = nil
+    var paymentTiming: PaymentTiming? = nil
+    var promisedPaymentDate: Date? = nil
+    var paymentDeferralAfter: Date? = nil
     var outstandingCents: Int { max(0, amountCents - paidCents) }
 }
 
@@ -323,6 +327,9 @@ struct ActivityDraft: Codable {
     var receivedAmount: String
     var received: Bool
     var receiptDate: Date
+    var paymentTiming: PaymentTiming? = nil
+    var promisedPaymentDate: Date? = nil
+    var rememberPaymentCadence: Bool? = nil
 }
 
 enum PivotDate {

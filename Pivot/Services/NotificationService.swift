@@ -9,6 +9,7 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
         var eventID: String?
         var destination: String
         var outcome: Completion?
+        var clientID: String? = nil
     }
     @Published var route: Route?
     override init() {
@@ -30,7 +31,8 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
         let eventID = info["eventID"] as? String
         let destination = info["destination"] as? String ?? "today"
         let outcome: Completion? = response.actionIdentifier == "done" ? .completed : (response.actionIdentifier == "partial" ? .partial : nil)
-        await MainActor.run { self.route = Route(eventID: eventID, destination: destination, outcome: outcome) }
+        let clientID = info["clientID"] as? String
+        await MainActor.run { self.route = Route(eventID: eventID, destination: destination, outcome: outcome, clientID: clientID) }
     }
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions { [.banner, .list, .sound] }
     @Published private(set) var status = "Notifiche non configurate"
@@ -68,12 +70,13 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
             content.title = request.title
             content.body = request.body
             content.sound = .default
-            content.userInfo = ["eventID": request.eventID ?? "", "destination": request.destination]
+            content.userInfo = ["eventID": request.eventID ?? "", "destination": request.destination, "clientID": request.clientID ?? ""]
             if request.id.hasPrefix("event-") { content.categoryIdentifier = "event-result" }
             if let old = existing[request.id], old.content.title == content.title, old.content.body == content.body,
                old.content.categoryIdentifier == content.categoryIdentifier,
                old.content.userInfo["eventID"] as? String == content.userInfo["eventID"] as? String,
                old.content.userInfo["destination"] as? String == content.userInfo["destination"] as? String,
+               old.content.userInfo["clientID"] as? String == content.userInfo["clientID"] as? String,
                let date = old.trigger?.nextTriggerDate(), abs(date.timeIntervalSince(request.date)) < 1 {
                 count += 1; continue
             }

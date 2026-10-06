@@ -64,7 +64,7 @@ enum BackupCodec {
               Set(data.payments.map(\.id)).count == data.payments.count,
               Set(data.clients.map(\.id)).count == data.clients.count,
               data.records.allSatisfy({ $0.key == $0.value.id }),
-              data.income.allSatisfy({ $0.amountCents >= 0 && $0.paidCents >= 0 && $0.paidCents <= $0.amountCents && $0.minutes > 0 }),
+              data.income.allSatisfy({ $0.amountCents >= 0 && $0.paidCents >= 0 && $0.paidCents <= $0.amountCents && $0.minutes > 0 && ($0.paymentTiming != .chosenDate || $0.promisedPaymentDate != nil) }),
               data.moves.allSatisfy({ $0.proposedEnd > $0.proposedStart }),
               data.payments.allSatisfy({ payment in payment.amountCents > 0 && data.income.contains(where: { entry in entry.id == payment.incomeID }) }),
               data.income.allSatisfy({ entry in data.payments.filter { $0.incomeID == entry.id }.reduce(0) { $0 + $1.amountCents } == entry.paidCents }) else { throw BackupError.invalidData }

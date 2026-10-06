@@ -23,6 +23,10 @@ struct EventDetailView: View {
     @State private var receivedAmount = ""
     @State private var received = false
     @State private var receiptDate = Date()
+    @State private var paymentTiming: PaymentTiming = .everyLesson
+    @State private var promisedPaymentDate = Date()
+    @State private var rememberPaymentCadence = false
+    @State private var paymentClientID: UUID?
     @State private var importingPDF = false
     @State private var importingMaterial = false
     @State private var documentPreview: StudyDocument?
@@ -105,9 +109,14 @@ struct EventDetailView: View {
                     let selectedOutcome = record.status
                     record = draft.record; rule = draft.rule; studentName = draft.studentName; selectedClientID = draft.clientID
                     lessonAmount = draft.lessonAmount; receivedAmount = draft.receivedAmount; received = draft.received; receiptDate = draft.receiptDate
+                    paymentTiming = draft.paymentTiming ?? .everyLesson
+                    promisedPaymentDate = draft.promisedPaymentDate ?? Date()
+                    rememberPaymentCadence = draft.rememberPaymentCadence ?? false
                     if selectedOutcome != .pending { record.status = selectedOutcome }
                 }
                 recognizeStudent()
+                if store.data.activityDrafts?[event.id]?.paymentTiming == nil { paymentTiming = selectedClient?.paymentCadence?.timing ?? .everyLesson }
+                paymentClientID = selectedClientID
                 loadedDraft = true; savedFingerprint = fingerprint
             }
             // A workout diary can change the timer while this detail is underneath it.
@@ -122,6 +131,10 @@ struct EventDetailView: View {
             persistDraft()
         }
         .onDisappear { persistDraft() }
+        .onChange(of: selectedClientID) { _, id in
+            guard loadedDraft, id != paymentClientID else { return }
+            paymentClientID = id; paymentTiming = selectedClient?.paymentCadence?.timing ?? .everyLesson; rememberPaymentCadence = false
+        }
         .confirmationDialog("Vuoi recuperare questa attività?", isPresented: $skipChoice, titleVisibility: .visible) {
             Button("Cerca un altro spazio") { findRecovery() }
             Button("Salta definitivamente") { if save() { closeAfterSaving() } }
@@ -323,6 +336,9 @@ struct EventDetailView: View {
             if let entry = linkedIncome {
                 Text("Lezione registrata: \(Money.display(entry.amountCents))").font(.subheadline)
                 NavigationLink { IncomeDetailView(entryID: entry.id) } label: { Label(entry.outstandingCents > 0 ? "Registra il pagamento mancante" : "Vedi il pagamento", systemImage: "arrow.right.circle") }
+                if let client = store.data.clients.first(where: { $0.id == entry.clientID }) {
+                    NavigationLink("Saldo e pagamento di più lezioni") { ClientDetailView(client: client) }
+                }
                 Text("Salvare ancora questa attività non aggiunge un secondo incasso.").font(.caption).foregroundStyle(PivotTheme.muted)
             } else {
                 if studentFromCalendar && !editingStudent {
@@ -343,9 +359,11 @@ struct EventDetailView: View {
                 TextField("Importo concordato in euro (anche 0)", text: $lessonAmount).keyboardType(.decimalPad).accessibilityIdentifier("lesson-amount")
                 Toggle("Ho già ricevuto un pagamento", isOn: $received)
                 if received {
-                    TextField("Euro ricevuti", text: $receivedAmount).keyboardType(.decimalPad)
+                    TextField("Euro ricevuti oggi (anche lezioni precedenti)", text: $receivedAmount).keyboardType(.decimalPad).accessibilityIdentifier("lesson-received-amount")
                     DatePicker("Data incasso", selection: $receiptDate)
+                    Text("Distribuirò il pagamento sulle lezioni di questo studente, dalla più vecchia.").font(.caption).foregroundStyle(PivotTheme.muted)
                 }
+                PaymentTermsFields(timing: $paymentTiming, promisedDate: $promisedPaymentDate, remember: $rememberPaymentCadence, studentName: selectedClient?.name ?? studentName)
                 Text("Il conto sale solo per i soldi ricevuti. La parte non pagata resta in ‘Da incassare’. Salva quando hai indicato l'esito della lezione.").font(.caption).foregroundStyle(PivotTheme.muted)
                 if record.tutoringAnswered == true { Text("Nessun compenso registrato per questa attività.").font(.caption) }
             }
@@ -410,7 +428,8 @@ struct EventDetailView: View {
             guard amount == 0 || !ambiguousStudent || selectedClient != nil || !studentName.isEmpty else { message = "Scegli lo studente per questa lezione."; return false }
             client = selectedClient ?? StudentRecognition.existingClient(named: name, clients: store.data.clients) ?? Client(name: name, rateCents: 0)
             if received {
-                guard let paid = Money.cents(from: receivedAmount), paid > 0, paid <= amount else { message = "L'incasso deve essere positivo e non superiore all'importo della lezione."; return false }
+                let balance = client.map { StudentPayments.balance(clientID: $0.id, data: store.data) } ?? 0
+                guard let paid = Money.cents(from: receivedAmount), paid > 0, paid <= amount + balance else { message = "L'incasso deve essere positivo e non superiore al saldo di questo studente, inclusa questa lezione."; return false }
                 collected = paid
             }
         }
@@ -420,7 +439,11 @@ struct EventDetailView: View {
         saved.logistics = store.record(for: event).logistics
         let ok = store.change { data in
             let previousStatus = data.records[event.id]?.status ?? .pending
-            if let client, let cents { TutoringLedger.register(event: event, record: &saved, client: client, amountCents: cents, collectedCents: collected, paymentDate: receiptDate, data: &data) }
+            if let client, let cents {
+                TutoringLedger.register(event: event, record: &saved, client: client, amountCents: cents, collectedCents: 0, paymentDate: receiptDate, data: &data, timing: paymentTiming, promisedDate: paymentTiming == .chosenDate ? promisedPaymentDate : nil)
+                if rememberPaymentCadence { StudentPayments.remember(paymentTiming, for: client.id, data: &data) }
+                if collected > 0 { StudentPayments.collect(clientID: client.id, cents: collected, date: receiptDate, data: &data) }
+            }
             data.records[event.id] = saved; data.rules[event.id] = rule
             if previousStatus != saved.status && saved.status != .pending {
                 var coach = data.coachState
@@ -443,7 +466,8 @@ struct EventDetailView: View {
     private func closeAfterSaving() { onSaved?(); dismiss() }
     private var draft: ActivityDraft {
         ActivityDraft(record: record, rule: rule, studentName: studentName, clientID: selectedClientID, lessonAmount: lessonAmount,
-                      receivedAmount: receivedAmount, received: received, receiptDate: receiptDate)
+                      receivedAmount: receivedAmount, received: received, receiptDate: receiptDate,
+                      paymentTiming: paymentTiming, promisedPaymentDate: promisedPaymentDate, rememberPaymentCadence: rememberPaymentCadence)
     }
     private var fingerprint: String {
         let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
