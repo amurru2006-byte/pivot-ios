@@ -12,6 +12,9 @@ struct PlannedNotification {
 
 enum NotificationPlan {
     static func requests(events: [CalendarItem], data: AppData, now: Date, capacity: Int = 60) -> [PlannedNotification] {
+        requestsFromPlanned(events: Planner.plannedEvents(events, data: data), data: data, now: now, capacity: capacity)
+    }
+    static func requestsFromPlanned(events: [CalendarItem], data: AppData, now: Date, capacity: Int = 60) -> [PlannedNotification] {
         let horizon = now.addingTimeInterval(7 * 86400)
         let calendar = PivotDate.calendar
         var requests: [PlannedNotification] = []
@@ -22,7 +25,7 @@ enum NotificationPlan {
             requests.append(.init(date: date, id: id, title: title, body: body, priority: priority, eventID: eventID, destination: destination))
         }
         // Use the same deduplicated, attendance-aware program as the home screen.
-        for event in Planner.plannedEvents(events, data: data) where !event.isAllDay {
+        for event in events where !event.isAllDay {
             let record = data.records[event.id]
             let missingCompensation = [.tutoring, .work].contains(event.kind) && [Completion.completed, .partial].contains(record?.status ?? .pending)
                 && record?.tutoringAnswered != true && !data.income.contains(where: { $0.calendarEventID == event.id || $0.id == record?.incomeID })
@@ -55,7 +58,7 @@ enum NotificationPlan {
         for day in 0...6 {
             let date = calendar.date(byAdding: .day, value: day, to: now)!
             let time = calendar.date(bySettingHour: data.settings.eveningHour, minute: data.settings.eveningMinute, second: 0, of: date)!
-            let missingCardio = WorkoutContext.missingCardio(events: events, data: data, now: time)
+            let missingCardio = WorkoutContext.missingCardioInPlanned(events: events, data: data, now: time)
             add(time, "evening-\(PivotDate.key(date))", "Resoconto della giornata", missingCardio.isEmpty ? "Controlla le risposte mancanti e condividi il resoconto quando vuoi." : "Controlla anche il cardio da chiarire: il Coach ti chiede se l’hai svolto o recuperato.", priority: 0, destination: missingCardio.isEmpty ? "diary" : "coach")
         }
         // Reserve the finite iOS queue for meals/check-ins before optional follow-ups.

@@ -11,6 +11,11 @@ enum BackupError: LocalizedError {
 }
 
 enum BackupCodec {
+    static func encodeCompact(_ data: AppData) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return try encoder.encode(data)
+    }
     static func encode(_ data: AppData) throws -> Data {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601

@@ -7,6 +7,7 @@ struct SettingsView: View {
     @EnvironmentObject var calendar: CalendarService
     @EnvironmentObject var notifications: NotificationService
     @EnvironmentObject var health: HealthService
+    @EnvironmentObject var agenda: AgendaService
     @State private var settings = Settings()
     @State private var folderPicker = false
     @State private var importing = false
@@ -15,6 +16,7 @@ struct SettingsView: View {
     @State private var exporting = false
     @State private var exportFile: URL?
     @State private var message: String?
+    @State private var saveTask: Task<Void, Never>?
     private var installedVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—" }
     var body: some View {
         NavigationStack {
@@ -26,6 +28,7 @@ struct SettingsView: View {
                     settingsLink("Notifiche", subtitle: "Quando e come avvisarti", icon: "bell.fill") { notificationSettings }
                     settingsLink("Backup e privacy", subtitle: "Proteggi il tuo storico", icon: "externaldrive.fill") { backupSettings }
                     settingsLink("Studio ed esami", subtitle: "Priorità e recuperi", icon: "graduationcap.fill") { studySettings }
+                    settingsLink("Prestazioni e salvataggio", subtitle: "Tempi di caricamento e stato dei dati", icon: "speedometer") { PerformanceView() }
                 }
                 Text("Le impostazioni si salvano automaticamente.").font(.caption).foregroundStyle(PivotTheme.muted)
 
@@ -41,12 +44,19 @@ struct SettingsView: View {
                 }.foregroundStyle(PivotTheme.muted).padding(.top, 4)
             }.navigationTitle("Impostazioni")
                 .onAppear { settings = store.data.settings }
+                .onChange(of: store.isLoading) { _, loading in if !loading { settings = store.data.settings } }
                 .onChange(of: settings) { _, _ in
-                    guard settings != store.data.settings else { return }
-                    if store.change({ $0.settings = settings }) {
-                        let saved = settings
-                        Task { await calendar.refresh(settings: saved) }
+                    saveTask?.cancel()
+                    guard !store.isLoading, settings != store.data.settings else { return }
+                    saveTask = Task {
+                        do { try await Task.sleep(nanoseconds: 350_000_000) } catch { return }
+                        guard !Task.isCancelled, settings != store.data.settings else { return }
+                        store.change { $0.settings = settings }
                     }
+                }
+                .onDisappear {
+                    saveTask?.cancel()
+                    if !store.isLoading, settings != store.data.settings { store.change { $0.settings = settings } }
                 }
                 .sheet(isPresented: $folderPicker) { FolderPicker { store.selectBackupFolder($0) } }
                 .sheet(isPresented: $exporting) { if let exportFile { ShareSheet(items: [exportFile]) } }
@@ -132,7 +142,7 @@ struct SettingsView: View {
     PivotCard {
         Label("Promemoria", systemImage: "bell.badge.fill").font(.headline).foregroundStyle(PivotTheme.amber)
         Text(notifications.status).font(.subheadline).foregroundStyle(PivotTheme.muted)
-        Button("Consenti notifiche") { Task { await notifications.requestAccess(); await notifications.schedule(events: calendar.events, data: store.data) } }.buttonStyle(PivotSecondaryButton())
+        Button("Consenti notifiche") { Task { await notifications.requestAccess(); await notifications.schedule(events: agenda.planned, data: store.data) } }.buttonStyle(PivotSecondaryButton())
         Button("Apri impostazioni notifiche di iOS") {
             if let url = URL(string: UIApplication.openNotificationSettingsURLString) { UIApplication.shared.open(url) }
         }.font(.subheadline).foregroundStyle(PivotTheme.accent)
@@ -171,6 +181,8 @@ struct SettingsView: View {
         }.buttonStyle(.plain)
     }
     private func saveSettings() async {
-        if store.change({ $0.settings = settings }) { await calendar.refresh(settings: settings); message = "Impostazioni salvate." }
+        saveTask?.cancel()
+        guard store.change({ $0.settings = settings }) else { return }
+        if await store.flushPendingWrites() { message = "Impostazioni salvate." }
     }
 }

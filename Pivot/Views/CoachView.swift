@@ -6,23 +6,25 @@ struct CoachView: View {
     @EnvironmentObject private var store: PivotStore
     @EnvironmentObject private var calendar: CalendarService
     @EnvironmentObject private var coachModel: LocalCoachService
+    @EnvironmentObject private var agenda: AgendaService
     @State private var input = ""
     @State private var memoryInput = ""
     @State private var historyDay = Date()
     @State private var deleteHistory = false
     @State private var message: String?
     @State private var applyingID: UUID?
+    @State private var isPlanning = false
     @State private var responseRecord: EventRecord?
     @State private var returnHomeAfterResponse = false
     @StateObject private var dictation = DictationService()
     @Environment(\.scenePhase) private var scenePhase
     @State private var dictationPrefix = ""
     private var reviews: [WorkoutReview] { (store.data.workoutReviews ?? []).filter { !$0.dismissed && !$0.resolved } }
-    private var contextEvent: CalendarItem? { Planner.plannedEvents(calendar.events, data: store.data).first { $0.id == contextEventID } }
+    private var contextEvent: CalendarItem? { agenda.planned.first { $0.id == contextEventID } }
     private var state: CoachState { store.data.coachState }
     private var todayMessages: [CoachMessage] { state.messages.filter { $0.dayKey == PivotDate.key(historyDay) } }
     private var missed: [CalendarItem] {
-        Array(Planner.plannedEvents(calendar.events, data: store.data).filter {
+        Array(agenda.planned.filter {
             !$0.isAllDay && $0.occurs(on: Date()) && $0.end <= Date() && (store.data.records[$0.id]?.status ?? .pending) != .completed
                 && (store.data.records[$0.id]?.status ?? .pending) != .partial
         }.suffix(4))
@@ -37,7 +39,7 @@ struct CoachView: View {
                     Label("È l’allenamento del giorno?", systemImage: "figure.strengthtraining.traditional").font(.headline)
                     Text("Da Salute: \(PivotDate.shortDate(review.workout.start)) · \(PivotDate.time(review.workout.start))–\(PivotDate.time(review.workout.end)) · \(ActivityTiming.duration(review.workout.durationSeconds))").font(.subheadline)
                     Text("Il tipo indica una sessione strutturata; non deduco automaticamente lo sforzo o la colazione.").font(.caption).foregroundStyle(PivotTheme.muted)
-                    ForEach(Planner.plannedEvents(calendar.events, data: store.data).filter { review.eventIDs.contains($0.id) }) { event in
+                    ForEach(agenda.planned.filter { review.eventIDs.contains($0.id) }) { event in
                         Button("Sì, è ‘\(event.title)’") { prepareActual(event, workout: review.workout, start: review.workout.start) }.buttonStyle(PivotPrimaryButton()).disabled(store.data.actualWorkoutDraft != nil)
                     }
                     Button("No, è un’altra attività") {
@@ -48,11 +50,12 @@ struct CoachView: View {
                     }.buttonStyle(PivotSecondaryButton())
                 }
             }
-            if !WorkoutContext.missingCardio(events: calendar.events, data: store.data, now: Date()).isEmpty {
+            let missingCardio = WorkoutContext.missingCardioInPlanned(events: agenda.planned, data: store.data, now: Date())
+            if !missingCardio.isEmpty {
                 PivotCard {
                     Label("Cardio da chiarire", systemImage: "figure.walk").font(.headline)
                     Text("Il cardio previsto non risulta completato. Lo hai fatto senza Apple Watch, vuoi recuperarlo o è saltato? Una camminata breve non lo sostituisce automaticamente.").font(.subheadline)
-                    ForEach(WorkoutContext.missingCardio(events: calendar.events, data: store.data, now: Date())) { event in
+                    ForEach(missingCardio) { event in
                         Button(event.title + " · segna l’esito") { responseRecord = store.record(for: event) }.buttonStyle(PivotSecondaryButton())
                     }
                 }
@@ -126,8 +129,9 @@ struct CoachView: View {
                     } label: { Label(dictation.isListening ? "Termina" : "Detta", systemImage: dictation.isListening ? "stop.circle.fill" : "mic.fill") }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("coach-dictation")
                     Button { dictation.stop(); send(input) } label: { Label("Invia", systemImage: "arrow.up") }
                     .accessibilityIdentifier("coach-send")
-                    .buttonStyle(PivotPrimaryButton()).disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.locked || coachModel.isGenerating)
+                    .buttonStyle(PivotPrimaryButton()).disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.locked || coachModel.isGenerating || isPlanning)
                 }
+                if isPlanning { ProgressView("Controllo il programma…") }
                 if dictation.isListening { Text("Dettatura attiva · controlla il testo prima di inviare").font(.caption).foregroundStyle(PivotTheme.accent) }
                 if let status = dictation.message { Text(status).font(.caption).foregroundStyle(PivotTheme.amber) }
                 if coachModel.isGenerating {
@@ -172,7 +176,7 @@ struct CoachView: View {
             // request finish; actual backgrounding or leaving still cancels it.
             if phase == .background || (phase == .inactive && dictation.isListening) { dictation.stop() }
         }
-        .onDisappear { dictation.stop() }
+        .onDisappear { dictation.stop(); coachModel.pauseAndUnload() }
         .toolbar { Button { Task { await calendar.refresh(settings: store.data.settings) } } label: { Image(systemName: "arrow.clockwise") } }
         .sheet(item: $responseRecord, onDismiss: {
             if returnHomeAfterResponse { returnHomeAfterResponse = false; dismiss() }
@@ -226,9 +230,9 @@ struct CoachView: View {
                 Button("Riprova") { Task { await coachModel.load() } }.buttonStyle(PivotSecondaryButton())
             case .notLoaded:
                 Label("Suggerimenti AI opzionali", systemImage: "cpu").font(.headline).foregroundStyle(PivotTheme.blue)
-                Text("Scarica una volta Qwen3 0,6B (397 MB). Il file viene verificato e resta sul telefono. Senza modello, il Coach funziona con le regole verificate. Le prestazioni reali vanno provate sul tuo iPhone.")
+                Text(coachModel.hasDownloadedModel ? "Il modello è già scaricato. Attivalo quando vuoi un suggerimento AI; la memoria viene liberata quando lasci questa schermata." : "Scarica una volta Qwen3 0,6B (397 MB). Il file viene verificato e resta sul telefono. Senza modello, il Coach funziona con le regole verificate.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
-                Button("Scarica e attiva") { Task { await coachModel.load() } }.buttonStyle(PivotSecondaryButton())
+                Button(coachModel.hasDownloadedModel ? "Attiva AI già scaricata" : "Scarica e attiva") { Task { await coachModel.load() } }.buttonStyle(PivotSecondaryButton())
             case .unavailable:
                 Label("Modalità sicura attiva", systemImage: "checkmark.shield.fill").font(.headline)
                 Text("Questa build usa il motore deterministico; nessuna funzione di pianificazione è bloccata.").font(.caption).foregroundStyle(PivotTheme.muted)
@@ -258,12 +262,17 @@ struct CoachView: View {
     }
 
     private func send(_ text: String, targetID: String? = nil) {
+        guard !isPlanning else { return }
+        isPlanning = true
+        Task { await sendInBackground(text, targetID: targetID); isPlanning = false }
+    }
+    private func sendInBackground(_ text: String, targetID: String?) async {
         let clean = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(3000))
         guard !clean.isEmpty, !store.locked, !coachModel.isGenerating else { return }
         let now = Date()
         historyDay = now
         if let start = WorkoutContext.statedStart(clean, now: now) {
-            let candidates = EventCoalescer.unique(calendar.events, data: store.data).filter { $0.kind == .workout && CardioKind.suggested($0.title) == nil && $0.occurs(on: start) }
+            let candidates = agenda.effective.filter { $0.kind == .workout && CardioKind.suggested($0.title) == nil && $0.occurs(on: start) }
             if candidates.count == 1, let event = candidates.first, store.data.actualWorkoutDraft == nil {
                 prepareActual(event, workout: nil, start: start)
                 store.change { data in var coach = data.coachState; coach.messages.append(.init(dayKey: PivotDate.key(now), role: .user, text: clean)); data.coachState = coach }
@@ -272,7 +281,19 @@ struct CoachView: View {
             message = "Ci sono più allenamenti, nessun evento palestra oppure una conferma già aperta. Completa la proposta o apri l’attività precisa: non ne scelgo una a caso."
             return
         }
-        let result = CoachPlanner.respond(message: clean, events: calendar.events, data: store.data, now: now, targetID: targetID ?? contextEventID)
+        var verified: CoachTurnResult?
+        let target = targetID ?? contextEventID
+        let started = ProcessInfo.processInfo.systemUptime
+        for _ in 0..<3 {
+            let snapshot = store.data, events = calendar.events, version = store.data.updatedAt
+            let result = await Task.detached(priority: .userInitiated) {
+                CoachPlanner.respond(message: clean, events: events, data: snapshot, now: now, targetID: target)
+            }.value
+            guard !store.locked, !store.isRestoring, !Task.isCancelled else { return }
+            if version == store.data.updatedAt && events == calendar.events { verified = result; break }
+        }
+        store.diagnostics.record("Pianificatore Coach", seconds: ProcessInfo.processInfo.systemUptime - started)
+        guard let result = verified else { message = "Il programma sta cambiando. Riprova fra un momento: nessuna proposta precedente è stata applicata."; return }
         let context = contextForModel(now: now)
         let coachReplyID = UUID()
         guard store.change({ data in
@@ -303,7 +324,7 @@ struct CoachView: View {
     private func prepareActual(_ event: CalendarItem, workout: HealthWorkoutSummary?, start: Date) {
         guard store.data.actualWorkoutDraft == nil else { return }
         let check = store.data.checkIns[PivotDate.key(start)]
-        let context = EventCoalescer.unique(calendar.events, data: store.data)
+        let context = agenda.effective
         let draft = ActualWorkoutDraft(source: event, health: workout, start: start, end: workout?.end,
             wake: check?.wakeTime.flatMap { $0 <= start ? $0 : nil }, bedtime: check?.sleep?.bedtime,
             breakfastDone: nil, breakfastStart: nil, breakfastEnd: nil, contextEvents: context.filter { $0.kind == .routine || $0.kind == .meal },
@@ -335,6 +356,7 @@ struct CoachView: View {
         guard !store.locked, !store.isRestoring, applyingID == nil else { return }
         applyingID = change.id
         defer { applyingID = nil }
+        guard await store.flushPendingWrites() else { message = "Prima di aggiornare il Calendario completa il salvataggio nelle Impostazioni."; return }
         await calendar.refresh(settings: store.data.settings)
         do {
             let option = CoachOption(title: change.optionTitle, explanation: "", consequences: "", moves: [change.move])
@@ -374,7 +396,7 @@ struct CoachView: View {
     }
 
     private func contextForModel(now: Date) -> String {
-        let agenda = Planner.plannedEvents(calendar.events, data: store.data).filter { $0.occurs(on: now) }.prefix(8).map {
+        let agenda = self.agenda.planned.filter { $0.occurs(on: now) }.prefix(8).map {
             "\(PivotDate.time($0.start))–\(PivotDate.time($0.end)) \(String($0.title.prefix(120))) [\(store.data.records[$0.id]?.status.label ?? "da compilare")]"
         }.joined(separator: "\n")
         let recent = state.messages.filter { $0.dayKey == PivotDate.key(now) }.suffix(4).map {

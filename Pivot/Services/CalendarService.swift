@@ -20,6 +20,8 @@ final class CalendarService: ObservableObject {
     private let worker = CalendarWorker()
     private var inFlight: Task<CalendarSnapshot, Never>?
     private var lastFilter: CalendarFilter?
+    private var invalidation: UInt64 = 0
+    private var snapshotRevision: UInt64 = 0
 
     func requestAccess() async {
         do { hasAccess = try await worker.requestAccess() }
@@ -31,16 +33,20 @@ final class CalendarService: ObservableObject {
         choices = [.init(id: "preview", title: "Esempio", colorHex: "7EE6CD", holiday: false)]
     }
     #endif
-    func refresh(settings: Settings) async {
+    func invalidateSnapshot() { invalidation &+= 1 }
+    func refresh(settings: Settings, force: Bool = true) async {
         guard !PreviewMode.enabled else { return }
         let filter = CalendarFilter(settings)
+        if !force, inFlight == nil, lastFilter == filter, snapshotRevision == invalidation,
+           let lastRefresh, Date().timeIntervalSince(lastRefresh) < 60 { return }
         while let active = inFlight {
             _ = await active.value
             // Another waiter can resume before the publisher; yield so it can finish.
             await Task.yield()
-            if inFlight == nil && lastFilter == filter { return }
+            if inFlight == nil && lastFilter == filter && snapshotRevision == invalidation { return }
         }
         isRefreshing = true
+        let revision = invalidation
         let task = Task { await worker.snapshot(settings: settings) }
         inFlight = task
         let snapshot = await task.value
@@ -48,6 +54,7 @@ final class CalendarService: ObservableObject {
         if choices != snapshot.choices { choices = snapshot.choices }
         if events != snapshot.events { events = snapshot.events }
         lastFilter = filter
+        snapshotRevision = revision
         lastRefresh = Date()
         inFlight = nil
         isRefreshing = false
@@ -71,7 +78,7 @@ private struct CalendarSnapshot {
 }
 
 private actor CalendarWorker {
-    private let eventStore = EKEventStore()
+    private lazy var eventStore = EKEventStore()
     func requestAccess() async throws -> Bool { try await eventStore.requestFullAccessToEvents() }
     func snapshot(settings: Settings) -> CalendarSnapshot {
         assert(!Thread.isMainThread, "Calendar reads must not block touch handling")
@@ -161,6 +168,11 @@ private actor CalendarWorker {
         // Exercise the production refresh path with a slow import, not PreviewMode.
         Thread.sleep(forTimeInterval: 4)
         let day = PivotDate.calendar.startOfDay(for: Date())
+        if ProcessInfo.processInfo.arguments.contains("--student-recognition-test") {
+            let start = day.addingTimeInterval(10 * 3600)
+            let event = CalendarItem(id: "student-test", eventIdentifier: "student-test", calendarIdentifier: "interaction", calendarTitle: "Lavoro", title: "Ripetizioni con Giulia Rossi", start: start, end: start.addingTimeInterval(3600), location: "", notes: "", colorHex: "#7EE6CD", isAllDay: false, writable: false, kind: .tutoring)
+            return CalendarSnapshot(hasAccess: true, choices: [.init(id: "interaction", title: "Lavoro", colorHex: "#7EE6CD", holiday: false)], events: [event])
+        }
         let html = "<p>Programma d&#x27;oggi</p><p>Prima parte<br>Seconda parte</p><img src='https://invalid.example/image.png'>"
         let events = (0..<700).map { i -> CalendarItem in
             let start = day.addingTimeInterval(Double(i / 10) * 86400 + Double(8 + i % 10) * 3600)

@@ -94,6 +94,7 @@ enum EventContext {
         for i in items.indices {
             for j in items.indices where j > i {
                 let a = items[i], b = items[j]
+                if b.start >= a.end { break }
                 if b.start < a.end && a.start < b.end {
                     let value = relation(a, b, data: data); append(a, b, value.0, value.1)
                 }
@@ -120,7 +121,9 @@ enum EventContext {
         return result
     }
     static func refreshed(events: [CalendarItem], data: AppData, now: Date) -> [EventDecision] {
-        let planned = Planner.plannedEvents(events, data: data)
+        refreshedPlanned(events: Planner.plannedEvents(events, data: data), data: data, now: now)
+    }
+    static func refreshedPlanned(events planned: [CalendarItem], data: AppData, now: Date) -> [EventDecision] {
         return (0..<7).flatMap { offset -> [EventDecision] in
             guard let day = PivotDate.calendar.date(byAdding: .day, value: offset, to: now) else { return [] }
             return decisions(on: day, events: planned, data: data)

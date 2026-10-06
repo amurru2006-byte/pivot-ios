@@ -165,8 +165,10 @@ struct TrainingSessionView: View {
             Button("Salva allenamento") { save() }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
             Button("Esporta per il personal") {
                 guard save() else { return }
-                do { export = try store.trainingExportURL(session); sharing = true }
-                catch { message = error.localizedDescription }
+                Task {
+                    do { export = try await store.trainingExportURL(session); sharing = true }
+                    catch { message = error.localizedDescription }
+                }
             }.buttonStyle(PivotSecondaryButton()).disabled(store.locked || !hasStarted)
             if let message { Text(message).font(.caption).foregroundStyle(PivotTheme.amber) }
         }.navigationTitle("Allenamento")

@@ -29,8 +29,10 @@ struct IncomeView: View {
                 HStack {
                     Button { editingOpening = true } label: { Label("Importo pregresso", systemImage: "slider.horizontal.3") }.buttonStyle(PivotSecondaryButton()).disabled(store.locked)
                     Button {
-                        do { exportFile = try store.incomeExcelURL(year: year); exporting = true }
-                        catch { store.error = "Esportazione non riuscita: \(error.localizedDescription)" }
+                        Task {
+                            do { exportFile = try await store.incomeExcelURL(year: year); exporting = true }
+                            catch { store.error = "Esportazione non riuscita: \(error.localizedDescription)" }
+                        }
                     } label: { Label("Esporta in Excel", systemImage: "square.and.arrow.up") }.buttonStyle(PivotSecondaryButton()).disabled(store.locked)
                 }
                 PivotCard(tint: PivotTheme.amber) {
