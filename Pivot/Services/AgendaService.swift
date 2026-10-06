@@ -23,7 +23,9 @@ final class AgendaService: ObservableObject {
                 let prompts = hasAccess ? LessonPromptState.observed(events, data: data, now: now) : data.lessonPrompts
                 let decisions = hasAccess ? EventContext.refreshedPlanned(events: planned, data: data, now: now) : (data.decisions ?? [])
                 let dues = StudentPayments.dues(planned: planned, data: data)
-                return (effective, planned, prompts, decisions, dues)
+                var withDates = data
+                let changedDates = StudentPayments.rememberDeadlines(dues, data: &withDates)
+                return (effective, planned, prompts, decisions, dues, changedDates, withDates.income)
             }.value
             guard token == self.request, version == store.data.updatedAt else { return }
             if self.effective != snapshot.0 { self.effective = snapshot.0 }
@@ -31,8 +33,8 @@ final class AgendaService: ObservableObject {
             if self.paymentDues != snapshot.4 { self.paymentDues = snapshot.4 }
             self.revision &+= 1
             diagnostics.record("Agenda", seconds: ProcessInfo.processInfo.systemUptime - start)
-            if !store.locked, snapshot.2 != data.lessonPrompts || snapshot.3 != data.decisions {
-                store.change { $0.lessonPrompts = snapshot.2; $0.decisions = snapshot.3 }
+            if !store.locked, snapshot.2 != data.lessonPrompts || snapshot.3 != data.decisions || snapshot.5 {
+                store.change { $0.lessonPrompts = snapshot.2; $0.decisions = snapshot.3; if snapshot.5 { $0.income = snapshot.6 } }
             }
         }
     }

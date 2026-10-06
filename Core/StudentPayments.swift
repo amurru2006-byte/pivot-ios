@@ -66,9 +66,11 @@ enum StudentPayments {
                 // is due at the earlier lessons simply because they remain unpaid.
                 let last = lessons.filter { $0.start >= interval.start && $0.start < interval.end }.map(\.end).max()
                 // No invented lesson/deadline if the calendar isn't available yet.
-                due = last.map { max(entry.date, $0) }; anchor = PivotDate.key(interval.start)
+                due = (last ?? entry.lastKnownPaymentDate).map { max(entry.date, $0) }; anchor = PivotDate.key(interval.start)
             case .nextLesson:
-                due = lessons.filter { $0.id != entry.calendarEventID && $0.start >= (entry.paymentDeferralAfter ?? entry.date) }.min { $0.start < $1.start }?.end
+                let after = entry.paymentDeferralAfter ?? entry.date
+                let known = entry.lastKnownPaymentDate.flatMap { $0 >= after ? $0 : nil }
+                due = lessons.filter { $0.id != entry.calendarEventID && $0.start >= after }.min { $0.start < $1.start }?.end ?? known
                 anchor = due.map(PivotDate.key) ?? entry.id.uuidString
             case .chosenDate:
                 due = entry.promisedPaymentDate; anchor = due.map(PivotDate.key) ?? entry.id.uuidString
@@ -86,6 +88,19 @@ enum StudentPayments {
     }
     static func balance(clientID: UUID, data: AppData) -> Int {
         data.income.filter { $0.clientID == clientID }.reduce(0) { $0 + $1.outstandingCents }
+    }
+    @discardableResult static func rememberDeadlines(_ dues: [PaymentDue], data: inout AppData) -> Bool {
+        let dates = Dictionary(dues.flatMap { due -> [(UUID, Date)] in
+            guard let date = due.date else { return [] }
+            return due.entryIDs.map { ($0, date) }
+        }, uniquingKeysWith: { _, newer in newer })
+        var changed = false
+        for index in data.income.indices {
+            if let date = dates[data.income[index].id], data.income[index].lastKnownPaymentDate != date {
+                data.income[index].lastKnownPaymentDate = date; changed = true
+            }
+        }
+        return changed
     }
     // A single real receipt can settle several lessons, oldest first. There is
     // no synthetic money, overpayment or implicit "paid" at a promised date.

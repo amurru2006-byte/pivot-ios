@@ -206,6 +206,7 @@ struct IncomeEntry: Codable, Identifiable {
     var paymentTiming: PaymentTiming? = nil
     var promisedPaymentDate: Date? = nil
     var paymentDeferralAfter: Date? = nil
+    var lastKnownPaymentDate: Date? = nil
     var outstandingCents: Int { max(0, amountCents - paidCents) }
 }
 

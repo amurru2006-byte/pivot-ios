@@ -117,4 +117,16 @@ final class StudentPaymentTests: XCTestCase {
         XCTAssertNil(StudentPayments.dues(planned: [], data: data).first?.date)
         XCTAssertFalse(NotificationPlan.requests(events: [], data: data, now: item.end).contains { $0.destination == "payment" })
     }
+    func testLearnedWeeklyDeadlineRemainsOverdueAfterCalendarWindowMovesOn() throws {
+        let client = Client(name: "Giulia Rossi", rateCents: 1800, paymentCadence: .weekly)
+        let first = lesson("first", "2026-10-05T16:00:00+02:00"), last = lesson("last", "2026-10-09T16:00:00+02:00")
+        var data = AppData(); data.clients = [client]; data.income = [unpaid(first, client: client)]
+        let dues = StudentPayments.dues(planned: [first, last], data: data)
+        XCTAssertTrue(StudentPayments.rememberDeadlines(dues, data: &data))
+        XCTAssertFalse(StudentPayments.rememberDeadlines(dues, data: &data))
+        let restored = try BackupCodec.decode(BackupCodec.encodeCompact(data))
+        let historical = try XCTUnwrap(StudentPayments.dues(planned: [], data: restored).first)
+        XCTAssertEqual(historical.date, last.end); XCTAssertTrue(historical.isOverdue(at: date("2026-11-01T10:00:00+01:00")))
+        XCTAssertEqual(historical.amountCents, 1800); XCTAssertTrue(restored.payments.isEmpty)
+    }
 }
