@@ -77,7 +77,7 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
                old.content.userInfo["eventID"] as? String == content.userInfo["eventID"] as? String,
                old.content.userInfo["destination"] as? String == content.userInfo["destination"] as? String,
                old.content.userInfo["clientID"] as? String == content.userInfo["clientID"] as? String,
-               let date = old.trigger?.nextTriggerDate(), abs(date.timeIntervalSince(request.date)) < 1 {
+               let date = (old.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate() ?? (old.trigger as? UNTimeIntervalNotificationTrigger)?.nextTriggerDate(), abs(date.timeIntervalSince(request.date)) < 1 {
                 count += 1; continue
             }
             var components = PivotDate.calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: request.date)
