@@ -127,6 +127,15 @@ final class InterfaceAndTrainingTests: XCTestCase {
         XCTAssertNil(reopened.plans[0].document); XCTAssertEqual(reopened.plans[0].revisions?.count, 1)
         XCTAssertEqual(reopened.plans[0].payload.name, changed.name); XCTAssertTrue(StudyFiles.documents(in: data).isEmpty)
     }
+    func testInvalidExtraNeverCreatesInvalidRangeOrMutatesSession() {
+        let library = library(), plan = library.plans[0]
+        var session = library.makeSession(plan: plan, day: plan.payload.days[0], eventID: nil)
+        var invalid = exercise("invalid"); invalid.sets = 0
+        XCTAssertThrowsError(try TrainingEdits.add(to: &session, exercise: invalid, library: library))
+        XCTAssertThrowsError(try TrainingEdits.replace(in: &session, exerciseID: "bench", with: invalid, library: library))
+        XCTAssertEqual(session.exercises.count, 1); XCTAssertEqual(session.exercises[0].id, "bench")
+        XCTAssertEqual(session.dayID, "a")
+    }
     func testOfflineCatalogHasMusclesUniqueIDsAndNoWrongBenchVariantImage() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let entries = try ExerciseCatalog.load(from: root.appendingPathComponent("Pivot/Resources/exercises.json"))

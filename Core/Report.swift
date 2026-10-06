@@ -9,6 +9,7 @@ enum Report {
         if let check = data.checkIns[key] {
             lines += ["Sveglia reale: \(check.wakeTime.map(PivotDate.time) ?? "non registrata")",
                       "Energia mattina/sera: \(check.energyMorning.map(String.init) ?? "—") / \(check.energyEvening.map(String.init) ?? "—")",
+                      "Stanchezza mattina/sera: \(check.fatigueMorning.map(String.init) ?? "—") / \(check.fatigueEvening.map(String.init) ?? "—")",
                       "Umore mattina/sera: \(check.moodMorning.map(String.init) ?? "—") / \(check.moodEvening.map(String.init) ?? "—")",
                       "Note giornata: \(check.notes)"]
             if let sleep = check.sleep {
@@ -29,8 +30,10 @@ enum Report {
             if record == nil || record?.status == .pending { missing += 1 }
             lines.append("\n\(PivotDate.time(event.start))–\(PivotDate.time(event.end)) \(event.title): \(record?.status.label ?? "Da compilare")")
             if let r = record {
-                if let start = r.actualStart { lines.append("Inizio reale: \(PivotDate.time(start))") }
-                if let end = r.actualEnd { lines.append("Fine reale: \(PivotDate.time(end))") }
+                if r.timingFromCalendar == true { lines.append("Orari suggeriti dal calendario, confermati come previsto; non misurati.") }
+                if let start = r.actualStart { lines.append("Inizio registrato: \(PivotDate.time(start))") }
+                if let end = r.actualEnd { lines.append("Fine registrata: \(PivotDate.time(end))") }
+                if let fatigue = r.fatigue { lines.append("Stanchezza: \(fatigue)/10") }
                 let excludedHealth = data.settings.includeHealthInExports != true && (original.records[event.id]?.health != nil || original.records[event.id]?.healthSleep != nil)
                 if excludedHealth && r.activeMinutes == 0 { lines.append("Tempi e dati Salute esclusi da questa esportazione.") }
                 else { lines.append("Tempo registrato: \(ActivityTiming.duration(r.activeMinutes * 60))") }
