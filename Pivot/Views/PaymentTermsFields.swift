@@ -21,7 +21,7 @@ struct PaymentTermsFields: View {
                 Text("Questo rinvio vale solo per questa lezione: non cambia l’abitudine dello studente.").font(.caption)
             }
             if timing == .weekly {
-                Text("Il pagamento è previsto all’ultima lezione di questa settimana nel calendario, da lunedì a domenica. Prima non ti segnalo un ritardo. Se non trovo lezioni, il promemoria è a fine settimana: aggiorna il calendario.").font(.caption)
+                Text("Il pagamento è previsto all’ultima lezione di questa settimana nel calendario, da lunedì a domenica. Prima non ti segnalo un ritardo. Se non trovo lezioni, aggiorna il calendario o scegli una data: non invento una scadenza.").font(.caption)
             } else if timing == .nextLesson {
                 Text("Ti ricorderò il saldo alla prossima lezione dello stesso studente. Se non è ancora nel calendario, scegli una data per avere subito un promemoria.").font(.caption)
             }
@@ -38,7 +38,7 @@ struct PaymentDueLabel: View {
                 Label((due.isOverdue(at: Date()) ? "Saldo da ricordare: " : "Pagamento previsto: ") + DisplayDate.label(date, format: "EEE d MMM · HH:mm"), systemImage: due.isOverdue(at: Date()) ? "bell.badge" : "calendar")
                     .font(.caption).foregroundStyle(due.isOverdue(at: Date()) ? PivotTheme.amber : PivotTheme.muted)
             } else {
-                Text("In attesa della prossima lezione nel calendario; puoi scegliere una data.").font(.caption).foregroundStyle(PivotTheme.muted)
+                Text(due.timing == .weekly ? "Ultima lezione non trovata: aggiorna il calendario o scegli una data." : "In attesa della prossima lezione nel calendario; puoi scegliere una data.").font(.caption).foregroundStyle(PivotTheme.muted)
             }
         }
     }
