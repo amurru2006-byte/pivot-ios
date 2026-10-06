@@ -105,4 +105,16 @@ final class StudentPaymentTests: XCTestCase {
         let summerChange = StudentPayments.week(containing: date("2026-10-25T10:00:00+01:00"))
         XCTAssertEqual(PivotDate.key(summerChange.start), "2026-10-19"); XCTAssertEqual(PivotDate.key(summerChange.end), "2026-10-26")
     }
+    func testSundayLessonEndingMondayBelongsToItsStartWeek() {
+        let client = Client(name: "Giulia Rossi", rateCents: 1800, paymentCadence: .weekly)
+        let overnight = lesson("night", "2026-10-11T23:30:00+02:00"), nextWeek = lesson("next", "2026-10-14T16:00:00+02:00")
+        var data = AppData(); data.clients = [client]; data.income = [unpaid(overnight, client: client)]
+        XCTAssertEqual(StudentPayments.dues(planned: [overnight, nextWeek], data: data).first?.date, overnight.end)
+    }
+    func testUnavailableWeeklyCalendarDoesNotInventDeadline() {
+        let client = Client(name: "Giulia Rossi", rateCents: 1800, paymentCadence: .weekly), item = lesson("one", "2026-10-05T16:00:00+02:00")
+        var data = AppData(); data.clients = [client]; data.income = [unpaid(item, client: client)]
+        XCTAssertNil(StudentPayments.dues(planned: [], data: data).first?.date)
+        XCTAssertFalse(NotificationPlan.requests(events: [], data: data, now: item.end).contains { $0.destination == "payment" })
+    }
 }

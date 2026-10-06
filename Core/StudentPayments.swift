@@ -43,6 +43,7 @@ enum StudentPayments {
         let unpaid = data.income.filter { $0.outstandingCents > 0 }
         guard !unpaid.isEmpty else { return [] }
         let knownPeople = Dictionary(data.income.compactMap { entry in entry.calendarEventID.map { ($0, entry.clientID) } }, uniquingKeysWith: { first, _ in first })
+        let eventsByID = Dictionary(events.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var lessonsByClient: [UUID: [CalendarItem]] = [:]
         for event in events where [.tutoring, .work].contains(event.kind) && !event.isAllDay && data.records[event.id]?.status != .skipped {
             let clientID = knownPeople[event.id] ?? StudentRecognition.recognize(title: event.title, clients: data.clients).client?.id
@@ -52,7 +53,9 @@ enum StudentPayments {
         for entry in unpaid.sorted(by: { $0.date == $1.date ? $0.id.uuidString < $1.id.uuidString : $0.date < $1.date }) {
             let timing = timing(for: entry, data: data)
             let lessons = lessonsByClient[entry.clientID] ?? []
-            let interval = week(containing: entry.date)
+            let recorded = entry.calendarEventID.flatMap { data.records[$0] }
+            let lessonStart = recorded?.actualStart ?? recorded?.snapshot.start ?? entry.calendarEventID.flatMap { eventsByID[$0]?.start } ?? entry.date
+            let interval = week(containing: lessonStart)
             let due: Date?
             let anchor: String
             switch timing {
@@ -62,10 +65,8 @@ enum StudentPayments {
                 // Calendar edits/cancellations can change the last lesson. No reminder
                 // is due at the earlier lessons simply because they remain unpaid.
                 let last = lessons.filter { $0.start >= interval.start && $0.start < interval.end }.map(\.end).max()
-                // If the calendar has no matched lessons, use an explicit end-of-week fallback.
-                let sunday = PivotDate.calendar.date(byAdding: .day, value: -1, to: interval.end)!
-                let fallback = PivotDate.calendar.date(bySettingHour: 18, minute: 0, second: 0, of: sunday)!
-                due = max(entry.date, last ?? fallback); anchor = PivotDate.key(interval.start)
+                // No invented lesson/deadline if the calendar isn't available yet.
+                due = last.map { max(entry.date, $0) }; anchor = PivotDate.key(interval.start)
             case .nextLesson:
                 due = lessons.filter { $0.id != entry.calendarEventID && $0.start >= (entry.paymentDeferralAfter ?? entry.date) }.min { $0.start < $1.start }?.end
                 anchor = due.map(PivotDate.key) ?? entry.id.uuidString
