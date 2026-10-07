@@ -17,8 +17,9 @@ jobs:
       - name: Seleziona Xcode e scarica sorgenti ufficiali fissati
         run: |
           set -euo pipefail
-          test -d /Applications/Xcode_16.4.app
-          sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+          PIVOT_ALT_XCODE=$(find /Applications -maxdepth 1 -name 'Xcode_*.app' | sort -V | tail -n 1)
+          test -n "$PIVOT_ALT_XCODE"
+          sudo xcode-select -s "$PIVOT_ALT_XCODE/Contents/Developer"
           xcodebuild -version
           mkdir -p build
           git clone --filter=blob:none --no-checkout https://github.com/altstoreio/AltStore.git build/AltStore
