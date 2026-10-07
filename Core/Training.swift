@@ -15,7 +15,7 @@ struct TrainingExercise: Codable, Identifiable, Equatable {
     var usesDuration: Bool {
         if let isometric { return isometric }
         let key = EventCoalescer.normalized(name)
-        return key.contains("plank") || key == "wall sit" || key == "sedia al muro"
+        return ["plank", "front plank", "side plank", "copenhagen plank", "weighted plank", "plank laterale", "wall sit", "sedia al muro"].contains(key)
     }
     var isValid: Bool {
         !id.isEmpty && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -233,8 +233,14 @@ struct TrainingLibrary: Codable {
         for session in sessions {
             guard session.end.map({ $0 >= session.start }) ?? true,
                   Set(session.exercises.map(\.id)).count == session.exercises.count else { throw TrainingError.invalidPlan }
+            if let rest = session.rest {
+                guard (0...3600).contains(rest.plannedSeconds),
+                      rest.remainingWhenPaused.map({ (0...3600).contains($0) }) ?? true,
+                      session.exercises.contains(where: { $0.id == rest.exerciseID && $0.sets.contains { $0.id == rest.setID } }) else { throw TrainingError.invalidPlan }
+            }
             for log in session.exercises {
                 guard log.exercise.isValid, (1...60).contains(log.sets.count), Set(log.sets.map(\.number)).count == log.sets.count,
+                      Set(log.sets.map(\.id)).count == log.sets.count,
                       log.sets.allSatisfy({ set in (1...60).contains(set.number)
                           && (set.kg.map { $0.isFinite && (0...2000).contains($0) } ?? true)
                           && (set.reps.map { (0...1000).contains($0) } ?? true)

@@ -164,6 +164,8 @@ struct IncomeView: View {
                 .scrollIndicators(.hidden)
                 .scrollTargetBehavior(.paging)
                 .scrollPosition(id: Binding<Int?>(get: { balancePage }, set: { if let page = $0 { balancePage = page } }))
+                .accessibilityLabel("Riepilogo e grafico delle entrate, scorri orizzontalmente")
+                .accessibilityIdentifier("income-carousel")
             }
             .frame(height: carouselHeight)
             .onPreferenceChange(IncomePageHeight.self) { height in
@@ -171,8 +173,6 @@ struct IncomeView: View {
                     carouselHeight = max(480, height)
                 }
             }
-            .accessibilityLabel("Riepilogo e grafico delle entrate, scorri orizzontalmente")
-            .accessibilityIdentifier("income-carousel")
 
             // Navigation lives outside the cards: it cannot cover chart labels
             // or the explanation, even with larger accessibility text.

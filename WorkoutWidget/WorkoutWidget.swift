@@ -44,8 +44,8 @@ private struct WorkoutLockView: View {
                         control("Sx", value: "\(state.left ?? 0) s", minus: "left-", plus: "left+")
                         control("Dx", value: "\(state.right ?? 0) s", minus: "right-", plus: "right+")
                     } else { control("Durata", value: "\(state.seconds ?? 0) s", minus: "seconds-", plus: "seconds+") }
+                    if state.weighted { control("Zavorra", value: "\((state.kg ?? 0).formatted()) kg", minus: "kg-", plus: "kg+") }
                 }
-                if state.weighted { control("Zavorra", value: "\((state.kg ?? 0).formatted()) kg", minus: "kg-", plus: "kg+") }
             } else if !state.isDone {
                 HStack {
                     control("Carico", value: "\((state.kg ?? 0).formatted()) kg", minus: "kg-", plus: "kg+")
@@ -71,14 +71,19 @@ private struct WorkoutLockView: View {
         }.padding(12).foregroundStyle(.white).widgetURL(workoutURL(context))
     }
     private func action(_ title: String, _ value: String) -> some View {
-        Button(intent: WorkoutActionIntent(sessionID: context.attributes.sessionID, setID: state.setID, action: value)) { Text(title).font(.caption.bold()) }
-            .tint(.mint).buttonStyle(.bordered)
+        Button(intent: WorkoutActionIntent(sessionID: context.attributes.sessionID, setID: state.setID, action: value)) {
+            Text(title).font(.caption.bold()).lineLimit(1).padding(.horizontal, 6).frame(minWidth: 24, minHeight: 30)
+                .background(Color.mint.opacity(0.18), in: RoundedRectangle(cornerRadius: 7))
+        }.buttonStyle(.plain).foregroundStyle(.mint)
     }
     private func control(_ title: String, value: String, minus: String, plus: String) -> some View {
-        HStack(spacing: 6) {
-            action("−", minus)
-            VStack(spacing: 1) { Text(title).font(.caption2); Text(value).font(.caption.bold()).monospacedDigit() }
-            action("+", plus)
+        VStack(spacing: 2) {
+            Text(title).font(.caption2)
+            HStack(spacing: 3) {
+                action("−", minus)
+                Text(value).font(.caption.bold()).monospacedDigit().lineLimit(1).minimumScaleFactor(0.65)
+                action("+", plus)
+            }
         }.frame(maxWidth: .infinity)
     }
 }

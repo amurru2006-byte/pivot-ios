@@ -40,7 +40,8 @@ enum WorkoutRuntime {
             case "right-": set.rightSeconds = max(0, (set.rightSeconds ?? 0) - 1)
             case "done":
                 guard set.canComplete(exercise) else { status = "Inserisci i valori prima di confermare"; await update(session); return }
-                finishRest(&session)
+                // Without an explicit next-set start, elapsed time also includes
+                // the next set. Do not misreport it as an actual rest duration.
                 set.done = true; set.completedAt = Date()
                 let seconds = set.restSeconds ?? exercise.restSeconds
                 session.rest = seconds > 0 ? .init(exerciseID: exercise.id, setID: set.id, seconds: seconds) : nil

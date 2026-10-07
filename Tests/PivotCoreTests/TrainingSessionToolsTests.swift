@@ -10,11 +10,11 @@ final class TrainingSessionToolsTests: XCTestCase {
         var rest = TrainingRest(exerciseID: "exercise", setID: UUID(), seconds: 120, now: date)
         rest.togglePause(now: date.addingTimeInterval(30))
         XCTAssertEqual(rest.remaining(at: date.addingTimeInterval(90)), 90)
-        XCTAssertEqual(rest.elapsed(at: date.addingTimeInterval(90)), 30)
+        XCTAssertEqual(rest.elapsed(at: date.addingTimeInterval(90)), 90)
         rest = try JSONDecoder().decode(TrainingRest.self, from: JSONEncoder().encode(rest))
         rest.togglePause(now: date.addingTimeInterval(100))
         XCTAssertEqual(rest.remaining(at: date.addingTimeInterval(110)), 80)
-        XCTAssertEqual(rest.elapsed(at: date.addingTimeInterval(110)), 40)
+        XCTAssertEqual(rest.elapsed(at: date.addingTimeInterval(110)), 110)
         XCTAssertEqual(rest.remaining(at: date.addingTimeInterval(500)), 0)
     }
     func testIsometryRequiresBothSidesButNoWeightUnlessSelected() {
@@ -80,5 +80,6 @@ final class TrainingSessionToolsTests: XCTestCase {
     func testAmbiguousTechniqueNeverGetsDifferentExerciseGuide() {
         XCTAssertNil(ExerciseTechnique.forExercise(exercise("Lunge"), catalog: nil))
         XCTAssertNotNil(ExerciseTechnique.forExercise(exercise("Bench Press"), catalog: nil))
+        XCTAssertFalse(exercise("Plank with dumbbell row").usesDuration)
     }
 }

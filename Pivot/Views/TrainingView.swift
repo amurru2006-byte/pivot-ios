@@ -50,6 +50,14 @@ struct TrainingView: View {
             Button { importing = true } label: { Label(busy ? "Leggo la scheda…" : "Importa nuova scheda PDF", systemImage: "square.and.arrow.down") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked || busy || library.plans.count >= 6)
             Text("Solo PDF preparati per Pivot. L'importazione mostra un riepilogo da confermare e non cancella gli allenamenti precedenti.").font(.caption).foregroundStyle(PivotTheme.muted)
             #if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.arguments.contains("--workout-controls-test") {
+                Button("Verifica controlli allenamento") {
+                    Task {
+                        do { try await WorkoutControlsFixture.verify(); message = "Controlli allenamento verificati" }
+                        catch { message = "Controlli non validi: \(error.localizedDescription)" }
+                    }
+                }.accessibilityIdentifier("workout-controls-fixture")
+            }
             if ProcessInfo.processInfo.arguments.contains("--report-test") {
                 Button("Genera report di prova") {
                     do { message = "PDF verificato: \(try TrainingReportFixture.export()) pagine" }
@@ -205,7 +213,7 @@ struct TrainingSessionView: View {
                     }.buttonStyle(PivotSecondaryButton())
                 }
             }
-            if session.rest != nil { restCard }
+            if session.rest != nil && session.end == nil { restCard }
             ForEach(session.exercises.indices, id: \.self) { index in
                 exerciseCard(index)
             }
@@ -241,7 +249,10 @@ struct TrainingSessionView: View {
                 if let latest = store.data.training?.sessions.first(where: { $0.id == session.id }), latest.updatedAt > session.updatedAt { session = latest }
             }
             .task {
-                if let focusSetID { proxy.scrollTo(focusSetID, anchor: .center); WorkoutRuntime.focusedSet[session.id] = focusSetID }
+                if let focusSetID {
+                    try? await Task.sleep(nanoseconds: 200_000_000)
+                    proxy.scrollTo(focusSetID, anchor: .center); WorkoutRuntime.focusedSet[session.id] = focusSetID
+                }
             }
         }
     }
@@ -289,7 +300,6 @@ struct TrainingSessionView: View {
                             let set = session.exercises[index].sets[setIndex]
                             if done && !set.canComplete(exercise) { message = exercise.usesDuration ? "Inserisci durata e, se selezionata, zavorra prima di segnare Fatta." : "Inserisci carico e Reps prima di segnare Fatta."; return }
                             if done && !set.done {
-                                WorkoutRuntime.finishRest(&session)
                                 session.exercises[index].sets[setIndex].completedAt = Date()
                                 let seconds = set.restSeconds ?? exercise.restSeconds
                                 session.rest = seconds > 0 ? .init(exerciseID: exercise.id, setID: set.id, seconds: seconds) : nil
