@@ -212,7 +212,7 @@ struct ExerciseImagePickerView: View {
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Annulla") { dismiss() } } }
                 .task {
                     do { entries = try await ExerciseCatalogLoader.shared.entries() }
-                    catch { error = "Catalogo non disponibile." }
+                    catch { self.error = "Catalogo non disponibile." }
                 }
         }
     }

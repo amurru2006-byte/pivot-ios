@@ -216,7 +216,7 @@ struct IncomeView: View {
         switch chartRange {
         case .days:
             let today = calendar.startOfDay(for: Date())
-            return (0..<30).reversed().compactMap { offset in
+            return (0..<30).reversed().compactMap { offset -> IncomeChartPoint? in
                 guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else { return nil }
                 let next = calendar.date(byAdding: .day, value: 1, to: date)!
                 let cents = store.data.payments.filter { $0.date >= date && $0.date < next }.reduce(0) { $0 + $1.amountCents }
@@ -225,13 +225,13 @@ struct IncomeView: View {
         case .months:
             let now = Date(), components = calendar.dateComponents([.year, .month], from: now)
             guard let currentMonth = calendar.date(from: components) else { return [] }
-            return (0..<12).reversed().compactMap { offset in
+            return (0..<12).reversed().compactMap { offset -> IncomeChartPoint? in
                 guard let date = calendar.date(byAdding: .month, value: -offset, to: currentMonth), let next = calendar.date(byAdding: .month, value: 1, to: date) else { return nil }
                 let cents = store.data.payments.filter { $0.date >= date && $0.date < next }.reduce(0) { $0 + $1.amountCents }
                 return IncomeChartPoint(key: DisplayDate.label(date, format: "yyyy-MM"), label: DisplayDate.label(date, format: "MMM yy"), amountCents: cents)
             }
         case .year:
-            return (1...12).compactMap { month in
+            return (1...12).compactMap { month -> IncomeChartPoint? in
                 guard let date = calendar.date(from: DateComponents(year: year, month: month, day: 1)), let next = calendar.date(byAdding: .month, value: 1, to: date) else { return nil }
                 let cents = store.data.payments.filter { $0.date >= date && $0.date < next }.reduce(0) { $0 + $1.amountCents }
                 return IncomeChartPoint(key: "\(year)-\(month)", label: DisplayDate.label(date, format: "MMM"), amountCents: cents)
