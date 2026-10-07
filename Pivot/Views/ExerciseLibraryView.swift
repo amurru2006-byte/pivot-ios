@@ -61,28 +61,38 @@ struct ExerciseThumbnail: View {
     @State private var photoURL: URL?
     @State private var lookupFinished = false
     var body: some View {
-        Group {
-            if ExerciseCatalog.hasBenchIllustration(displayedExercise) {
-                Image("ExerciseBenchPress").resizable().scaledToFit().background(.white)
-            } else if let photoURL {
-                AsyncImage(url: photoURL, transaction: Transaction(animation: .easeInOut(duration: 0.2))) { phase in
-                    switch phase {
-                    case .success(let image): image.resizable().scaledToFit()
-                    case .failure: fallback
-                    default: ProgressView().tint(PivotTheme.blue)
-                    }
-                }.background(.white)
-            } else {
-                fallback
-            }
-        }.clipShape(RoundedRectangle(cornerRadius: 14)).accessibilityHidden(true)
-            .task(id: exercise.id + "|" + exercise.name + "|" + (displayedExercise.catalogID ?? "")) {
-                guard !ExerciseCatalog.hasBenchIllustration(displayedExercise) else { lookupFinished = true; return }
-                if let entries = try? await ExerciseCatalogLoader.shared.entries() {
-                    photoURL = ExerciseCatalog.match(displayedExercise, in: entries)?.photoURL
-                }
-                lookupFinished = true
-            }
+        thumbnailContent.clipShape(RoundedRectangle(cornerRadius: 14)).accessibilityHidden(true)
+            .task(id: thumbnailIdentity) { await loadThumbnail() }
+    }
+    private var thumbnailIdentity: String {
+        [exercise.id, exercise.name, displayedExercise.catalogID ?? ""].joined(separator: "|")
+    }
+    @ViewBuilder private var thumbnailContent: some View {
+        if ExerciseCatalog.hasBenchIllustration(displayedExercise) {
+            Image("ExerciseBenchPress").resizable().scaledToFit().background(.white)
+        } else if let photoURL {
+            AsyncImage(url: photoURL, transaction: Transaction(animation: .easeInOut(duration: 0.2))) { phase in
+                remoteThumbnail(phase)
+            }.background(.white)
+        } else {
+            fallback
+        }
+    }
+    @ViewBuilder private func remoteThumbnail(_ phase: AsyncImagePhase) -> some View {
+        switch phase {
+        case .success(let image): image.resizable().scaledToFit()
+        case .failure: fallback
+        default: ProgressView().tint(PivotTheme.blue)
+        }
+    }
+    private func loadThumbnail() async {
+        let resolved = displayedExercise
+        guard !ExerciseCatalog.hasBenchIllustration(resolved) else { lookupFinished = true; return }
+        if let entries = try? await ExerciseCatalogLoader.shared.entries() {
+            guard !Task.isCancelled else { return }
+            photoURL = ExerciseCatalog.match(resolved, in: entries)?.photoURL
+        }
+        lookupFinished = true
     }
     private var fallback: some View {
         ZStack {
