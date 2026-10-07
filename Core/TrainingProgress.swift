@@ -25,17 +25,22 @@ struct ExerciseProgress {
     static func calculate(exerciseID: String, library: TrainingLibrary, current: TrainingSession? = nil) -> ExerciseProgress {
         var sessions = library.sessions.filter { $0.end != nil }
         if let current { sessions.removeAll { $0.id == current.id }; sessions.append(current) }
-        let performances = sessions.compactMap { session -> ExercisePerformance? in
-            guard let log = session.exercises.first(where: { $0.id == exerciseID }) else { return nil }
+        var performances: [ExercisePerformance] = []
+        for session in sessions {
+            guard let log = session.exercises.first(where: { $0.id == exerciseID }) else { continue }
             let sets = log.sets.filter { $0.done && $0.canComplete(log.exercise) }
-            guard !sets.isEmpty else { return nil }
-            return .init(id: session.id, date: session.start, sets: sets,
-                         volume: log.exercise.usesDuration ? 0 : sets.reduce(0) { $0 + ($1.kg ?? 0) * Double($1.reps ?? 0) }, bestLoad: sets.compactMap(\.kg).max() ?? 0,
-                         estimatedMax: log.exercise.usesDuration ? nil : sets.compactMap { estimatedMax($0) }.max(), finished: session.end != nil,
-                         bestHold: sets.map { max($0.durationSeconds ?? 0, max($0.leftSeconds ?? 0, $0.rightSeconds ?? 0)) }.max() ?? 0,
-                         totalHold: sets.reduce(0) { $0 + $1.holdTotal })
-        }.sorted { $0.date < $1.date }
-        return .init(performances: performances)
+            guard !sets.isEmpty else { continue }
+            let usesDuration = log.exercise.usesDuration
+            let volume: Double = usesDuration ? 0 : sets.reduce(0.0) { $0 + ($1.kg ?? 0) * Double($1.reps ?? 0) }
+            let load: Double = sets.compactMap(\.kg).max() ?? 0
+            let maximum: Double? = usesDuration ? nil : sets.compactMap { estimatedMax($0) }.max()
+            let bestHold: Int = sets.map { max($0.durationSeconds ?? 0, max($0.leftSeconds ?? 0, $0.rightSeconds ?? 0)) }.max() ?? 0
+            let totalHold: Int = sets.reduce(0) { $0 + $1.holdTotal }
+            let performance = ExercisePerformance(id: session.id, date: session.start, sets: sets, volume: volume, bestLoad: load,
+                estimatedMax: maximum, finished: session.end != nil, bestHold: bestHold, totalHold: totalHold)
+            performances.append(performance)
+        }
+        return .init(performances: performances.sorted { $0.date < $1.date })
     }
 }
 
