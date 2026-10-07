@@ -62,12 +62,14 @@ jobs:
           python3 - <<'PY'
           import plistlib
           with open('build/packaged-entitlements.plist', 'rb') as file:
-              assert plistlib.load(file).get('com.apple.developer.healthkit') is True
+              entitlements = plistlib.load(file)
+              assert entitlements.get('com.apple.developer.healthkit') is True
+              assert entitlements.get('com.apple.developer.healthkit.background-delivery') is True
           PY
           mkdir -p build/Package/Payload
           cp -R build/DerivedData/Build/Products/Release-iphoneos/Pivot.app build/Package/Payload/
           cd build/Package
-          zip -qr ../Pivot-0.7.2.ipa Payload
+          zip -qr ../Pivot-0.7.3.ipa Payload
       - name: Verifica interfaccia su simulatore iPhone
         run: bash Scripts/preview-ui.sh
       - name: Carica anteprime iPhone
@@ -82,7 +84,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Pivot-iPhone-unsigned
-          path: build/Pivot-0.7.2.ipa
+          path: build/Pivot-0.7.3.ipa
           retention-days: 14
           if-no-files-found: error
       - name: Conserva log di compilazione
@@ -97,3 +99,4 @@ jobs:
             build/export-validation.xlsx
             build/packaged-entitlements.plist
           if-no-files-found: ignore
+
