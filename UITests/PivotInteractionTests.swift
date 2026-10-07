@@ -65,11 +65,24 @@ final class PivotInteractionTests: XCTestCase {
         XCTAssertTrue(imageChoice.waitForExistence(timeout: 8)); imageChoice.tap()
         XCTAssertTrue(app.navigationBars["Scegli immagine"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Non c'è? Cerca in tutto il catalogo"].waitForExistence(timeout: 5))
-        app.buttons["Annulla"].tap()
+        app.buttons["Non c'è? Cerca in tutto il catalogo"].tap()
+        XCTAssertTrue(app.buttons["Petto"].waitForExistence(timeout: 5)); app.buttons["Petto"].tap()
+        let benchImage = app.buttons["catalog-image-Barbell_Bench_Press_-_Medium_Grip"]
+        for _ in 0..<8 { if benchImage.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(benchImage.isHittable); benchImage.tap()
+        XCTAssertTrue(app.navigationBars["Palestra"].waitForExistence(timeout: 5))
+        app.terminate(); app.launch(); app.tabBars.buttons["Palestra"].tap()
         let statistics = app.buttons["exercise-statistics-test-exercise"]
         for _ in 0..<8 { if statistics.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(statistics.isHittable); statistics.tap()
+        XCTAssertTrue(statistics.isHittable)
+        XCTAssertFalse(app.buttons["choose-exercise-image-test-exercise"].exists)
+        let groups = app.scrollViews["exercise-group-bar"]
+        if !app.buttons["Braccia"].isHittable { groups.swipeLeft() }
+        app.buttons["Braccia"].tap(); XCTAssertFalse(statistics.exists)
+        if !app.buttons["Petto"].isHittable { groups.swipeRight() }
+        app.buttons["Petto"].tap(); XCTAssertTrue(statistics.waitForExistence(timeout: 5)); statistics.tap()
         XCTAssertTrue(app.navigationBars["Progressi"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Principali: Pettorali"].waitForExistence(timeout: 5))
         app.navigationBars.buttons.firstMatch.tap()
         let day = app.buttons["workout-day-test-a"]
         for _ in 0..<10 { if day.isHittable { break }; app.swipeDown() }
