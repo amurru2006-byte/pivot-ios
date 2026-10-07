@@ -5,9 +5,9 @@ final class PivotInteractionTests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--payment-schedule-test"]; app.launch()
         XCTAssertTrue(app.tabBars.buttons["Entrate"].waitForExistence(timeout: 10)); app.tabBars.buttons["Entrate"].tap()
-        let carousel = app.descendants(matching: .any)["income-carousel"]
+        let carousel = app.collectionViews["income-carousel"]
         XCTAssertTrue(carousel.waitForExistence(timeout: 8)); carousel.swipeLeft()
-        let chart = app.descendants(matching: .any)["income-chart"]
+        let chart = app.staticTexts["Andamento incassi"]
         XCTAssertTrue(chart.waitForExistence(timeout: 5)); XCTAssertTrue(chart.isHittable)
     }
     func testAutofilledActivityRetainsManualCorrectionAfterRelaunch() {
@@ -66,21 +66,26 @@ final class PivotInteractionTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Scegli immagine"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Non c'è? Cerca in tutto il catalogo"].waitForExistence(timeout: 5))
         app.buttons["Non c'è? Cerca in tutto il catalogo"].tap()
-        XCTAssertTrue(app.buttons["Petto"].waitForExistence(timeout: 5)); app.buttons["Petto"].tap()
+        let imageChest = app.buttons["image-picker-group-bar-chest"]
+        XCTAssertTrue(imageChest.waitForExistence(timeout: 5)); XCTAssertTrue(imageChest.isHittable); imageChest.tap()
         let benchImage = app.buttons["catalog-image-Barbell_Bench_Press_-_Medium_Grip"]
         for _ in 0..<8 { if benchImage.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(benchImage.isHittable); benchImage.tap()
         XCTAssertTrue(app.navigationBars["Palestra"].waitForExistence(timeout: 5))
+        // Backgrounding flushes the coalesced save, as when closing the app on iPhone.
+        XCUIDevice.shared.press(.home); app.activate()
         app.terminate(); app.launch(); app.tabBars.buttons["Palestra"].tap()
         let statistics = app.buttons["exercise-statistics-test-exercise"]
         for _ in 0..<8 { if statistics.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(statistics.isHittable)
         XCTAssertFalse(app.buttons["choose-exercise-image-test-exercise"].exists)
         let groups = app.scrollViews["exercise-group-bar"]
-        if !app.buttons["Braccia"].isHittable { groups.swipeLeft() }
-        app.buttons["Braccia"].tap(); XCTAssertFalse(statistics.exists)
-        if !app.buttons["Petto"].isHittable { groups.swipeRight() }
-        app.buttons["Petto"].tap(); XCTAssertTrue(statistics.waitForExistence(timeout: 5)); statistics.tap()
+        let galleryArms = app.buttons["exercise-group-bar-arms"], galleryChest = app.buttons["exercise-group-bar-chest"]
+        if !galleryArms.isHittable { groups.swipeLeft() }
+        XCTAssertTrue(galleryArms.isHittable); galleryArms.tap(); XCTAssertFalse(statistics.exists)
+        if !galleryChest.isHittable { groups.swipeRight() }
+        XCTAssertTrue(galleryChest.isHittable); galleryChest.tap()
+        XCTAssertTrue(statistics.waitForExistence(timeout: 5)); XCTAssertTrue(statistics.isHittable); statistics.tap()
         XCTAssertTrue(app.navigationBars["Progressi"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Principali: Pettorali"].waitForExistence(timeout: 5))
         app.navigationBars.buttons.firstMatch.tap()

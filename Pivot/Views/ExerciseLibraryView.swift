@@ -40,6 +40,7 @@ enum ExerciseMuscleGroup: String, CaseIterable, Identifiable {
 struct ExerciseGroupBar: View {
     @Binding var selection: ExerciseMuscleGroup
     var includeUnresolved = true
+    var identifier = "exercise-group-bar"
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
@@ -48,9 +49,11 @@ struct ExerciseGroupBar: View {
                         .font(.caption.weight(.semibold)).padding(.horizontal, 13).padding(.vertical, 8)
                         .foregroundStyle(selection == group ? Color.black : PivotTheme.text)
                         .background(selection == group ? PivotTheme.accent : PivotTheme.raised, in: Capsule())
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier(identifier + "-" + group.rawValue)
                 }
             }
-        }.accessibilityLabel("Filtra per gruppo muscolare principale").accessibilityIdentifier("exercise-group-bar")
+        }.accessibilityLabel("Filtra per gruppo muscolare principale").accessibilityIdentifier(identifier)
     }
 }
 
@@ -212,7 +215,7 @@ struct ExerciseImagePickerView: View {
                         Button("Non c'è? Cerca in tutto il catalogo") { showAll = true }
                     }
                 } else {
-                    Section("Gruppo muscolare principale") { ExerciseGroupBar(selection: $group, includeUnresolved: false) }
+                    Section("Gruppo muscolare principale") { ExerciseGroupBar(selection: $group, includeUnresolved: false, identifier: "image-picker-group-bar") }
                     Section("Catalogo completo · \(filtered.count) risultati") {
                         ForEach(Array(filtered.prefix(visibleLimit))) { entry in catalogRow(entry) }
                         if filtered.count > visibleLimit { Button("Mostra altri esercizi") { visibleLimit += 100 } }
@@ -342,7 +345,7 @@ struct ExercisePickerView: View {
             List {
                 Section("Filtra il catalogo offline") {
                     Text("Gruppo muscolare principale").font(.caption.weight(.semibold))
-                    ExerciseGroupBar(selection: $group, includeUnresolved: false)
+                    ExerciseGroupBar(selection: $group, includeUnresolved: false, identifier: "exercise-picker-group-bar")
                     Picker("Attrezzo", selection: $equipment) {
                         Text("Tutti").tag("")
                         ForEach(ExerciseCatalog.equipmentNames.keys.sorted(), id: \.self) { Text(ExerciseCatalog.equipmentNames[$0] ?? $0).tag($0) }
