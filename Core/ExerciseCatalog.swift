@@ -44,13 +44,12 @@ enum ExerciseCatalog {
     /// Conservative mappings for the short labels used by the user's first
     /// imported plan. Ambiguous labels intentionally remain unmatched.
     static let legacyAliases: [String: String] = [
-        "assisted pull up": "Band_Assisted_Pull-Up",
         "bench press": "Barbell_Bench_Press_-_Medium_Grip",
         "cable fly": "Cable_Crossover",
         "calf raises": "Standing_Calf_Raises",
         "deadlift": "Barbell_Deadlift",
+        "dumbbell incline press": "Incline_Dumbbell_Press",
         "military press": "Standing_Military_Press",
-        "machine low row": "Seated_Cable_Rows",
         "dumbbell lateral raise": "Side_Lateral_Raise",
         "hammer curls": "Hammer_Curls",
         "tricep pushdown": "Triceps_Pushdown"
