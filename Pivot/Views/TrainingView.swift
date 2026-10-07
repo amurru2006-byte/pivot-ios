@@ -234,6 +234,8 @@ struct TrainingSessionView: View {
             .sheet(isPresented: $sharing) { if let export { TrainingReportPreview(url: export) } }
             .onChange(of: session.exercises) { _, _ in if hasStarted { save() } }
             .onChange(of: session.notes) { _, _ in if hasStarted { save() } }
+            .onChange(of: session.start) { _, _ in if hasStarted { save() } }
+            .onChange(of: session.end) { _, _ in if hasStarted { save() } }
             .onChange(of: tips) { _, _ in save() }
             .onChange(of: store.data.updatedAt) { _, _ in
                 if let latest = store.data.training?.sessions.first(where: { $0.id == session.id }), latest.updatedAt > session.updatedAt { session = latest }
@@ -440,7 +442,9 @@ struct TrainingSessionView: View {
     private func addWorkingSet(exerciseIndex: Int) {
         var sets = session.exercises[exerciseIndex].sets
         let previous = sets.last { $0.resolvedKind != .warmup }
-        sets.append(TrainingSet(number: sets.count + 1, kg: previous?.kg, reps: previous?.reps, kind: .working))
+        sets.append(TrainingSet(number: sets.count + 1, kg: previous?.kg, reps: previous?.reps, kind: .working,
+                                durationSeconds: previous?.durationSeconds, leftSeconds: previous?.leftSeconds,
+                                rightSeconds: previous?.rightSeconds, restSeconds: previous?.restSeconds))
         session.exercises[exerciseIndex].sets = TrainingSetTemplate.renumbered(sets)
         save()
     }

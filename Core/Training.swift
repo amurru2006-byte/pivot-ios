@@ -285,12 +285,12 @@ enum TrainingExport {
         for log in session.exercises {
             rows.append("\n\(log.exercise.name) · programma \(log.exercise.sets) × \(log.exercise.reps)")
             if let last = library.previous(exerciseID: log.id, before: session.start, excluding: session.id) {
-                rows.append("Precedente: " + last.sets.filter(\.done).map { "\($0.kg ?? 0) kg × \($0.reps ?? 0)" }.joined(separator: "; "))
+                rows.append("Precedente: " + last.sets.filter(\.done).map { TrainingReports.performance($0, exercise: last.exercise) }.joined(separator: "; "))
             }
             for set in log.sets {
                 let group = set.resolvedKind == .superset && !(set.supersetGroup ?? "").isEmpty ? " \(set.supersetGroup!)" : ""
                 let failure = set.reachesFailure ? " · cedimento" : ""
-                rows.append("Serie \(set.number) · \(set.resolvedKind.label)\(group): \(set.kg.map { String($0) } ?? "—") kg × \(set.reps.map(String.init) ?? "—") · \(set.done ? "fatta" : "non fatta")\(failure)")
+                rows.append("Serie \(set.number) · \(set.resolvedKind.label)\(group): \(TrainingReports.performance(set, exercise: log.exercise)) · \(set.done ? "fatta" : "non fatta")\(failure) · recupero \(set.restSeconds ?? log.exercise.restSeconds) s")
             }
             if !log.notes.isEmpty { rows.append("Note: \(log.notes)") }
             if let tip = library.tips[log.id], !tip.isEmpty { rows.append("Promemoria tecnici: \(tip)") }
