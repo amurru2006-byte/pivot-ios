@@ -3,7 +3,8 @@
 - La firma dichiara sia HealthKit sia la consegna in background richiesta da iOS 15 e successivi.
 - Dopo il consenso, Pivot registra osservatori per sonno e allenamenti. iOS può risvegliare l’app quando arrivano nuovi dati; Pivot aggiorna quindi sonno, attività e abbinamenti senza richiedere l’apertura manuale.
 - Gli aggiornamenti simultanei vengono raggruppati e il completamento viene sempre comunicato a HealthKit, evitando letture duplicate o nuovi tentativi inutili.
-- L’installatore deve generare un profilo che mantenga entrambe le autorizzazioni. La semplice presenza dei permessi nell’IPA non può sostituire il profilo finale applicato sul telefono.
+- Per AltStore viene pubblicata una sorgente dedicata che dichiara entrambe le autorizzazioni prima della rifirma. L’installazione diretta del solo file IPA può rimuoverle.
+- La dettatura locale prosegue dopo le pause, aggiunge punteggiatura e usa nomi/eventi di Pivot come vocabolario contestuale. Risultati successivi e testo scritto durante l’ascolto non cancellano quanto già presente.
 
 ## 0.7.2 — palestra illustrata e grafici delle entrate
 
