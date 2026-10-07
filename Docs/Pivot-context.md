@@ -15,6 +15,7 @@ Pagamenti: alcuni studenti pagano sempre settimanalmente, altri a ogni lezione. 
 - Correzione della firma e della distribuzione AltStore: HealthKit e consegna in background devono essere dichiarati anche dalla sorgente usata per rifirmare l'app, non soltanto dall'IPA.
 - Osservatori HealthKit per sonno e allenamenti; dopo il consenso iOS può risvegliare Pivot e avviare l'importazione senza un'apertura manuale.
 - Dettatura locale continua fra più frasi, punteggiatura Apple e vocabolario contestuale di Pivot, studenti ed eventi. Il testo già scritto o dettato non viene sostituito dai risultati successivi.
+- Verifica automatica conclusa sul commit `48a701067157bb848790f02af6d71cd13a23edbf`: 178 test core senza errori, build Release per iPhone, interfaccia su simulatore, entitlements HealthKit e pubblicazione della sorgente AltStore riusciti. Restano da verificare sul dispositivo reale l'autorizzazione finale di Salute, i risvegli decisi da iOS e la fluidità.
 
 ## Intervento 0.7.2
 
@@ -42,6 +43,17 @@ Palestra: modifiche alla scheda con versioni e ripristino; nuova scheda/obiettiv
 
 ## Da affrontare dopo la stabilità
 
+### Evoluzione palestra richiesta il 7 ottobre
+
+L'aggiunta ricevuta non sostituisce il lavoro della serie 7 e non autorizza a scartare quanto già implementato. Va applicata per differenza:
+
+- Pivot è già un'app nativa SwiftUI, usa Swift Charts e salva localmente dati compatibili con i backup esistenti. Non si sceglie un nuovo framework né si riscrive lo storage senza una migrazione esplicita e reversibile.
+- Il catalogo attuale contiene già 876 esercizi di `free-exercise-db`, scelta guidata delle varianti, filtri muscolari, cronologia, miglior carico, volume, stima Epley e grafico di progressione. Queste parti si conservano.
+- «Eliminare il caricamento manuale delle immagini» significa non chiedere all'utente di caricare una propria foto. Non elimina «Scegli tu l'immagine», che associa una variante tecnica del catalogo quando il nome è ambiguo e che l'utente aveva richiesto esplicitamente.
+- Prima di sostituire o affiancare il catalogo con ExerciseDB v1 servono verifica di licenza, copertura reale delle immagini anatomiche, limiti/costi e strategia offline. Nessuna chiave API reale va inclusa nell'app o nel repository; un eventuale segreto deve stare lato servizio o in configurazione esclusa dal controllo versione.
+- Funzioni ancora mancanti da progettare senza falsificare lo storico: tipo di serie (riscaldamento, allenante, superset, dropset, cedimento), ghost data visuale della seduta precedente, PR distinti per carico/volume/1RM, doppia progressione e riscaldamento proporzionale. I suggerimenti devono essere spiegabili e confermabili, non prescrizioni mediche né modifiche automatiche ai dati registrati.
+- Il carosello Entrate e i tre grafici esistono già. Il requisito residuo è una verifica mirata su iPhone delle pagine, degli indicatori e del ritaglio; non duplicare il componente sulla base di una schermata precedente.
+
 AI esterna (versione 8): valutare un servizio online oppure un server su computer/iPad. Nessun backend, account, costo o invio di dati personali è stato attivato nella serie 7. Per un server personale servono modello/hardware disponibili, connessione e disponibilità del dispositivo; non si presume che il computer possa restare sempre acceso.
 
 Scenario obbligatorio per la V8: dopo «mi sono svegliato a mezzogiorno» e «iniziamo la giornata col pranzo, bisogna trovare un buco per la palestra», Pivot deve mantenere il contesto della conversazione, capire che la giornata reale è slittata, rileggere gli impegni ancora validi e proporre una sequenza concreta con conseguenze e conflitti. Non deve ripetere una risposta generica né richiedere di indicare manualmente un singolo evento quando l'intento è già chiaro. Le modifiche al Calendario restano comunque soggette a conferma.
@@ -50,5 +62,5 @@ Recuperare progressivamente con l’utente i restanti obiettivi personali, le ab
 
 ## Verifica e installazione
 
-I test core e i test di interazione sul simulatore sono nel workflow macOS. La misura della fluidità reale e dell’AI richiede ancora l’iPhone 15. Prima dell’aggiornamento verificare/esportare il backup. Installare sopra Pivot esistente con lo stesso metodo/account, senza disinstallare: la cancellazione dell’app elimina la copia locale e il modello scaricato.
+I test core e i test di interazione sul simulatore sono nel workflow macOS. La 0.7.3 è pubblicata come prerelease insieme a una sorgente AltStore che dichiara HealthKit e HealthKit background delivery. La misura della fluidità reale e dell’AI richiede ancora l’iPhone 15. Prima dell’aggiornamento verificare/esportare il backup. Installare sopra Pivot esistente con lo stesso Apple ID, senza disinstallare: la cancellazione dell’app elimina la copia locale e il modello scaricato.
 
