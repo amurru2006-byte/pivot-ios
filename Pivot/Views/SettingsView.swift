@@ -97,8 +97,8 @@ struct SettingsView: View {
             .buttonStyle(PivotPrimaryButton()).disabled(health.isRefreshing || store.locked)
         Button("Aggiorna dati da Salute") { Task { await health.refresh(store: store, events: calendar.events, force: true) } }
             .buttonStyle(PivotSecondaryButton()).disabled(health.isRefreshing || store.data.settings.healthEnabled != true)
-        Text("Sola lettura, quando apri Pivot. Nessuna registrazione continua. Le camminate fuori dagli orari di allenamento restano attività generale. Per revocare i permessi usa l’app Salute.").font(.caption).foregroundStyle(PivotTheme.muted)
-                Toggle("Leggi Salute all’apertura", isOn: Binding(get: { settings.healthEnabled == true }, set: { settings.healthEnabled = $0 }))
+        Text("Sola lettura. Dopo il consenso, iOS può avvisare Pivot in background quando cambiano sonno o allenamenti; non viene avviato un monitoraggio continuo. Le camminate fuori dagli orari di allenamento restano attività generale. Per revocare i permessi usa l’app Salute.").font(.caption).foregroundStyle(PivotTheme.muted)
+                Toggle("Sincronizza automaticamente da Salute", isOn: Binding(get: { settings.healthEnabled == true }, set: { settings.healthEnabled = $0 }))
                 DisclosureGroup("Quando chiedere se una camminata vale come cardio") {
                     Stepper("Durata minima: \(settings.cardioReviewMinimumMinutes ?? 20) min", value: Binding(get: { settings.cardioReviewMinimumMinutes ?? 20 }, set: { settings.cardioReviewMinimumMinutes = $0 }), in: 5...120, step: 5)
                     Stepper("Calorie attive minime: \(settings.cardioReviewMinimumCalories ?? 100)", value: Binding(get: { settings.cardioReviewMinimumCalories ?? 100 }, set: { settings.cardioReviewMinimumCalories = $0 }), in: 0...1000, step: 25)
@@ -200,3 +200,4 @@ struct SettingsView: View {
         if await store.flushPendingWrites() { message = "Impostazioni salvate." }
     }
 }
+

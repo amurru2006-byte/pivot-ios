@@ -4,13 +4,20 @@ import Combine
 
 @MainActor
 final class HealthService: ObservableObject {
+    static let shared = HealthService()
     @Published private(set) var status = "Salute non collegata"
     @Published private(set) var isRefreshing = false
+    @Published private(set) var automaticUpdatesActive = false
     @Published private(set) var workouts: [HealthWorkoutSummary] = []
     @Published private(set) var lastRefresh: Date?
     private let healthStore = HKHealthStore()
     private var sleepByDay: [String: HealthSleepSummary] = [:]
     private var workoutCache: [String: HealthWorkoutSummary] = [:]
+    private var observerQueries: [HKObserverQuery] = []
+    private var pendingObserverCompletions: [HKObserverQueryCompletionHandler] = []
+    private var isHandlingBackgroundUpdate = false
+    private var backgroundUpdateHandler: (@MainActor () async -> Void)?
+    private var automaticUpdateError: String?
     private var readTypes: Set<HKObjectType> {
         var types: Set<HKObjectType> = [HKObjectType.workoutType()]
         if let sleep = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) { types.insert(sleep) }
@@ -20,12 +27,55 @@ final class HealthService: ObservableObject {
         }
         return types
     }
+    private var backgroundTypes: [HKSampleType] {
+        var types: [HKSampleType] = [HKObjectType.workoutType()]
+        if let sleep = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) { types.append(sleep) }
+        return types
+    }
+    func configureBackgroundUpdates(_ handler: @escaping @MainActor () async -> Void) {
+        backgroundUpdateHandler = handler
+    }
+    func prepareBackgroundObservers() {
+        guard observerQueries.isEmpty, HKHealthStore.isHealthDataAvailable() else { return }
+        for type in backgroundTypes {
+            let query = HKObserverQuery(sampleType: type, predicate: nil) { [weak self] _, completion, error in
+                Task { @MainActor in
+                    guard let self else { completion(); return }
+                    await self.receiveBackgroundUpdate(completion: completion, error: error)
+                }
+            }
+            observerQueries.append(query)
+            healthStore.execute(query)
+        }
+    }
+    func setBackgroundDelivery(enabled: Bool) async {
+        guard HKHealthStore.isHealthDataAvailable() else { return }
+        if !enabled {
+            for type in backgroundTypes { try? await healthStore.disableBackgroundDelivery(for: type) }
+            automaticUpdatesActive = false
+            automaticUpdateError = nil
+            return
+        }
+        prepareBackgroundObservers()
+        do {
+            for type in backgroundTypes {
+                try await healthStore.enableBackgroundDelivery(for: type, frequency: .immediate)
+            }
+            automaticUpdatesActive = true
+            automaticUpdateError = nil
+        } catch {
+            automaticUpdatesActive = false
+            automaticUpdateError = Self.connectionMessage(for: error)
+        }
+    }
     func connect(store: PivotStore, events: [CalendarItem]) async {
         guard HKHealthStore.isHealthDataAvailable() else { status = "Salute non disponibile su questo dispositivo"; return }
         do {
             // Read only. No workouts or sleep are ever written back to Apple Health.
             try await healthStore.requestAuthorization(toShare: [], read: readTypes)
             guard store.change({ $0.settings.healthEnabled = true }) else { return }
+            prepareBackgroundObservers()
+            await setBackgroundDelivery(enabled: true)
             await refresh(store: store, events: events, force: true)
         } catch {
             status = Self.connectionMessage(for: error)
@@ -100,7 +150,16 @@ final class HealthService: ObservableObject {
             }
             guard applied else { status = "Aggiornamento rimandato mentre modifichi i dati."; return }
             lastRefresh = Date()
-            status = summaries.isEmpty && sleepValues.isEmpty ? "Nessun dato leggibile. Potrebbero mancare dati o permessi: controlla Salute → profilo → App → Pivot." : "Aggiornato alle \(PivotDate.time(Date())) · sola lettura"
+            let base = summaries.isEmpty && sleepValues.isEmpty
+                ? "Nessun dato leggibile. Potrebbero mancare dati o permessi: controlla Salute → profilo → App → Pivot."
+                : "Aggiornato alle \(PivotDate.time(Date())) · sola lettura"
+            if let automaticUpdateError {
+                status = "\(base) Sincronizzazione automatica non disponibile: \(automaticUpdateError)"
+            } else if automaticUpdatesActive {
+                status = "\(base) · automatica"
+            } else {
+                status = base
+            }
         } catch { status = "Dati non aggiornati: \(error.localizedDescription)" }
     }
     func sleep(on day: Date) -> HealthSleepSummary? {
@@ -127,6 +186,28 @@ final class HealthService: ObservableObject {
             healthStore.execute(query)
         }
     }
+    private func receiveBackgroundUpdate(completion: @escaping HKObserverQueryCompletionHandler, error: Error?) async {
+        if let error {
+            automaticUpdateError = error.localizedDescription
+            completion()
+            return
+        }
+        pendingObserverCompletions.append(completion)
+        guard !isHandlingBackgroundUpdate else { return }
+        guard let backgroundUpdateHandler else {
+            finishPendingBackgroundUpdates()
+            return
+        }
+        isHandlingBackgroundUpdate = true
+        await backgroundUpdateHandler()
+        isHandlingBackgroundUpdate = false
+        finishPendingBackgroundUpdates()
+    }
+    private func finishPendingBackgroundUpdates() {
+        let completions = pendingObserverCompletions
+        pendingObserverCompletions.removeAll()
+        completions.forEach { $0() }
+    }
     private static func kind(_ workout: HKWorkout) -> String {
         switch workout.workoutActivityType {
         case .walking: return "walk"
@@ -141,3 +222,4 @@ final class HealthService: ObservableObject {
         }
     }
 }
+

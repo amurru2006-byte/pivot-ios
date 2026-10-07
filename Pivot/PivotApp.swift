@@ -2,13 +2,21 @@ import SwiftUI
 import EventKit
 import UIKit
 
+final class PivotAppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        Task { @MainActor in HealthService.shared.prepareBackgroundObservers() }
+        return true
+    }
+}
+
 @main
 struct PivotApp: App {
+    @UIApplicationDelegateAdaptor(PivotAppDelegate.self) private var appDelegate
     @StateObject private var store = PivotStore()
     @StateObject private var calendar = CalendarService()
     @StateObject private var notifications = NotificationService()
     @StateObject private var coachModel = LocalCoachService()
-    @StateObject private var health = HealthService()
+    @StateObject private var health = HealthService.shared
     @StateObject private var agenda = AgendaService()
     var body: some Scene {
         WindowGroup {
@@ -80,6 +88,14 @@ struct RootView: View {
                 if !previewReady { PreviewMode.prepare(store: store, calendar: calendar); rebuildAgenda(); previewReady = true }
             }
             else {
+                health.configureBackgroundUpdates { [weak health, weak store, weak calendar, weak agenda] in
+                    guard let health, let store, let calendar, let agenda else { return }
+                    await calendar.refresh(settings: store.data.settings, force: true)
+                    agenda.rebuild(events: calendar.events, hasAccess: calendar.hasAccess, store: store, diagnostics: store.diagnostics)
+                    await health.refresh(store: store, events: calendar.events, force: true)
+                }
+                health.prepareBackgroundObservers()
+                if store.data.settings.healthEnabled == true { await health.setBackgroundDelivery(enabled: true) }
                 requestRefresh()
                 #if DEBUG && targetEnvironment(simulator)
                 if ProcessInfo.processInfo.arguments.contains("--interaction-test") {
@@ -109,7 +125,10 @@ struct RootView: View {
         .onChange(of: store.data.updatedAt) { _, _ in rebuildAgenda() }
         .onChange(of: store.data.settings) { old, new in
             if old.excludedCalendarIDs != new.excludedCalendarIDs || old.excludedCalendarTitles != new.excludedCalendarTitles || old.excludeHolidays != new.excludeHolidays { requestRefresh(force: true) }
-            if old.healthEnabled != new.healthEnabled { requestRefresh() }
+            if old.healthEnabled != new.healthEnabled {
+                Task { await health.setBackgroundDelivery(enabled: new.healthEnabled == true) }
+                requestRefresh()
+            }
         }
         .onChange(of: calendar.events) { _, _ in rebuildAgenda() }
         .onChange(of: calendar.hasAccess) { _, _ in rebuildAgenda() }
@@ -180,3 +199,4 @@ struct PivotLaunchView: View {
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.black.ignoresSafeArea())
     }
 }
+

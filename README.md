@@ -1,3 +1,10 @@
+## 0.7.3 — collegamento Salute e sincronizzazione automatica
+
+- La firma dichiara sia HealthKit sia la consegna in background richiesta da iOS 15 e successivi.
+- Dopo il consenso, Pivot registra osservatori per sonno e allenamenti. iOS può risvegliare l’app quando arrivano nuovi dati; Pivot aggiorna quindi sonno, attività e abbinamenti senza richiedere l’apertura manuale.
+- Gli aggiornamenti simultanei vengono raggruppati e il completamento viene sempre comunicato a HealthKit, evitando letture duplicate o nuovi tentativi inutili.
+- L’installatore deve generare un profilo che mantenga entrambe le autorizzazioni. La semplice presenza dei permessi nell’IPA non può sostituire il profilo finale applicato sul telefono.
+
 ## 0.7.2 — palestra illustrata e grafici delle entrate
 
 - Le giornate e gli esercizi seguono l'ordine della scheda; l'editor permette di spostare i giorni.
@@ -214,3 +221,4 @@ Il workflow compila anche per il simulatore iPhone e produce l'artefatto
 `Pivot-iPhone-previews` con le schermate principali e i moduli di registrazione. I dati dimostrativi sono abilitati
 soltanto in Debug sul simulatore con `--preview`; sono esclusi dall'IPA Release.
 L'identificativo dell'app e lo schema dei dati rimangono quelli della 0.1.
+
