@@ -1,11 +1,22 @@
 import XCTest
 
 final class PivotInteractionTests: XCTestCase {
+    func testTrainingPDFUsesActualRendererAndSyntheticWeeklyData() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--report-test"]; app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 15)); app.tabBars.buttons["Palestra"].tap()
+        let button = app.buttons["report-fixture"]
+        for _ in 0..<15 { if button.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(button.isHittable); button.tap()
+        let message = app.staticTexts["training-message"]
+        XCTAssertTrue(message.waitForExistence(timeout: 10))
+        XCTAssertTrue(message.label.contains("PDF verificato:"), message.label)
+    }
     func testIncomeSummarySwipesToChart() {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--preview", "--screen=income"]; app.launch()
         XCTAssertTrue(app.tabBars.buttons["Entrate"].waitForExistence(timeout: 10)); app.tabBars.buttons["Entrate"].tap()
-        let carousel = app.collectionViews["income-carousel"]
+        let carousel = app.scrollViews["income-carousel"]
         XCTAssertTrue(carousel.waitForExistence(timeout: 8)); carousel.swipeLeft()
         let afterSwipe = XCTAttachment(screenshot: app.screenshot())
         afterSwipe.name = "income-immediately-after-swipe"; afterSwipe.lifetime = .keepAlways

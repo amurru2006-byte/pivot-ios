@@ -9,6 +9,14 @@ struct TrainingExercise: Codable, Identifiable, Equatable {
     var restSeconds: Int
     var coachNotes: String
     var catalogID: String? = nil
+    var isometric: Bool? = nil
+    var separateSides: Bool? = nil
+    var weightedHold: Bool? = nil
+    var usesDuration: Bool {
+        if let isometric { return isometric }
+        let key = EventCoalescer.normalized(name)
+        return key.contains("plank") || key == "wall sit" || key == "sedia al muro"
+    }
     var isValid: Bool {
         !id.isEmpty && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !reps.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -83,7 +91,7 @@ enum TrainingSetKind: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-struct TrainingSet: Codable, Identifiable {
+struct TrainingSet: Codable, Identifiable, Equatable {
     var id = UUID()
     var number: Int
     var kg: Double? = nil
@@ -96,6 +104,22 @@ struct TrainingSet: Codable, Identifiable {
     // Warm-up load divided by the working load. It lets the same warm-up
     // structure follow a manually changed working weight next time.
     var loadFraction: Double? = nil
+    var durationSeconds: Int? = nil
+    var leftSeconds: Int? = nil
+    var rightSeconds: Int? = nil
+    var restSeconds: Int? = nil
+    var actualRestSeconds: Int? = nil
+    var completedAt: Date? = nil
+    var legacyKG: Double? = nil
+    var legacyReps: Int? = nil
+    func canComplete(_ exercise: TrainingExercise) -> Bool {
+        if exercise.usesDuration {
+            let valid = exercise.separateSides == true ? (leftSeconds ?? 0) > 0 && (rightSeconds ?? 0) > 0 : (durationSeconds ?? 0) > 0
+            return valid && (exercise.weightedHold != true || (kg.map { $0.isFinite && $0 >= 0 } ?? false))
+        }
+        return kg.map { $0.isFinite && $0 >= 0 } == true && (reps ?? 0) > 0
+    }
+    var holdTotal: Int { (durationSeconds ?? 0) + (leftSeconds ?? 0) + (rightSeconds ?? 0) }
     var resolvedKind: TrainingSetKind { kind ?? .working }
     var reachesFailure: Bool { toFailure == true }
 }
@@ -118,8 +142,12 @@ enum TrainingSetTemplate {
             if old.done, old.resolvedKind == .warmup, fraction == nil, let kg = old.kg, let oldTarget, oldTarget > 0 {
                 fraction = kg / oldTarget
             }
-            return TrainingSet(number: offset + 1, kg: old.done ? old.kg : nil, reps: old.done ? old.reps : nil, kind: old.resolvedKind,
+            var next = TrainingSet(number: offset + 1, kg: old.done ? old.kg : nil, reps: old.done ? old.reps : nil, kind: old.resolvedKind,
                                toFailure: old.toFailure, supersetGroup: old.supersetGroup, loadFraction: fraction)
+            next.durationSeconds = old.done ? old.durationSeconds : nil
+            next.leftSeconds = old.done ? old.leftSeconds : nil; next.rightSeconds = old.done ? old.rightSeconds : nil
+            next.restSeconds = old.restSeconds
+            return next
         }
         let currentWorkingCount = result.filter { $0.resolvedKind != .warmup }.count
         if currentWorkingCount < prescribedWorkingSets {
@@ -151,14 +179,14 @@ enum TrainingSetTemplate {
     }
 }
 
-struct TrainingExerciseLog: Codable, Identifiable {
+struct TrainingExerciseLog: Codable, Identifiable, Equatable {
     var id: String { exercise.id }
     var exercise: TrainingExercise
     var sets: [TrainingSet]
     var notes: String = ""
 }
 
-struct TrainingSession: Codable, Identifiable {
+struct TrainingSession: Codable, Identifiable, Equatable {
     var id = UUID()
     var planID: UUID
     var dayName: String
@@ -169,6 +197,7 @@ struct TrainingSession: Codable, Identifiable {
     var notes: String = ""
     var updatedAt = Date()
     var dayID: String? = nil
+    var rest: TrainingRest? = nil
 }
 
 struct TrainingLibrary: Codable {
@@ -185,7 +214,11 @@ struct TrainingLibrary: Codable {
         let logs = day.exercises.map { exercise in
             let last = previous(exerciseID: exercise.id, before: now)
             let sets = TrainingSetTemplate.next(previous: last, prescribedWorkingSets: exercise.sets)
-            return TrainingExerciseLog(exercise: exercise, sets: sets)
+            var resolved = exercise
+            resolved.isometric = exercise.isometric ?? last?.exercise.isometric
+            resolved.separateSides = exercise.separateSides ?? last?.exercise.separateSides
+            resolved.weightedHold = exercise.weightedHold ?? last?.exercise.weightedHold
+            return TrainingExerciseLog(exercise: resolved, sets: sets)
         }
         return TrainingSession(planID: plan.id, dayName: day.name, calendarEventID: eventID, start: now, exercises: logs, dayID: day.id)
     }
@@ -207,7 +240,10 @@ struct TrainingLibrary: Codable {
                           && (set.reps.map { (0...1000).contains($0) } ?? true)
                           && (set.loadFraction.map { $0.isFinite && (0...1.5).contains($0) } ?? true)
                           && (set.supersetGroup.map { $0.count <= 20 } ?? true)
-                          && (!set.done || (set.kg != nil && set.reps != nil)) }) else { throw TrainingError.invalidPlan }
+                          && ([set.durationSeconds, set.leftSeconds, set.rightSeconds].allSatisfy { $0.map { (0...86400).contains($0) } ?? true })
+                          && (set.restSeconds.map { (0...3600).contains($0) } ?? true)
+                          && (set.actualRestSeconds.map { $0 >= 0 } ?? true)
+                          && (!set.done || set.canComplete(log.exercise) || (set.holdTotal == 0 && set.kg != nil && set.reps != nil)) }) else { throw TrainingError.invalidPlan }
             }
         }
     }

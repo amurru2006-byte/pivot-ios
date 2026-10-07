@@ -1,6 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
+import UserNotifications
 
 struct TrainingView: View {
     @EnvironmentObject var store: PivotStore
@@ -12,6 +13,9 @@ struct TrainingView: View {
     @State private var message: String?
     @State private var editingPlan: TrainingPlan?
     @State private var newPlan = false
+    @State private var reportDate = Date()
+    @State private var reportURL: URL?
+    @State private var showingReport = false
     var library: TrainingLibrary { store.data.training ?? TrainingLibrary() }
     var body: some View {
         PivotScreen {
@@ -46,6 +50,12 @@ struct TrainingView: View {
             Button { importing = true } label: { Label(busy ? "Leggo la scheda…" : "Importa nuova scheda PDF", systemImage: "square.and.arrow.down") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked || busy || library.plans.count >= 6)
             Text("Solo PDF preparati per Pivot. L'importazione mostra un riepilogo da confermare e non cancella gli allenamenti precedenti.").font(.caption).foregroundStyle(PivotTheme.muted)
             #if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.arguments.contains("--report-test") {
+                Button("Genera report di prova") {
+                    do { message = "PDF verificato: \(try TrainingReportFixture.export()) pagine" }
+                    catch { message = "PDF non valido: \(error.localizedDescription)" }
+                }.accessibilityIdentifier("report-fixture")
+            }
             if ProcessInfo.processInfo.arguments.contains("--training-test") {
                 Button("Importa scheda di prova") { Task { await importTestPDF() } }.accessibilityIdentifier("import-training-fixture")
             }
@@ -58,6 +68,17 @@ struct TrainingView: View {
                 }
             }
             if !library.sessions.isEmpty {
+                PivotCard {
+                    Text("Riepilogo settimanale per il PT").font(.headline)
+                    DatePicker("Settimana contenente", selection: $reportDate, displayedComponents: .date)
+                    Text("Esporta solo gli allenamenti svolti da lunedì a domenica, anche se ne hai fatti soltanto uno o due.").font(.caption).foregroundStyle(PivotTheme.muted)
+                    Button("Prepara PDF della settimana") {
+                        Task {
+                            do { reportURL = try await store.trainingWeekExportURL(containing: reportDate); showingReport = true }
+                            catch { message = error.localizedDescription }
+                        }
+                    }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("export-training-week")
+                }
                 SectionHeading(title: "Ultimi allenamenti")
                 ForEach(library.sessions.sorted { $0.start > $1.start }.prefix(20)) { session in
                     NavigationLink {
@@ -67,8 +88,9 @@ struct TrainingView: View {
                     }.buttonStyle(.plain)
                 }
             }
-            if let message { Text(message).font(.subheadline).foregroundStyle(PivotTheme.amber) }
+            if let message { Text(message).font(.subheadline).foregroundStyle(PivotTheme.amber).accessibilityIdentifier("training-message") }
         }.navigationTitle("Palestra")
+            .sheet(isPresented: $showingReport) { if let reportURL { TrainingReportPreview(url: reportURL) } }
             .sheet(item: $editingPlan) { TrainingPlanEditor(plan: $0) }
             .sheet(isPresented: $newPlan) { TrainingPlanEditor() }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.pdf]) { result in
@@ -144,6 +166,7 @@ struct TrainingSessionView: View {
     @State private var selectingExercise = false
     @State private var replacementID: String?
     @State private var applyToPlan = false
+    var focusSetID: UUID? = nil
     let event: CalendarItem?
     init(plan: TrainingPlan, day: TrainingDay, library: TrainingLibrary, event: CalendarItem?) {
         self.event = event
@@ -153,11 +176,13 @@ struct TrainingSessionView: View {
         _tips = State(initialValue: library.tips)
         _hasStarted = State(initialValue: existing != nil)
     }
-    init(session: TrainingSession, tips: [String: String], event: CalendarItem?) {
+    init(session: TrainingSession, tips: [String: String], event: CalendarItem?, focusSetID: UUID? = nil) {
         _session = State(initialValue: session); _tips = State(initialValue: tips); self.event = event
         _hasStarted = State(initialValue: true)
+        self.focusSetID = focusSetID
     }
     var body: some View {
+        ScrollViewReader { proxy in
         PivotScreen {
             PivotHeader(title: session.dayName, subtitle: "Segna solo quello che fai davvero.")
             PivotCard(tint: PivotTheme.accent) {
@@ -169,9 +194,18 @@ struct TrainingSessionView: View {
                     Button("Inizia allenamento") { session.start = Date(); hasStarted = true; save() }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
                 }
                 if hasStarted && session.end == nil {
-                    Button("Termina allenamento") { session.end = Date(); save() }.buttonStyle(PivotPrimaryButton())
+                    Button("Termina allenamento") { WorkoutRuntime.finishRest(&session); session.end = Date(); save() }.buttonStyle(PivotPrimaryButton())
+                    Button("Attiva controlli sulla schermata di blocco") {
+                        guard save() else { return }
+                        Task {
+                            _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+                            await WorkoutRuntime.update(session, start: true)
+                            if !WorkoutRuntime.status.isEmpty { message = WorkoutRuntime.status }
+                        }
+                    }.buttonStyle(PivotSecondaryButton())
                 }
             }
+            if session.rest != nil { restCard }
             ForEach(session.exercises.indices, id: \.self) { index in
                 exerciseCard(index)
             }
@@ -197,7 +231,17 @@ struct TrainingSessionView: View {
             }
             .onDisappear { save() }
             .onChange(of: scenePhase) { _, phase in if phase != .active { save() } }
-            .sheet(isPresented: $sharing) { if let export { ShareSheet(items: [export]) } }
+            .sheet(isPresented: $sharing) { if let export { TrainingReportPreview(url: export) } }
+            .onChange(of: session.exercises) { _, _ in if hasStarted { save() } }
+            .onChange(of: session.notes) { _, _ in if hasStarted { save() } }
+            .onChange(of: tips) { _, _ in save() }
+            .onChange(of: store.data.updatedAt) { _, _ in
+                if let latest = store.data.training?.sessions.first(where: { $0.id == session.id }), latest.updatedAt > session.updatedAt { session = latest }
+            }
+            .task {
+                if let focusSetID { proxy.scrollTo(focusSetID, anchor: .center); WorkoutRuntime.focusedSet[session.id] = focusSetID }
+            }
+        }
     }
     private func exerciseCard(_ index: Int) -> some View {
         let exercise = session.exercises[index].exercise
@@ -219,8 +263,18 @@ struct TrainingSessionView: View {
             Text("\(exercise.sets) serie × \(exercise.reps) · recupero \(ActivityTiming.duration(exercise.restSeconds))").font(.subheadline).foregroundStyle(PivotTheme.accent)
             if !exercise.coachNotes.isEmpty { Text(exercise.coachNotes).font(.caption).foregroundStyle(PivotTheme.muted) }
             if let previous {
-                Text("Ultima volta: " + previous.sets.filter(\.done).map { "\($0.kg ?? 0) kg × \($0.reps ?? 0)" }.joined(separator: " · ")).font(.caption).foregroundStyle(PivotTheme.blue)
+                Text("Ultima volta: " + previous.sets.filter(\.done).map { TrainingReports.performance($0, exercise: previous.exercise) }.joined(separator: " · ")).font(.caption).foregroundStyle(PivotTheme.blue)
             } else { Text("Prima registrazione: nessun carico preimpostato.").font(.caption).foregroundStyle(PivotTheme.muted) }
+            if !session.exercises[index].sets.contains(where: \.done) {
+                Toggle("Isometria · registra secondi", isOn: Binding(get: { session.exercises[index].exercise.usesDuration }, set: { session.exercises[index].exercise.isometric = $0 }))
+            }
+            if exercise.usesDuration {
+                if !session.exercises[index].sets.contains(where: \.done) {
+                    Toggle("Durata separata per lato", isOn: Binding(get: { session.exercises[index].exercise.separateSides == true }, set: { session.exercises[index].exercise.separateSides = $0 }))
+                    Toggle("Zavorra", isOn: Binding(get: { session.exercises[index].exercise.weightedHold == true }, set: { session.exercises[index].exercise.weightedHold = $0 }))
+                }
+                Text("Inserisci la durata effettiva; i secondi non diventano kg né ripetizioni.").font(.caption).foregroundStyle(PivotTheme.muted)
+            }
             ForEach(session.exercises[index].sets.indices, id: \.self) { setIndex in
                 VStack(spacing: 8) {
                     HStack {
@@ -231,14 +285,41 @@ struct TrainingSessionView: View {
                         Spacer()
                         Toggle("Fatta", isOn: Binding(get: { session.exercises[index].sets[setIndex].done }, set: { done in
                             let set = session.exercises[index].sets[setIndex]
-                            if done && (set.kg == nil || set.reps == nil) { message = "Inserisci carico e ripetizioni prima di segnare la serie fatta."; return }
+                            if done && !set.canComplete(exercise) { message = exercise.usesDuration ? "Inserisci durata e, se selezionata, zavorra prima di segnare Fatta." : "Inserisci carico e Reps prima di segnare Fatta."; return }
+                            if done && !set.done {
+                                WorkoutRuntime.finishRest(&session)
+                                session.exercises[index].sets[setIndex].completedAt = Date()
+                                let seconds = set.restSeconds ?? exercise.restSeconds
+                                session.rest = seconds > 0 ? .init(exerciseID: exercise.id, setID: set.id, seconds: seconds) : nil
+                                WorkoutRuntime.focusedSet[session.id] = nil
+                            } else if !done {
+                                session.exercises[index].sets[setIndex].completedAt = nil
+                                if session.rest?.setID == set.id { session.rest = nil }
+                            }
                             session.exercises[index].sets[setIndex].done = done; save()
                         })).fixedSize().disabled(!hasStarted).accessibilityIdentifier("set-done-\(exercise.id)-\(setIndex)")
                     }
-                    HStack(spacing: 18) {
-                        DecimalField(title: "Carico", unit: "kg", value: weightBinding(exerciseIndex: index, setIndex: setIndex), identifier: "weight-\(exercise.id)-\(setIndex)")
-                        IntegerField(title: "Ripetizioni", value: $session.exercises[index].sets[setIndex].reps, identifier: "reps-\(exercise.id)-\(setIndex)")
+                    HStack(spacing: 12) {
+                        if !exercise.usesDuration || exercise.weightedHold == true {
+                            DecimalField(title: exercise.usesDuration ? "Zavorra" : "Carico", unit: "kg", value: weightBinding(exerciseIndex: index, setIndex: setIndex), identifier: "weight-\(exercise.id)-\(setIndex)")
+                        }
+                        if exercise.usesDuration {
+                            if exercise.separateSides == true {
+                                IntegerField(title: "Sinistra · s", value: $session.exercises[index].sets[setIndex].leftSeconds, identifier: "left-\(exercise.id)-\(setIndex)")
+                                IntegerField(title: "Destra · s", value: $session.exercises[index].sets[setIndex].rightSeconds, identifier: "right-\(exercise.id)-\(setIndex)")
+                            } else { IntegerField(title: "Durata · s", value: $session.exercises[index].sets[setIndex].durationSeconds, identifier: "seconds-\(exercise.id)-\(setIndex)") }
+                        } else { IntegerField(title: "Reps", value: $session.exercises[index].sets[setIndex].reps, identifier: "reps-\(exercise.id)-\(setIndex)") }
                     }
+                    DisclosureGroup("Recupero · \(session.exercises[index].sets[setIndex].restSeconds ?? exercise.restSeconds) s") {
+                        IntegerField(title: "Recupero dopo questa serie · s (0 = nessuna pausa)", value: $session.exercises[index].sets[setIndex].restSeconds, identifier: "rest-\(exercise.id)-\(setIndex)")
+                        Button("Usa il recupero della scheda") { session.exercises[index].sets[setIndex].restSeconds = nil }
+                        Text("Vale anche per riscaldamento, back-off, superset e drop set. Il valore scelto resta per la prossima volta.").font(.caption).foregroundStyle(PivotTheme.muted)
+                    }.font(.caption)
+                    Button("Usa questa serie sulla schermata di blocco") {
+                        guard save() else { return }
+                        WorkoutRuntime.focusedSet[session.id] = session.exercises[index].sets[setIndex].id
+                        Task { await WorkoutRuntime.update(session, start: true) }
+                    }.font(.caption).disabled(!hasStarted || session.end != nil || session.exercises[index].sets[setIndex].done)
                     if session.exercises[index].sets[setIndex].resolvedKind == .superset {
                         TextField("Gruppo superset (es. A)", text: supersetBinding(exerciseIndex: index, setIndex: setIndex))
                             .textInputAutocapitalization(.characters)
@@ -253,7 +334,7 @@ struct TrainingSessionView: View {
                         }
                     }
                     Divider()
-                }
+                }.id(session.exercises[index].sets[setIndex].id)
             }
             HStack {
                 Button { addWarmup(exerciseIndex: index) } label: { Label("Riscaldamento", systemImage: "plus") }
@@ -266,6 +347,25 @@ struct TrainingSessionView: View {
             Label("Promemoria tecnici · restano salvati", systemImage: "pin.fill").font(.subheadline.weight(.semibold))
             TextField("Panca livello 5, posizione, gomiti…", text: Binding(get: { tips[exercise.id] ?? "" }, set: { tips[exercise.id] = $0 }), axis: .vertical).lineLimit(3...8)
                 .padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
+        }
+    }
+    private var restCard: some View {
+        PivotCard(tint: PivotTheme.blue) {
+            TimelineView(.periodic(from: Date(), by: 1)) { context in
+                if let rest = session.rest {
+                    Text(rest.deadline == nil ? "Recupero in pausa" : rest.remaining(at: context.date) == 0 ? "Recupero terminato" : "Recupero").font(.headline)
+                    Text(ActivityTiming.duration(rest.remaining(at: context.date))).font(.title.monospacedDigit())
+                }
+            }
+            HStack {
+                Button(session.rest?.deadline == nil ? "Riprendi" : "Pausa") { session.rest?.togglePause(); save() }
+                Spacer()
+                Button("Reset") {
+                    if let rest = session.rest { session.rest = .init(exerciseID: rest.exerciseID, setID: rest.setID, seconds: rest.plannedSeconds); save() }
+                }
+            }
+            Button("Inizia prossima serie") { WorkoutRuntime.finishRest(&session); save() }.buttonStyle(PivotSecondaryButton())
+            Text("La prossima serie chiude il recupero e registra il tempo effettivo. Gli avvisi dipendono dai permessi notifiche e da Full immersion.").font(.caption).foregroundStyle(PivotTheme.muted)
         }
     }
     private func changeExercise(_ exercise: TrainingExercise) {
@@ -362,7 +462,11 @@ struct TrainingSessionView: View {
         if let end = session.end, end < session.start { message = "La fine deve essere successiva all'inizio."; return false }
         session.updatedAt = Date()
         let ok = store.saveTraining(session, tips: tips, event: event)
-        if ok { message = "Allenamento salvato." }
+        if ok {
+            message = "Allenamento salvato."
+            let snapshot = session
+            Task { await WorkoutRuntime.scheduleRest(snapshot); await WorkoutRuntime.update(snapshot) }
+        }
         return ok
     }
 }

@@ -41,4 +41,8 @@ if [ -d build/interaction-tests.xcresult ]; then
     if [ "$PIVOT_UI_TEST_STATUS" -eq 0 ]; then PIVOT_UI_TEST_STATUS=1; fi
   }
 fi
+PIVOT_APP_DATA=$(xcrun simctl get_app_container "$PIVOT_SIMULATOR" app.pivot.personal data)
+if [ -f "$PIVOT_APP_DATA/Documents/Pivot-QA-report.pdf" ]; then
+  cp "$PIVOT_APP_DATA/Documents/Pivot-QA-report.pdf" build/Pivot-QA-report.pdf
+fi
 exit "$PIVOT_UI_TEST_STATUS"

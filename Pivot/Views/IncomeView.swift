@@ -40,7 +40,7 @@ struct IncomeView: View {
     @State private var exporting = false
     @State private var editingOpening = false
     @State private var balancePage = 0
-    @State private var carouselHeight: CGFloat = 350
+    @State private var carouselHeight: CGFloat = 480
     @State private var chartRange: IncomeChartRange = .year
     @State private var chartStyle: IncomeChartStyle = .bars
     var currentYear: Int { PivotDate.calendar.component(.year, from: Date()) }
@@ -154,15 +154,21 @@ struct IncomeView: View {
     }
     private var balanceCarousel: some View {
         VStack(spacing: 10) {
-            TabView(selection: $balancePage) {
-                balance.tag(0)
-                incomeChart.tag(1)
+            GeometryReader { geometry in
+                ScrollView(.horizontal) {
+                    HStack(alignment: .top, spacing: 0) {
+                        balance.frame(width: geometry.size.width).id(0)
+                        incomeChart.frame(width: geometry.size.width).id(1)
+                    }.scrollTargetLayout()
+                }
+                .scrollIndicators(.hidden)
+                .scrollTargetBehavior(.paging)
+                .scrollPosition(id: Binding<Int?>(get: { balancePage }, set: { if let page = $0 { balancePage = page } }))
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
             .frame(height: carouselHeight)
             .onPreferenceChange(IncomePageHeight.self) { height in
-                if height > 0, abs(carouselHeight - max(350, height)) > 1 {
-                    carouselHeight = max(350, height)
+                if height > 0, abs(carouselHeight - max(480, height)) > 1 {
+                    carouselHeight = max(480, height)
                 }
             }
             .accessibilityLabel("Riepilogo e grafico delle entrate, scorri orizzontalmente")

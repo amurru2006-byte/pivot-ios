@@ -76,17 +76,22 @@ struct DecimalField: View {
     @Binding var value: Double?
     var identifier: String = ""
     @State private var input = ""
+    @FocusState private var focused: Bool
     var body: some View {
-        HStack {
-            Text(title).font(.subheadline)
-            Spacer()
-            TextField("—", text: $input).keyboardType(.decimalPad).multilineTextAlignment(.trailing).frame(maxWidth: 100).accessibilityIdentifier(identifier)
-            Text(unit).font(.caption).foregroundStyle(PivotTheme.muted)
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.caption).lineLimit(1)
+            HStack {
+                TextField("—", text: $input).keyboardType(.decimalPad).focused($focused).multilineTextAlignment(.trailing).accessibilityIdentifier(identifier)
+                Text(unit).font(.caption).foregroundStyle(PivotTheme.muted)
+            }.padding(12).frame(minHeight: 48).background(PivotTheme.background, in: RoundedRectangle(cornerRadius: 10))
         }
         .onAppear { input = value.map { String($0).replacingOccurrences(of: ".", with: ",") } ?? "" }
         .onChange(of: input) { _, text in
             let trimmed = text.trimmingCharacters(in: .whitespaces)
             value = trimmed.isEmpty ? nil : Double(trimmed.replacingOccurrences(of: ",", with: ".")) ?? .nan
+        }
+        .onChange(of: value) { _, new in
+            if !focused { input = new.map { String($0).replacingOccurrences(of: ".", with: ",") } ?? "" }
         }
     }
 }
@@ -96,11 +101,14 @@ struct IntegerField: View {
     @Binding var value: Int?
     var identifier: String = ""
     @State private var input = ""
+    @FocusState private var focused: Bool
     var body: some View {
-        HStack {
-            Text(title).font(.subheadline); Spacer()
-            TextField("—", text: $input).keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(maxWidth: 80).accessibilityIdentifier(identifier)
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.caption).lineLimit(1)
+            TextField("—", text: $input).keyboardType(.numberPad).focused($focused).multilineTextAlignment(.trailing).accessibilityIdentifier(identifier)
+                .padding(12).frame(minHeight: 48).background(PivotTheme.background, in: RoundedRectangle(cornerRadius: 10))
         }.onAppear { input = value.map(String.init) ?? "" }
             .onChange(of: input) { _, text in value = text.isEmpty ? nil : Int(text) ?? -1 }
+            .onChange(of: value) { _, new in if !focused { input = new.map(String.init) ?? "" } }
     }
 }
