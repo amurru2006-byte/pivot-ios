@@ -313,6 +313,7 @@ final class PivotStore: ObservableObject {
 
     @discardableResult func saveTraining(_ session: TrainingSession, tips: [String: String], event: CalendarItem?) -> Bool {
         var library = data.training ?? TrainingLibrary()
+        let session = TrainingEdits.preservingCatalogChoices(in: session, library: library)
         let previous = library.sessions.first { $0.id == session.id }
         if let index = library.sessions.firstIndex(where: { $0.id == session.id }) { library.sessions[index] = session }
         else { library.sessions.append(session) }

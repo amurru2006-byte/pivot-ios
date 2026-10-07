@@ -55,12 +55,14 @@ struct ExerciseGroupBar: View {
 }
 
 struct ExerciseThumbnail: View {
+    @EnvironmentObject private var store: PivotStore
     let exercise: TrainingExercise
+    private var displayedExercise: TrainingExercise { TrainingEdits.withSavedCatalog(exercise, library: store.data.training ?? TrainingLibrary()) }
     @State private var photoURL: URL?
     @State private var lookupFinished = false
     var body: some View {
         Group {
-            if ExerciseCatalog.hasBenchIllustration(exercise) {
+            if ExerciseCatalog.hasBenchIllustration(displayedExercise) {
                 Image("ExerciseBenchPress").resizable().scaledToFit().background(.white)
             } else if let photoURL {
                 AsyncImage(url: photoURL, transaction: Transaction(animation: .easeInOut(duration: 0.2))) { phase in
@@ -74,10 +76,10 @@ struct ExerciseThumbnail: View {
                 fallback
             }
         }.clipShape(RoundedRectangle(cornerRadius: 14)).accessibilityHidden(true)
-            .task(id: exercise.id + "|" + exercise.name) {
-                guard !ExerciseCatalog.hasBenchIllustration(exercise) else { lookupFinished = true; return }
+            .task(id: exercise.id + "|" + exercise.name + "|" + (displayedExercise.catalogID ?? "")) {
+                guard !ExerciseCatalog.hasBenchIllustration(displayedExercise) else { lookupFinished = true; return }
                 if let entries = try? await ExerciseCatalogLoader.shared.entries() {
-                    photoURL = ExerciseCatalog.match(exercise, in: entries)?.photoURL
+                    photoURL = ExerciseCatalog.match(displayedExercise, in: entries)?.photoURL
                 }
                 lookupFinished = true
             }
@@ -175,6 +177,7 @@ struct ExerciseImagePickerView: View {
     @State private var query = ""
     @State private var group: ExerciseMuscleGroup = .all
     @State private var showAll = false
+    @State private var visibleLimit = 100
     @State private var error: String?
     private var suggestions: [CatalogExercise] { ExerciseCatalog.suggestions(for: exercise, in: entries) }
     private var filtered: [CatalogExercise] {
@@ -201,8 +204,8 @@ struct ExerciseImagePickerView: View {
                 } else {
                     Section("Gruppo muscolare principale") { ExerciseGroupBar(selection: $group, includeUnresolved: false) }
                     Section("Catalogo completo · \(filtered.count) risultati") {
-                        ForEach(Array(filtered.prefix(150))) { entry in catalogRow(entry) }
-                        if filtered.count > 150 { Text("Affina nome o gruppo muscolare per vedere gli altri risultati.").font(.caption) }
+                        ForEach(Array(filtered.prefix(visibleLimit))) { entry in catalogRow(entry) }
+                        if filtered.count > visibleLimit { Button("Mostra altri esercizi") { visibleLimit += 100 } }
                     }
                 }
                 if let error { Text(error).foregroundStyle(PivotTheme.amber) }
@@ -240,6 +243,7 @@ struct ExerciseStatisticsView: View {
     @State private var progress = ExerciseProgress(performances: [])
     @State private var catalogEntry: CatalogExercise?
     @State private var catalogReady = false
+    private var displayedExercise: TrainingExercise { TrainingEdits.withSavedCatalog(exercise, library: store.data.training ?? TrainingLibrary()) }
     var body: some View {
         PivotScreen {
             PivotHeader(title: exercise.name, subtitle: "Solo serie fatte · stesso esercizio e stesso identificativo.")
@@ -290,7 +294,7 @@ struct ExerciseStatisticsView: View {
                 let library = store.data.training ?? TrainingLibrary(), current = current, id = exercise.id
                 let result = await Task.detached(priority: .utility) { ExerciseProgress.calculate(exerciseID: id, library: library, current: current) }.value
                 guard !Task.isCancelled else { return }; progress = result
-                if let entries = try? await ExerciseCatalogLoader.shared.entries() { catalogEntry = ExerciseCatalog.match(exercise, in: entries) }
+                if let entries = try? await ExerciseCatalogLoader.shared.entries() { catalogEntry = ExerciseCatalog.match(displayedExercise, in: entries) }
                 catalogReady = true
             }
     }
@@ -315,6 +319,14 @@ struct ExercisePickerView: View {
             && (search.isEmpty || EventCoalescer.normalized($0.name + " " + $0.displayName + " " + $0.muscleSummary + " " + $0.equipmentLabel).contains(search))
         }
     }
+    private var filteredKnown: [TrainingExercise] {
+        let search = EventCoalescer.normalized(query)
+        return known.filter { exercise in
+            let entry = ExerciseCatalog.match(exercise, in: entries)
+            return group.matches(entry) && (equipment.isEmpty || entry?.equipment == equipment)
+                && (search.isEmpty || EventCoalescer.normalized(exercise.name + " " + (entry?.muscleSummary ?? "") + " " + (entry?.equipmentLabel ?? "")).contains(search))
+        }
+    }
     var body: some View {
         NavigationStack {
             List {
@@ -326,9 +338,9 @@ struct ExercisePickerView: View {
                         ForEach(ExerciseCatalog.equipmentNames.keys.sorted(), id: \.self) { Text(ExerciseCatalog.equipmentNames[$0] ?? $0).tag($0) }
                     }
                 }
-                if !known.isEmpty {
+                if !filteredKnown.isEmpty {
                     Section("Già nelle tue schede / nello storico") {
-                        ForEach(known.filter { query.isEmpty || EventCoalescer.normalized($0.name).contains(EventCoalescer.normalized(query)) }) { exercise in
+                        ForEach(filteredKnown) { exercise in
                             NavigationLink(exercise.name) { setup(exercise) }
                         }
                     }

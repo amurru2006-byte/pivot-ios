@@ -249,6 +249,7 @@ struct TrainingSessionView: View {
         do {
             var updated = session
             var library = store.data.training ?? TrainingLibrary()
+            updated = TrainingEdits.preservingCatalogChoices(in: updated, library: library)
             if let id = replacementID { try TrainingEdits.replace(in: &updated, exerciseID: id, with: exercise, library: library) }
             else { try TrainingEdits.add(to: &updated, exercise: exercise, library: library) }
             if applyToPlan {
