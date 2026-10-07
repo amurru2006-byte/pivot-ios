@@ -141,4 +141,21 @@ final class Pivot071Tests: XCTestCase {
         XCTAssertEqual(NotificationPlan.requests(events: [item], data: data, now: now).map(\.id), NotificationPlan.requestsFromPlanned(events: planned, data: data, now: now).map(\.id))
         XCTAssertEqual(WorkoutContext.missingCardio(events: [item], data: data, now: now).map(\.id), WorkoutContext.missingCardioInPlanned(events: planned, data: data, now: now).map(\.id))
     }
+    func testDictationKeepsTypedPrefixAndRevisesOnlyRecognizedText() {
+        var composer = DictationTextComposer()
+        composer.begin(currentText: "Mi sono svegliato adesso.")
+        var value = composer.apply(transcript: "Vorrei sistemare", to: "Mi sono svegliato adesso.")
+        XCTAssertEqual(value, "Mi sono svegliato adesso. Vorrei sistemare")
+        value = composer.apply(transcript: "Vorrei sistemare la giornata.", to: value)
+        XCTAssertEqual(value, "Mi sono svegliato adesso. Vorrei sistemare la giornata.")
+    }
+    func testDictationDoesNotEraseTypingAddedWhileListening() {
+        var composer = DictationTextComposer()
+        composer.begin(currentText: "Iniziamo dal pranzo.")
+        var value = composer.apply(transcript: "Bisogna trovare", to: "Iniziamo dal pranzo.")
+        value += " senza saltare lo studio"
+        value = composer.apply(transcript: "Bisogna trovare un buco per la palestra.", to: value)
+        XCTAssertEqual(value, "Iniziamo dal pranzo. Bisogna trovare un buco per la palestra. senza saltare lo studio")
+    }
 }
+

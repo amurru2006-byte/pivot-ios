@@ -4,7 +4,7 @@ on:
     branches: [main, 'codex/pivot-0.7.1-performance']
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: pivot-build-${{ github.ref }}
   cancel-in-progress: true
@@ -72,6 +72,28 @@ jobs:
           zip -qr ../Pivot-0.7.3.ipa Payload
       - name: Verifica interfaccia su simulatore iPhone
         run: bash Scripts/preview-ui.sh
+      - name: Prepara sorgente AltStore con integrità verificabile
+        run: |
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          ipa = Path('build/Pivot-0.7.3.ipa')
+          template = Path('Distribution/altstore-source.template.json').read_text()
+          source = template.replace('__IPA_SIZE__', str(ipa.stat().st_size))
+          source = source.replace('__IPA_SHA256__', hashlib.sha256(ipa.read_bytes()).hexdigest())
+          parsed = json.loads(source)
+          permissions = parsed['apps'][0]['appPermissions']['entitlements']
+          assert 'com.apple.developer.healthkit' in permissions
+          assert 'com.apple.developer.healthkit.background-delivery' in permissions
+          Path('build/altstore-source.json').write_text(source)
+          PY
+      - name: Pubblica la 0.7.3 per la sorgente AltStore
+        if: github.ref == 'refs/heads/codex/pivot-0.7.1-performance'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view v0.7.3 >/dev/null 2>&1 || gh release create v0.7.3 --target "$GITHUB_SHA" --prerelease --title "Pivot 0.7.3" --notes "Versione 7: collegamento HealthKit, sincronizzazione automatica e dettatura continua. Installa tramite la sorgente AltStore allegata per conservare le autorizzazioni Salute."
+          gh release upload v0.7.3 build/Pivot-0.7.3.ipa#Pivot-0.7.3.ipa build/altstore-source.json#altstore-source.json --clobber
       - name: Carica anteprime iPhone
         if: always()
         uses: actions/upload-artifact@v4
@@ -98,5 +120,6 @@ jobs:
             build/interaction-tests.log
             build/export-validation.xlsx
             build/packaged-entitlements.plist
+            build/altstore-source.json
           if-no-files-found: ignore
 

@@ -18,7 +18,7 @@ struct CoachView: View {
     @State private var returnHomeAfterResponse = false
     @StateObject private var dictation = DictationService()
     @Environment(\.scenePhase) private var scenePhase
-    @State private var dictationPrefix = ""
+    @State private var dictationComposer = DictationTextComposer()
     private var reviews: [WorkoutReview] { (store.data.workoutReviews ?? []).filter { !$0.dismissed && !$0.resolved } }
     private var contextEvent: CalendarItem? { agenda.planned.first { $0.id == contextEventID } }
     private var state: CoachState { store.data.coachState }
@@ -125,14 +125,17 @@ struct CoachView: View {
                 HStack {
                     Button {
                         if dictation.isListening { dictation.stop() }
-                        else { dictationPrefix = input.trimmingCharacters(in: .whitespacesAndNewlines); Task { await dictation.start() } }
+                        else {
+                            dictationComposer.begin(currentText: input)
+                            Task { await dictation.start(contextualPhrases: dictationContext) }
+                        }
                     } label: { Label(dictation.isListening ? "Termina" : "Detta", systemImage: dictation.isListening ? "stop.circle.fill" : "mic.fill") }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("coach-dictation")
                     Button { dictation.stop(); send(input) } label: { Label("Invia", systemImage: "arrow.up") }
                     .accessibilityIdentifier("coach-send")
                     .buttonStyle(PivotPrimaryButton()).disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.locked || coachModel.isGenerating || isPlanning)
                 }
                 if isPlanning { ProgressView("Controllo il programma…") }
-                if dictation.isListening { Text("Dettatura attiva · controlla il testo prima di inviare").font(.caption).foregroundStyle(PivotTheme.accent) }
+                if dictation.isListening { Text("Dettatura attiva · continua anche dopo una pausa; controlla il testo prima di inviare").font(.caption).foregroundStyle(PivotTheme.accent) }
                 if let status = dictation.message { Text(status).font(.caption).foregroundStyle(PivotTheme.amber) }
                 if coachModel.isGenerating {
                     HStack {
@@ -170,7 +173,7 @@ struct CoachView: View {
             }.font(.subheadline)
         }
         .navigationTitle("Coach")
-        .onChange(of: dictation.transcript) { _, value in if !value.isEmpty { input = (dictationPrefix.isEmpty ? "" : dictationPrefix + " ") + value } }
+        .onChange(of: dictation.transcript) { _, value in if !value.isEmpty { input = dictationComposer.apply(transcript: value, to: input) } }
         .onChange(of: scenePhase) { _, phase in
             // Permission dialogs temporarily make the scene inactive. Let the
             // request finish; actual backgrounding or leaving still cancels it.
@@ -189,6 +192,18 @@ struct CoachView: View {
                 store.change { data in var coach = data.coachState; coach.messages.removeAll { $0.dayKey == key }; data.coachState = coach }
             }
         }
+    }
+
+    private var dictationContext: [String] {
+        var values = ["Pivot", "palestra", "allenamento", "sonno", "sveglia", "calendario", "università", "ripetizioni"]
+        values.append(contentsOf: store.data.clients.map(\.name))
+        values.append(contentsOf: agenda.planned.filter { abs($0.start.timeIntervalSinceNow) < 14 * 86_400 }.map(\.title))
+        var seen = Set<String>()
+        return values.compactMap { value in
+            let clean = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !clean.isEmpty, seen.insert(clean.lowercased()).inserted else { return nil }
+            return clean
+        }.prefix(100).map { $0 }
     }
 
     private var pendingSection: some View {
@@ -407,3 +422,4 @@ struct CoachView: View {
         return "Ora: \(PivotDate.time(now)). Energia: \(check?.energyMorning.map(String.init) ?? "non indicata").\nAgenda:\n\(agenda)\nPreferenze dichiarate: \(memory)\nConversazione recente:\n\(recent)"
     }
 }
+

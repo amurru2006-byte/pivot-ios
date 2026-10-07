@@ -10,6 +10,12 @@ Quando registra una ripetizione e il guadagno, lo studente deve essere ricavato 
 
 Pagamenti: alcuni studenti pagano sempre settimanalmente, altri a ogni lezione. È richiesta un’abitudine persistente per studente e una scelta separata per una sola lezione: prossima lezione o data scelta. Il residuo di un pagamento parziale non scompare. I settimanali non sono in ritardo prima dell’ultima lezione prevista della settimana, da lunedì a domenica. Promemoria locali e saldo dello studente; un incasso può coprire più lezioni, dalla più vecchia, ma non viene mai inventato alla scadenza. Un anticipo superiore al saldo già guadagnato non viene registrato come compenso.
 
+## Intervento 0.7.3
+
+- Correzione della firma e della distribuzione AltStore: HealthKit e consegna in background devono essere dichiarati anche dalla sorgente usata per rifirmare l'app, non soltanto dall'IPA.
+- Osservatori HealthKit per sonno e allenamenti; dopo il consenso iOS può risvegliare Pivot e avviare l'importazione senza un'apertura manuale.
+- Dettatura locale continua fra più frasi, punteggiatura Apple e vocabolario contestuale di Pivot, studenti ed eventi. Il testo già scritto o dettato non viene sostituito dai risultati successivi.
+
 ## Intervento 0.7.2
 
 - Ordine della prima scheda corretto in Squat, Bench, Deadlift e riordinamento esplicito dei giorni dall'editor.
@@ -36,10 +42,13 @@ Palestra: modifiche alla scheda con versioni e ripristino; nuova scheda/obiettiv
 
 ## Da affrontare dopo la stabilità
 
-AI esterna: valutare un servizio online oppure un server su computer/iPad. Nessun backend, account, costo o invio di dati personali è stato attivato in questa versione. Per un server personale servono modello/hardware disponibili, connessione e disponibilità del dispositivo; non si presume che il computer possa restare sempre acceso.
+AI esterna (versione 8): valutare un servizio online oppure un server su computer/iPad. Nessun backend, account, costo o invio di dati personali è stato attivato nella serie 7. Per un server personale servono modello/hardware disponibili, connessione e disponibilità del dispositivo; non si presume che il computer possa restare sempre acceso.
+
+Scenario obbligatorio per la V8: dopo «mi sono svegliato a mezzogiorno» e «iniziamo la giornata col pranzo, bisogna trovare un buco per la palestra», Pivot deve mantenere il contesto della conversazione, capire che la giornata reale è slittata, rileggere gli impegni ancora validi e proporre una sequenza concreta con conseguenze e conflitti. Non deve ripetere una risposta generica né richiedere di indicare manualmente un singolo evento quando l'intento è già chiaro. Le modifiche al Calendario restano comunque soggette a conferma.
 
 Recuperare progressivamente con l’utente i restanti obiettivi personali, le abitudini, lo studio/esami e le funzionalità future. Questa nota non è un elenco completo della precedente conversazione.
 
 ## Verifica e installazione
 
 I test core e i test di interazione sul simulatore sono nel workflow macOS. La misura della fluidità reale e dell’AI richiede ancora l’iPhone 15. Prima dell’aggiornamento verificare/esportare il backup. Installare sopra Pivot esistente con lo stesso metodo/account, senza disinstallare: la cancellazione dell’app elimina la copia locale e il modello scaricato.
+
