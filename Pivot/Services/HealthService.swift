@@ -118,6 +118,8 @@ final class HealthService: ObservableObject {
         // Previously authorized types don't prompt again; never prompt on launch
         // if the user has not explicitly enabled the Health integration.
         guard HKHealthStore.isHealthDataAvailable(), !isConnecting else { return }
+        isConnecting = true
+        defer { isConnecting = false }
         do {
             try await healthStore.requestAuthorization(toShare: [], read: readTypes)
             authorizationRequestCompleted = true
@@ -231,6 +233,8 @@ final class HealthService: ObservableObject {
     }
     private func receiveBackgroundUpdate(completion: @escaping HKObserverQueryCompletionHandler, error: Error?) async {
         if let error {
+            automaticUpdatesActive = false
+            recordDiagnostic(error, phase: "Osservazione degli aggiornamenti Salute")
             automaticUpdateError = error.localizedDescription
             completion()
             return

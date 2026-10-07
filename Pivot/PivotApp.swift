@@ -93,7 +93,7 @@ struct RootView: View {
                     agenda.rebuild(events: calendar.events, hasAccess: calendar.hasAccess, store: store, diagnostics: store.diagnostics)
                     await health.refresh(store: store, events: calendar.events, force: true)
                 }
-                if store.data.settings.healthEnabled == true { await health.resumeBackgroundUpdates() }
+                if !store.isLoading, store.data.settings.healthEnabled == true { await health.resumeBackgroundUpdates() }
                 requestRefresh()
                 #if DEBUG && targetEnvironment(simulator)
                 if ProcessInfo.processInfo.arguments.contains("--interaction-test") {
@@ -118,13 +118,25 @@ struct RootView: View {
             if ProcessInfo.processInfo.isLowPowerModeEnabled { coachModel.pauseAndUnload() }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in coachModel.pauseAndUnload() }
-        .onChange(of: store.isLoading) { _, loading in if !loading { requestRefresh(); rebuildAgenda() } }
+        .onChange(of: store.isLoading) { _, loading in
+            if !loading {
+                if store.data.settings.healthEnabled == true {
+                    Task { await health.resumeBackgroundUpdates() }
+                }
+                requestRefresh(); rebuildAgenda()
+            }
+        }
         .onChange(of: store.isRestoring) { _, restoring in if !restoring { requestRefresh(); rebuildAgenda() } }
         .onChange(of: store.data.updatedAt) { _, _ in rebuildAgenda() }
         .onChange(of: store.data.settings) { old, new in
             if old.excludedCalendarIDs != new.excludedCalendarIDs || old.excludedCalendarTitles != new.excludedCalendarTitles || old.excludeHolidays != new.excludeHolidays { requestRefresh(force: true) }
             if old.healthEnabled != new.healthEnabled {
-                Task { await health.setBackgroundDelivery(enabled: new.healthEnabled == true) }
+                if !store.isLoading {
+                    Task {
+                        if new.healthEnabled == true { await health.resumeBackgroundUpdates() }
+                        else { await health.setBackgroundDelivery(enabled: false) }
+                    }
+                }
                 requestRefresh()
             }
         }
