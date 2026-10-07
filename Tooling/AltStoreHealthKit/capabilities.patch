@@ -1,0 +1,84 @@
+diff --git a/Dependencies/AltSign/AltSign/Capabilities/ALTCapabilities.h b/Dependencies/AltSign/AltSign/Capabilities/ALTCapabilities.h
+--- a/Dependencies/AltSign/AltSign/Capabilities/ALTCapabilities.h
++++ b/Dependencies/AltSign/AltSign/Capabilities/ALTCapabilities.h
+@@ -20,5 +20,6 @@ extern ALTEntitlement const ALTEntitlementTeamIdentifier;
+ extern ALTEntitlement const ALTEntitlementInterAppAudio;
+ extern ALTEntitlement const ALTEntitlementIncreasedMemoryLimit;
++extern ALTEntitlement const ALTEntitlementHealthKit;
+ 
+ // Features
+ typedef NSString *ALTFeature NS_TYPED_EXTENSIBLE_ENUM;
+@@ -27,6 +28,7 @@ extern ALTFeature const ALTFeatureGameCenter;
+ extern ALTFeature const ALTFeatureAppGroups;
+ extern ALTFeature const ALTFeatureInterAppAudio;
+ extern ALTFeature const ALTFeatureIncreasedMemoryLimit;
++extern ALTFeature const ALTFeatureHealthKit;
+ 
+ _Nullable ALTEntitlement ALTEntitlementForFeature(ALTFeature feature) NS_SWIFT_NAME(ALTEntitlement.init(feature:));
+ _Nullable ALTFeature ALTFeatureForEntitlement(ALTEntitlement entitlement) NS_SWIFT_NAME(ALTFeature.init(entitlement:));
+diff --git a/Dependencies/AltSign/AltSign/Capabilities/ALTCapabilities.m b/Dependencies/AltSign/AltSign/Capabilities/ALTCapabilities.m
+--- a/Dependencies/AltSign/AltSign/Capabilities/ALTCapabilities.m
++++ b/Dependencies/AltSign/AltSign/Capabilities/ALTCapabilities.m
+@@ -15,5 +15,6 @@ ALTEntitlement const ALTEntitlementTeamIdentifier = @"com.apple.developer.team-identifier";
+ ALTEntitlement const ALTEntitlementInterAppAudio = @"inter-app-audio";
+ ALTEntitlement const ALTEntitlementIncreasedMemoryLimit = @"com.apple.developer.kernel.increased-memory-limit";
++ALTEntitlement const ALTEntitlementHealthKit = @"com.apple.developer.healthkit";
+ 
+ // Features
+ ALTFeature const ALTFeatureGameCenter = @"gameCenter";
+@@ -22,6 +23,7 @@ ALTFeature const ALTFeatureGameCenter = @"gameCenter";
+ ALTFeature const ALTFeatureAppGroups = @"APG3427HIY";
+ ALTFeature const ALTFeatureInterAppAudio = @"IAD53UNK2F";
+ ALTFeature const ALTFeatureIncreasedMemoryLimit = @"INCREASED_MEMORY_LIMIT";
++ALTFeature const ALTFeatureHealthKit = @"HK421J6T7P";
+ 
+ _Nullable ALTEntitlement ALTEntitlementForFeature(ALTFeature feature)
+ {
+@@ -38,6 +40,10 @@ _Nullable ALTEntitlement ALTEntitlementForFeature(ALTFeature feature)
+     {
+         return ALTEntitlementIncreasedMemoryLimit;
+     }
++    else if ([feature isEqualToString:ALTFeatureHealthKit])
++    {
++        return ALTEntitlementHealthKit;
++    }
+     
+     return nil;
+ }
+@@ -56,6 +62,10 @@ _Nullable ALTFeature ALTFeatureForEntitlement(ALTEntitlement entitlement)
+     {
+         return ALTFeatureIncreasedMemoryLimit;
+     }
++    else if ([entitlement isEqualToString:ALTEntitlementHealthKit])
++    {
++        return ALTFeatureHealthKit;
++    }
+     
+     return nil;
+ }
+diff --git a/AltStore/Operations/FetchProvisioningProfilesOperation.swift b/AltStore/Operations/FetchProvisioningProfilesOperation.swift
+--- a/AltStore/Operations/FetchProvisioningProfilesOperation.swift
++++ b/AltStore/Operations/FetchProvisioningProfilesOperation.swift
+@@ -58,6 +58,22 @@ class FetchProvisioningProfilesOperation: ResultOperation<[String: ALTProvisioningProfile]>, @unchecked Sendable
+                 
+                 let profile = try result.get()
+                 
++                // Fail before installation if Apple did not grant the requested
++                // HealthKit capabilities. Never silently strip them or bypass
++                // the existing signer/profile entitlement intersection.
++                let healthKitKeys = ["com.apple.developer.healthkit", "com.apple.developer.healthkit.background-delivery"]
++                for key in healthKitKeys
++                {
++                    let entitlement = ALTEntitlement(rawValue: key)
++                    let requested = self.additionalEntitlements?[entitlement] ?? app.entitlements[entitlement]
++                    if requested as? Bool == true, profile.entitlements[entitlement] as? Bool != true
++                    {
++                        throw NSError(domain: "AltStoreHealthKitProfile", code: 1, userInfo: [
++                            NSLocalizedDescriptionKey: "Il profilo restituito da Apple non autorizza \(key). Installazione fermata prima di sostituire l'app esistente. La modifica sperimentale ad AltStore non è sufficiente con questo profilo."
++                        ])
++                    }
++                }
++                
+                 var profiles = [app.bundleIdentifier: profile]
+                 var error: Error?
+                 
