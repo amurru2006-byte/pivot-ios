@@ -166,4 +166,24 @@ final class InterfaceAndTrainingTests: XCTestCase {
         var incline = exercise(); incline.name = "Panca inclinata"; XCTAssertFalse(ExerciseCatalog.hasBenchIllustration(incline))
         incline.catalogID = "Barbell_Incline_Bench_Press_-_Medium_Grip"; incline.name = "Panca piana"; XCTAssertFalse(ExerciseCatalog.hasBenchIllustration(incline))
     }
+    func testFirstImportedPlanUsesTrainingOrderAndLeavesOtherPlansUntouched() {
+        let exercise = exercise()
+        let alphabetical = [
+            TrainingDay(id: "bench", name: "Bench", exercises: [exercise]),
+            TrainingDay(id: "deadlift", name: "Deadlift", exercises: [exercise]),
+            TrainingDay(id: "squat", name: "Squat", exercises: [exercise])
+        ]
+        XCTAssertEqual(TrainingDayOrder.corrected(alphabetical).map(\.name), ["Squat", "Bench", "Deadlift"])
+        let coachOrder = [alphabetical[1], alphabetical[2], alphabetical[0]]
+        XCTAssertEqual(TrainingDayOrder.corrected(coachOrder).map(\.name), coachOrder.map(\.name))
+    }
+    func testLegacyShortExerciseNamesResolveOnlyThroughExplicitAliases() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let entries = try ExerciseCatalog.load(from: root.appendingPathComponent("Pivot/Resources/exercises.json"))
+        let bench = TrainingExercise(id: "legacy-bench", name: "Bench Press", sets: 3, reps: "8", restSeconds: 90, coachNotes: "")
+        XCTAssertEqual(ExerciseCatalog.match(bench, in: entries)?.id, "Barbell_Bench_Press_-_Medium_Grip")
+        XCTAssertTrue(ExerciseCatalog.hasBenchIllustration(bench))
+        let ambiguous = TrainingExercise(id: "legacy-lunge", name: "Lunges", sets: 3, reps: "8", restSeconds: 90, coachNotes: "")
+        XCTAssertNil(ExerciseCatalog.match(ambiguous, in: entries))
+    }
 }
