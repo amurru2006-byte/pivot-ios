@@ -11,6 +11,16 @@ actor ExerciseCatalogLoader {
     }
 }
 
+actor WorkoutGuideCatalogLoader {
+    static let shared = WorkoutGuideCatalogLoader()
+    private var cached: [WorkoutGuideExercise]?
+    func entries() throws -> [WorkoutGuideExercise] {
+        if let cached { return cached }
+        guard let url = Bundle.main.url(forResource: "workout-guide", withExtension: "json") else { throw TrainingError.invalidPlan }
+        let entries = try WorkoutGuideCatalog.load(from: url); cached = entries; return entries
+    }
+}
+
 enum ExerciseMuscleGroup: String, CaseIterable, Identifiable {
     case all, chest, back, shoulders, arms, legs, core, unresolved
     var id: String { rawValue }
@@ -61,7 +71,7 @@ struct ExerciseThumbnail: View {
     @EnvironmentObject private var store: PivotStore
     let exercise: TrainingExercise
     private var displayedExercise: TrainingExercise { TrainingEdits.withSavedCatalog(exercise, library: store.data.training ?? TrainingLibrary()) }
-    @State private var photoURL: URL?
+    @State private var illustrationURL: URL?
     @State private var lookupFinished = false
     var body: some View {
         thumbnailContent.clipShape(RoundedRectangle(cornerRadius: 14)).accessibilityHidden(true)
@@ -73,8 +83,8 @@ struct ExerciseThumbnail: View {
     @ViewBuilder private var thumbnailContent: some View {
         if ExerciseCatalog.hasBenchIllustration(displayedExercise) {
             Image("ExerciseBenchPress").resizable().scaledToFit().background(.white)
-        } else if let photoURL {
-            AsyncImage(url: photoURL, transaction: Transaction(animation: .easeInOut(duration: 0.2))) { phase in
+        } else if let illustrationURL {
+            AsyncImage(url: illustrationURL, transaction: Transaction(animation: .easeInOut(duration: 0.2))) { phase in
                 remoteThumbnail(phase)
             }.background(.white)
         } else {
@@ -91,9 +101,12 @@ struct ExerciseThumbnail: View {
     private func loadThumbnail() async {
         let resolved = displayedExercise
         guard !ExerciseCatalog.hasBenchIllustration(resolved) else { lookupFinished = true; return }
-        if let entries = try? await ExerciseCatalogLoader.shared.entries() {
+        async let catalogTask = try? ExerciseCatalogLoader.shared.entries()
+        async let guideTask = try? WorkoutGuideCatalogLoader.shared.entries()
+        if let entries = await catalogTask, let guide = await guideTask {
             guard !Task.isCancelled else { return }
-            photoURL = ExerciseCatalog.match(resolved, in: entries)?.photoURL
+            let catalogEntry = ExerciseCatalog.match(resolved, in: entries)
+            illustrationURL = WorkoutGuideCatalog.match(resolved, catalogEntry: catalogEntry, in: guide)?.imageURL()
         }
         lookupFinished = true
     }
@@ -235,10 +248,7 @@ struct ExerciseImagePickerView: View {
     private func catalogRow(_ entry: CatalogExercise) -> some View {
         Button { onSelect(entry) } label: {
             HStack(spacing: 12) {
-                AsyncImage(url: entry.photoURL) { phase in
-                    if case .success(let image) = phase { image.resizable().scaledToFit() }
-                    else { Image(systemName: "photo").foregroundStyle(PivotTheme.blue) }
-                }.frame(width: 68, height: 68).background(.white, in: RoundedRectangle(cornerRadius: 10))
+                CatalogIllustrationThumbnail(entry: entry).frame(width: 68, height: 68)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(entry.displayName).foregroundStyle(PivotTheme.text)
                     if entry.displayName != entry.name { Text(entry.name).font(.caption2).foregroundStyle(PivotTheme.muted) }
@@ -255,6 +265,7 @@ struct ExerciseStatisticsView: View {
     var current: TrainingSession? = nil
     @State private var progress = ExerciseProgress(performances: [])
     @State private var catalogEntry: CatalogExercise?
+    @State private var guideEntry: WorkoutGuideExercise?
     @State private var catalogReady = false
     private var displayedExercise: TrainingExercise { TrainingEdits.withSavedCatalog(exercise, library: store.data.training ?? TrainingLibrary()) }
     var body: some View {
@@ -267,12 +278,13 @@ struct ExerciseStatisticsView: View {
                     Text("Principali: \(entry.muscleSummary)").font(.subheadline.weight(.semibold))
                     if !entry.secondaryMuscles.isEmpty { Text("Secondari: \(entry.secondarySummary)").font(.caption).foregroundStyle(PivotTheme.muted) }
                     Text(entry.equipmentLabel).font(.caption).foregroundStyle(PivotTheme.blue)
-                    if let url = entry.photoURL { Link("Apri foto dimostrativa online", destination: url).font(.subheadline) }
+                    if let url = guideEntry?.imageURL() { Link("Apri illustrazione tecnica online", destination: url).font(.subheadline) }
                 }
             } else if ExerciseCatalog.hasBenchIllustration(exercise) {
                 Text("Principali: pettorali · secondari: deltoide anteriore e tricipiti.").font(.caption).foregroundStyle(PivotTheme.muted)
             }
-            Text("Le aree rosse indicano i gruppi coinvolti, non misurano la tua attivazione. La tecnica e gli adattamenti si verificano con il coach. Le miniature visibili vengono caricate da GitHub senza inviare il tuo storico.").font(.caption).foregroundStyle(PivotTheme.muted)
+            Text("Le aree rosse e i gruppi indicati descrivono i muscoli coinvolti, non misurano la tua attivazione. La tecnica e gli adattamenti si verificano con il coach. Le illustrazioni non mostrano persone reali e vengono caricate da GitHub senza inviare il tuo storico.").font(.caption).foregroundStyle(PivotTheme.muted)
+            Text("Illustrazioni: Bryl Lim, basate su Everkinetic · CC BY-SA 4.0.").font(.caption2).foregroundStyle(PivotTheme.muted)
             if progress.performances.isEmpty {
                 EmptyCard(title: "Il tuo storico parte da qui", message: "Carichi proposti e serie non fatte non entrano nelle statistiche.", icon: "chart.xyaxis.line")
             } else {
@@ -307,11 +319,37 @@ struct ExerciseStatisticsView: View {
                 let library = store.data.training ?? TrainingLibrary(), current = current, id = exercise.id
                 let result = await Task.detached(priority: .utility) { ExerciseProgress.calculate(exerciseID: id, library: library, current: current) }.value
                 guard !Task.isCancelled else { return }; progress = result
-                if let entries = try? await ExerciseCatalogLoader.shared.entries() { catalogEntry = ExerciseCatalog.match(displayedExercise, in: entries) }
+                if let entries = try? await ExerciseCatalogLoader.shared.entries() {
+                    catalogEntry = ExerciseCatalog.match(displayedExercise, in: entries)
+                    if let guide = try? await WorkoutGuideCatalogLoader.shared.entries() {
+                        guideEntry = WorkoutGuideCatalog.match(displayedExercise, catalogEntry: catalogEntry, in: guide)
+                    }
+                }
                 catalogReady = true
             }
     }
     private func kg(_ value: Double?) -> String { value.map { "\($0.formatted(.number.precision(.fractionLength(1)))) kg" } ?? "—" }
+}
+
+private struct CatalogIllustrationThumbnail: View {
+    let entry: CatalogExercise
+    @State private var url: URL?
+    var body: some View {
+        ZStack {
+            Color.white
+            if let url {
+                AsyncImage(url: url) { phase in
+                    if case .success(let image) = phase { image.resizable().scaledToFit() }
+                    else { Image(systemName: "figure.strengthtraining.traditional").foregroundStyle(PivotTheme.blue) }
+                }
+            } else { Image(systemName: "figure.strengthtraining.traditional").foregroundStyle(PivotTheme.blue) }
+        }.clipShape(RoundedRectangle(cornerRadius: 10)).task(id: entry.id) {
+            let exercise = TrainingExercise(id: "catalog:\(entry.id)", name: entry.displayName, sets: 1, reps: "1", restSeconds: 0, coachNotes: "", catalogID: entry.id)
+            if let guide = try? await WorkoutGuideCatalogLoader.shared.entries() {
+                url = WorkoutGuideCatalog.match(exercise, catalogEntry: entry, in: guide)?.imageURL()
+            }
+        }
+    }
 }
 
 struct ExercisePickerView: View {

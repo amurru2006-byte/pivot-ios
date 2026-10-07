@@ -225,6 +225,9 @@ struct TrainingSessionView: View {
                 VStack(spacing: 8) {
                     HStack {
                         Text("Serie \(setIndex + 1)").font(.subheadline.weight(.semibold))
+                        Picker("Tipo", selection: setKindBinding(exerciseIndex: index, setIndex: setIndex)) {
+                            ForEach(TrainingSetKind.allCases) { kind in Text(kind.label).tag(kind) }
+                        }.pickerStyle(.menu).labelsHidden()
                         Spacer()
                         Toggle("Fatta", isOn: Binding(get: { session.exercises[index].sets[setIndex].done }, set: { done in
                             let set = session.exercises[index].sets[setIndex]
@@ -233,12 +236,32 @@ struct TrainingSessionView: View {
                         })).fixedSize().disabled(!hasStarted).accessibilityIdentifier("set-done-\(exercise.id)-\(setIndex)")
                     }
                     HStack(spacing: 18) {
-                        DecimalField(title: "Carico", unit: "kg", value: $session.exercises[index].sets[setIndex].kg, identifier: "weight-\(exercise.id)-\(setIndex)")
+                        DecimalField(title: "Carico", unit: "kg", value: weightBinding(exerciseIndex: index, setIndex: setIndex), identifier: "weight-\(exercise.id)-\(setIndex)")
                         IntegerField(title: "Ripetizioni", value: $session.exercises[index].sets[setIndex].reps, identifier: "reps-\(exercise.id)-\(setIndex)")
+                    }
+                    if session.exercises[index].sets[setIndex].resolvedKind == .superset {
+                        TextField("Gruppo superset (es. A)", text: supersetBinding(exerciseIndex: index, setIndex: setIndex))
+                            .textInputAutocapitalization(.characters)
+                    }
+                    HStack {
+                        Toggle("A cedimento", isOn: failureBinding(exerciseIndex: index, setIndex: setIndex)).font(.caption)
+                        Spacer()
+                        if session.exercises[index].sets.count > 1 && !session.exercises[index].sets[setIndex].done {
+                            Button(role: .destructive) { removeSet(exerciseIndex: index, setIndex: setIndex) } label: {
+                                Label("Rimuovi", systemImage: "trash")
+                            }.font(.caption)
+                        }
                     }
                     Divider()
                 }
             }
+            HStack {
+                Button { addWarmup(exerciseIndex: index) } label: { Label("Riscaldamento", systemImage: "plus") }
+                Spacer()
+                Button { addWorkingSet(exerciseIndex: index) } label: { Label("Serie", systemImage: "plus") }
+            }.font(.subheadline.weight(.semibold)).disabled(!hasStarted || store.locked || session.exercises[index].sets.count >= 60)
+            Text("Tipi, cedimento e gruppi superset restano salvati per il prossimo allenamento. I carichi di riscaldamento seguono la stessa proporzione quando cambi il carico allenante.")
+                .font(.caption).foregroundStyle(PivotTheme.muted)
             TextField("Note di questa sessione…", text: $session.exercises[index].notes, axis: .vertical).lineLimit(2...5)
             Label("Promemoria tecnici · restano salvati", systemImage: "pin.fill").font(.subheadline.weight(.semibold))
             TextField("Panca livello 5, posizione, gomiti…", text: Binding(get: { tips[exercise.id] ?? "" }, set: { tips[exercise.id] = $0 }), axis: .vertical).lineLimit(3...8)
@@ -267,6 +290,65 @@ struct TrainingSessionView: View {
             guard store.change({ $0.training = library }) else { return }; session = updated
             message = applyToPlan ? "Esercizio e scheda aggiornati. Storico conservato." : "Esercizio aggiornato solo in questo allenamento."
         } catch { message = "Cambio non applicato: l'esercizio potrebbe essere già presente o avere serie fatte. Nessun dato precedente è stato eliminato." }
+    }
+    private func setKindBinding(exerciseIndex: Int, setIndex: Int) -> Binding<TrainingSetKind> {
+        Binding(get: { session.exercises[exerciseIndex].sets[setIndex].resolvedKind }, set: { kind in
+            session.exercises[exerciseIndex].sets[setIndex].kind = kind
+            if kind != .superset { session.exercises[exerciseIndex].sets[setIndex].supersetGroup = nil }
+            if kind != .warmup { session.exercises[exerciseIndex].sets[setIndex].loadFraction = nil }
+            else { TrainingSetTemplate.rememberWarmupFractions(in: &session.exercises[exerciseIndex].sets) }
+            save()
+        })
+    }
+    private func failureBinding(exerciseIndex: Int, setIndex: Int) -> Binding<Bool> {
+        Binding(get: { session.exercises[exerciseIndex].sets[setIndex].reachesFailure }, set: {
+            session.exercises[exerciseIndex].sets[setIndex].toFailure = $0
+        })
+    }
+    private func supersetBinding(exerciseIndex: Int, setIndex: Int) -> Binding<String> {
+        Binding(get: { session.exercises[exerciseIndex].sets[setIndex].supersetGroup ?? "" }, set: {
+            session.exercises[exerciseIndex].sets[setIndex].supersetGroup = String($0.prefix(20))
+        })
+    }
+    private func weightBinding(exerciseIndex: Int, setIndex: Int) -> Binding<Double?> {
+        Binding(get: { session.exercises[exerciseIndex].sets[setIndex].kg }, set: { value in
+            let kind = session.exercises[exerciseIndex].sets[setIndex].resolvedKind
+            session.exercises[exerciseIndex].sets[setIndex].kg = value
+            if kind == .warmup {
+                TrainingSetTemplate.rememberWarmupFractions(in: &session.exercises[exerciseIndex].sets)
+            } else if [.working, .superset].contains(kind) {
+                let target = TrainingSetTemplate.workingLoad(session.exercises[exerciseIndex].sets)
+                let missingFractions = session.exercises[exerciseIndex].sets.contains { $0.resolvedKind == .warmup && $0.kg != nil && $0.loadFraction == nil }
+                if missingFractions { TrainingSetTemplate.rememberWarmupFractions(in: &session.exercises[exerciseIndex].sets) }
+                TrainingSetTemplate.rescaleWarmups(in: &session.exercises[exerciseIndex].sets, workingLoad: target)
+            }
+        })
+    }
+    private func addWarmup(exerciseIndex: Int) {
+        var sets = session.exercises[exerciseIndex].sets
+        let warmupCount = sets.filter { $0.resolvedKind == .warmup }.count
+        let fractions = [0.5, 0.7, 0.85]
+        var set = TrainingSet(number: 1, kind: .warmup, loadFraction: fractions[min(warmupCount, fractions.count - 1)])
+        var candidate = [set]
+        TrainingSetTemplate.rescaleWarmups(in: &candidate, workingLoad: TrainingSetTemplate.workingLoad(sets))
+        set.kg = candidate[0].kg
+        let insertion = sets.firstIndex { $0.resolvedKind != .warmup } ?? sets.endIndex
+        sets.insert(set, at: insertion)
+        session.exercises[exerciseIndex].sets = TrainingSetTemplate.renumbered(sets)
+        save()
+    }
+    private func addWorkingSet(exerciseIndex: Int) {
+        var sets = session.exercises[exerciseIndex].sets
+        let previous = sets.last { $0.resolvedKind != .warmup }
+        sets.append(TrainingSet(number: sets.count + 1, kg: previous?.kg, reps: previous?.reps, kind: .working))
+        session.exercises[exerciseIndex].sets = TrainingSetTemplate.renumbered(sets)
+        save()
+    }
+    private func removeSet(exerciseIndex: Int, setIndex: Int) {
+        guard session.exercises[exerciseIndex].sets.indices.contains(setIndex), !session.exercises[exerciseIndex].sets[setIndex].done else { return }
+        session.exercises[exerciseIndex].sets.remove(at: setIndex)
+        session.exercises[exerciseIndex].sets = TrainingSetTemplate.renumbered(session.exercises[exerciseIndex].sets)
+        save()
     }
     @discardableResult private func save() -> Bool {
         guard !store.locked else { return false }

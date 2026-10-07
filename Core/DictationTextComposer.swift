@@ -44,4 +44,3 @@ struct DictationTextComposer: Equatable {
         return first + " " + second
     }
 }
-

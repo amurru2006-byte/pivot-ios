@@ -158,4 +158,3 @@ final class Pivot071Tests: XCTestCase {
         XCTAssertEqual(value, "Iniziamo dal pranzo. Bisogna trovare un buco per la palestra. senza saltare lo studio")
     }
 }
-

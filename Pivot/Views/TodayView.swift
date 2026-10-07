@@ -212,6 +212,8 @@ struct DayCheckInView: View {
     let day: Date
     @State private var check: DayCheckIn
     @State private var wake: Date
+    private var automaticSleep: Bool { check.sleep?.importedFromHealth == true }
+    private var automaticWake: Bool { automaticSleep && check.healthWakeTime != nil && (check.wakeTime == nil || check.wakeTime == check.healthWakeTime) }
     init(day: Date, initial: DayCheckIn?) {
         self.day = day
         _check = State(initialValue: initial ?? .init(id: PivotDate.key(day)))
@@ -222,7 +224,14 @@ struct DayCheckInView: View {
             PivotHeader(title: "Come stai?", subtitle: DisplayDate.label(day).capitalized)
             PivotCard(tint: PivotTheme.amber) {
                 Label("La tua mattina", systemImage: "sun.max.fill").font(.headline)
-                ClockField(title: "Sveglia reale", value: $check.wakeTime, fallback: wake)
+                if automaticWake, let value = check.healthWakeTime {
+                    HStack { Text("Sveglia da Salute"); Spacer(); Text(PivotDate.time(value)).font(.headline) }
+                    DisclosureGroup("Correggi soltanto se il dato non è giusto") {
+                        ClockField(title: "Sveglia reale", value: $check.wakeTime, fallback: value)
+                    }.font(.caption)
+                } else {
+                    ClockField(title: "Sveglia reale", value: $check.wakeTime, fallback: wake)
+                }
                 RatingField(title: "Energia", value: $check.energyMorning, metric: .energy, referenceDate: day)
                 RatingField(title: "Stanchezza", value: $check.fatigueMorning, metric: .fatigue, referenceDate: day)
                 RatingField(title: "Umore", value: $check.moodMorning, metric: .mood, referenceDate: day)
@@ -231,10 +240,20 @@ struct DayCheckInView: View {
                 Label("Sonno", systemImage: "bed.double.fill").font(.headline)
                 if check.sleep?.importedFromHealth == true {
                     Text("Da Salute · \(check.sleep?.durationSeconds.map(ActivityTiming.duration) ?? "—")").font(.title3.weight(.semibold))
-                    if let start = check.sleep?.bedtime { Text("\(PivotDate.shortDate(start)) · \(PivotDate.time(start))").font(.caption).foregroundStyle(PivotTheme.muted) }
-                } else { Text("Puoi leggere i dati da Salute oppure inserire quelli che vedi sull’Apple Watch.").font(.caption).foregroundStyle(PivotTheme.muted) }
-                Button("Leggi da Salute") { Task { await health.connect(store: store, events: calendar.events); if let latest = store.data.checkIns[check.id] { check.sleep = latest.sleep; check.healthWakeTime = latest.healthWakeTime; if check.wakeTime == nil { check.wakeTime = latest.wakeTime } } } }.buttonStyle(PivotSecondaryButton()).disabled(health.isRefreshing)
-                DisclosureGroup("Inserisci / correggi manualmente") {
+                    if let sleep = check.sleep, let start = sleep.bedtime {
+                        Text("\(PivotDate.shortDate(start)) \(PivotDate.time(start)) – \(check.healthWakeTime.map(PivotDate.time) ?? "—")").font(.caption).foregroundStyle(PivotTheme.muted)
+                        if let awakenings = sleep.awakenings { Text("Risvegli rilevati: \(awakenings)").font(.caption).foregroundStyle(PivotTheme.muted) }
+                    }
+                    Text("Non devi reinserire orari, durata o risvegli.").font(.caption).foregroundStyle(PivotTheme.accent)
+                } else if store.data.settings.healthEnabled == true {
+                    Text("Pivot aggiorna il sonno automaticamente da Salute. Per questa notte non ci sono ancora dati leggibili.").font(.caption).foregroundStyle(PivotTheme.muted)
+                } else {
+                    Text("Collega app Salute per compilare automaticamente orari, durata e risvegli.").font(.caption).foregroundStyle(PivotTheme.muted)
+                }
+                Button(store.data.settings.healthEnabled == true ? "Aggiorna ora da Salute" : "Collega app Salute") {
+                    Task { await refreshHealth() }
+                }.buttonStyle(PivotSecondaryButton()).disabled(health.isRefreshing || health.isConnecting)
+                DisclosureGroup(automaticSleep ? "Correggi manualmente soltanto se serve" : "Inserisci manualmente") {
                     ClockField(title: "A letto: data e ora", value: sleepBinding(\.bedtime), fallback: day.addingTimeInterval(-8 * 3600))
                     DurationField(title: "Tempo dormito", seconds: sleepBinding(\.durationSeconds), maxHours: 24)
                     IntegerField(title: "Punteggio sonno (0–100)", value: sleepBinding(\.score))
@@ -258,10 +277,23 @@ struct DayCheckInView: View {
                 if store.change({ $0.checkIns[check.id] = check }) { dismiss() }
             }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
         }.navigationTitle("Check-in")
+            .task {
+                if store.data.settings.healthEnabled == true && !automaticSleep { await refreshHealth() }
+            }
     }
     private func sleepBinding<T>(_ path: WritableKeyPath<SleepRecord, T>) -> Binding<T> {
         Binding(get: { (check.sleep ?? SleepRecord())[keyPath: path] }, set: { value in
             var sleep = check.sleep ?? SleepRecord(); sleep[keyPath: path] = value; sleep.importedFromHealth = false; check.sleep = sleep
         })
+    }
+    private func refreshHealth() async {
+        if store.data.settings.healthEnabled == true { await health.refresh(store: store, events: calendar.events, force: true) }
+        else { await health.connect(store: store, events: calendar.events) }
+        if let latest = store.data.checkIns[check.id] {
+            let wasAutomatic = check.wakeTime == nil || check.wakeTime == check.healthWakeTime
+            check.sleep = latest.sleep
+            check.healthWakeTime = latest.healthWakeTime
+            if wasAutomatic { check.wakeTime = latest.wakeTime }
+        }
     }
 }
