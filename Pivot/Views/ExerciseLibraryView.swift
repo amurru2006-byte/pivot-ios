@@ -50,7 +50,7 @@ struct ExerciseGroupBar: View {
                         .background(selection == group ? PivotTheme.accent : PivotTheme.raised, in: Capsule())
                 }
             }
-        }.accessibilityLabel("Filtra per gruppo muscolare principale")
+        }.accessibilityLabel("Filtra per gruppo muscolare principale").accessibilityIdentifier("exercise-group-bar")
     }
 }
 
@@ -232,7 +232,7 @@ struct ExerciseImagePickerView: View {
                     Text("Principale: \(entry.muscleSummary) · \(entry.equipmentLabel)").font(.caption).foregroundStyle(PivotTheme.blue)
                 }
             }
-        }.buttonStyle(.plain)
+        }.buttonStyle(.plain).accessibilityIdentifier("catalog-image-\(entry.id)")
     }
 }
 
