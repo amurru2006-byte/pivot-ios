@@ -136,6 +136,25 @@ final class InterfaceAndTrainingTests: XCTestCase {
         XCTAssertEqual(session.exercises.count, 1); XCTAssertEqual(session.exercises[0].id, "bench")
         XCTAssertEqual(session.dayID, "a")
     }
+    func testBrowsingOrEditingWorkoutNotesDoesNotOverwriteCorrectedActivityClock() {
+        let library = library(), plan = library.plans[0], event = event()
+        var session = library.makeSession(plan: plan, day: plan.payload.days[0], eventID: event.id, now: event.start)
+        session.end = event.end
+        let previous = session
+        var record = EventRecord(id: event.id, snapshot: event)
+        record.status = .completed; record.actualStart = event.start.addingTimeInterval(600)
+        record.actualEnd = event.end.addingTimeInterval(1800); record.activeMinutes = 70
+        record.notes = "Correzione salvata"; record.energy = 4
+        session.notes = "Nuova nota palestra"
+        let unchanged = TrainingTiming.merging(session, previous: previous, into: record)
+        XCTAssertEqual(unchanged.actualStart, record.actualStart); XCTAssertEqual(unchanged.actualEnd, record.actualEnd)
+        XCTAssertEqual(unchanged.activeMinutes, 70); XCTAssertEqual(unchanged.energy, 4)
+        // Explicitly changing the workout clock is a new user correction.
+        session.start = event.start.addingTimeInterval(-600)
+        let changed = TrainingTiming.merging(session, previous: previous, into: record)
+        XCTAssertEqual(changed.actualStart, session.start); XCTAssertEqual(changed.actualEnd, session.end)
+        XCTAssertEqual(changed.notes, record.notes); XCTAssertEqual(changed.energy, 4)
+    }
     func testOfflineCatalogHasMusclesUniqueIDsAndNoWrongBenchVariantImage() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let entries = try ExerciseCatalog.load(from: root.appendingPathComponent("Pivot/Resources/exercises.json"))

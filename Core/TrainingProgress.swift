@@ -66,3 +66,18 @@ enum TrainingEdits {
         })
     }
 }
+
+enum TrainingTiming {
+    static func merging(_ session: TrainingSession, previous: TrainingSession?, into record: EventRecord, now: Date = Date()) -> EventRecord {
+        // Opening/closing the workout diary or editing sets/notes is not a timer edit.
+        // A manually corrected activity must not be replaced by an older session clock.
+        guard previous == nil || previous?.start != session.start || previous?.end != session.end else { return record }
+        var updated = record
+        updated.actualStart = session.start; updated.actualEnd = session.end
+        updated.timingFromCalendar = false
+        updated.activeMinutes = max(0, Int((session.end ?? now).timeIntervalSince(session.start) / 60))
+        updated.status = session.end == nil ? .running : .completed
+        updated.updatedAt = now
+        return updated
+    }
+}
