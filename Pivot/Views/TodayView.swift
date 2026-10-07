@@ -113,7 +113,7 @@ struct TodayView: View {
                     }.font(.subheadline).foregroundStyle(PivotTheme.muted)
                 }
                 Button { showHealth = true } label: {
-                    Label(store.data.settings.healthEnabled == true ? "Salute e attività rilevate" : "Collega Salute e Apple Watch", systemImage: "heart.text.square")
+                    Label(store.data.settings.healthEnabled == true ? "Salute e attività rilevate" : "Collega app Salute", systemImage: "heart.text.square")
                 }.font(.caption).foregroundStyle(PivotTheme.muted)
                 if let sync = calendar.lastRefresh {
                     Label("Calendario aggiornato alle \(PivotDate.time(sync))", systemImage: "arrow.triangle.2.circlepath").font(.caption2).foregroundStyle(PivotTheme.muted).accessibilityIdentifier("calendar-updated")
@@ -153,7 +153,7 @@ struct TodayView: View {
             PivotScreen {
                 PivotHeader(title: "Salute", subtitle: "Dati disponibili, senza registrare tutto a mano")
                 Text(health.status).font(.subheadline).foregroundStyle(PivotTheme.muted)
-                Button("Collega / aggiorna Salute") { Task { await health.connect(store: store, events: calendar.events) } }.buttonStyle(PivotPrimaryButton()).disabled(health.isRefreshing || store.locked)
+                Button(store.data.settings.healthEnabled == true ? "Aggiorna dati da Salute" : "Collega app Salute") { Task { await health.connect(store: store, events: calendar.events) } }.buttonStyle(PivotPrimaryButton()).disabled(health.isRefreshing || store.locked)
                 if let sleep = health.sleep(on: day) {
                     PivotCard { Label("Sonno rilevato", systemImage: "bed.double.fill"); Text(ActivityTiming.duration(sleep.durationSeconds)).font(.title2.bold()); Text("\(PivotDate.shortDate(sleep.start)) \(PivotDate.time(sleep.start)) – \(PivotDate.time(sleep.end))").font(.caption) }
                 }

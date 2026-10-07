@@ -28,8 +28,15 @@ final class HealthService: ObservableObject {
             guard store.change({ $0.settings.healthEnabled = true }) else { return }
             await refresh(store: store, events: events, force: true)
         } catch {
-            status = "Collegamento non riuscito: \(error.localizedDescription). Verifica le autorizzazioni e la firma AltStore."
+            status = Self.connectionMessage(for: error)
         }
+    }
+    private static func connectionMessage(for error: Error) -> String {
+        let details = error.localizedDescription.lowercased()
+        if details.contains("com.apple.developer.healthkit") || details.contains("missing entitlement") {
+            return "Questa installazione non può accedere all’app Salute: la firma usata per installare Pivot non include HealthKit. Reinstalla Pivot con un profilo Apple che abiliti Salute."
+        }
+        return "Non è stato possibile collegare l’app Salute. Controlla in Salute → profilo → App → Pivot e riprova. Dettaglio: \(error.localizedDescription)"
     }
     func refresh(store: PivotStore, events: [CalendarItem], force: Bool = false) async {
         guard !PreviewMode.enabled, store.data.settings.healthEnabled == true, !store.locked, !store.isRestoring, !store.isLoading, !isRefreshing else { return }

@@ -35,6 +35,25 @@ struct ExerciseProgress {
 }
 
 enum TrainingEdits {
+    static func associateCatalog(exerciseID: String, catalogID: String, library: inout TrainingLibrary) throws {
+        guard !exerciseID.isEmpty, !catalogID.isEmpty else { throw TrainingError.invalidPlan }
+        var updated = library
+        var found = false
+        for planIndex in updated.plans.indices {
+            for dayIndex in updated.plans[planIndex].payload.days.indices {
+                for exerciseIndex in updated.plans[planIndex].payload.days[dayIndex].exercises.indices where updated.plans[planIndex].payload.days[dayIndex].exercises[exerciseIndex].id == exerciseID {
+                    updated.plans[planIndex].payload.days[dayIndex].exercises[exerciseIndex].catalogID = catalogID; found = true
+                }
+            }
+        }
+        for sessionIndex in updated.sessions.indices {
+            for exerciseIndex in updated.sessions[sessionIndex].exercises.indices where updated.sessions[sessionIndex].exercises[exerciseIndex].id == exerciseID {
+                updated.sessions[sessionIndex].exercises[exerciseIndex].exercise.catalogID = catalogID; found = true
+            }
+        }
+        guard found else { throw TrainingError.invalidPlan }
+        try updated.validate(); library = updated
+    }
     static func revise(planID: UUID, payload: TrainingPlanPayload, note: String, library: inout TrainingLibrary, now: Date = Date()) throws {
         try payload.validate()
         guard let index = library.plans.firstIndex(where: { $0.id == planID }) else { throw TrainingError.invalidPlan }

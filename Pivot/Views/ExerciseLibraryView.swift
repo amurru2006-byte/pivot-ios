@@ -11,6 +11,49 @@ actor ExerciseCatalogLoader {
     }
 }
 
+enum ExerciseMuscleGroup: String, CaseIterable, Identifiable {
+    case all, chest, back, shoulders, arms, legs, core, unresolved
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .all: "Tutti"; case .chest: "Petto"; case .back: "Schiena"; case .shoulders: "Spalle"
+        case .arms: "Braccia"; case .legs: "Gambe"; case .core: "Core"; case .unresolved: "Da associare"
+        }
+    }
+    func matches(_ entry: CatalogExercise?) -> Bool {
+        guard self != .all else { return true }
+        guard let entry else { return self == .unresolved }
+        let muscles = Set(entry.primaryMuscles)
+        switch self {
+        case .chest: return muscles.contains("chest")
+        case .back: return !muscles.isDisjoint(with: ["lats", "middle back", "lower back", "traps"])
+        case .shoulders: return muscles.contains("shoulders")
+        case .arms: return !muscles.isDisjoint(with: ["biceps", "triceps", "forearms"])
+        case .legs: return !muscles.isDisjoint(with: ["quadriceps", "hamstrings", "glutes", "calves", "adductors", "abductors"])
+        case .core: return muscles.contains("abdominals")
+        case .unresolved: return false
+        case .all: return true
+        }
+    }
+}
+
+struct ExerciseGroupBar: View {
+    @Binding var selection: ExerciseMuscleGroup
+    var includeUnresolved = true
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(ExerciseMuscleGroup.allCases.filter { includeUnresolved || $0 != .unresolved }) { group in
+                    Button(group.label) { selection = group }
+                        .font(.caption.weight(.semibold)).padding(.horizontal, 13).padding(.vertical, 8)
+                        .foregroundStyle(selection == group ? Color.black : PivotTheme.text)
+                        .background(selection == group ? PivotTheme.accent : PivotTheme.raised, in: Capsule())
+                }
+            }
+        }.accessibilityLabel("Filtra per gruppo muscolare principale")
+    }
+}
+
 struct ExerciseThumbnail: View {
     let exercise: TrainingExercise
     @State private var photoURL: URL?
@@ -51,22 +94,31 @@ struct ExerciseThumbnail: View {
 struct ExerciseGalleryView: View {
     @EnvironmentObject private var store: PivotStore
     @State private var exercises: [TrainingExercise] = []
+    @State private var catalogByExerciseID: [String: CatalogExercise] = [:]
+    @State private var catalogReady = false
+    @State private var group: ExerciseMuscleGroup = .all
+    private var visibleExercises: [TrainingExercise] { exercises.filter { group.matches(catalogByExerciseID[$0.id]) } }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             SectionHeading(title: "I tuoi esercizi", detail: "Tocca per i progressi")
+            ExerciseGroupBar(selection: $group)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
-                ForEach(exercises) { exercise in
-                    NavigationLink { ExerciseStatisticsView(exercise: exercise) } label: {
-                        VStack(alignment: .leading, spacing: 9) {
+                ForEach(visibleExercises) { exercise in
+                    VStack(alignment: .leading, spacing: 9) {
+                        NavigationLink { ExerciseStatisticsView(exercise: exercise) } label: {
+                            VStack(alignment: .leading, spacing: 9) {
                             ExerciseThumbnail(exercise: exercise).frame(height: 110)
                             Text(exercise.name).font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.text)
                             Text("Storico e statistiche").font(.caption).foregroundStyle(PivotTheme.muted)
-                        }.padding(10).background(PivotTheme.surface, in: RoundedRectangle(cornerRadius: 18))
-                    }.buttonStyle(.plain).accessibilityIdentifier("exercise-statistics-\(exercise.id)")
+                            }
+                        }.buttonStyle(.plain).accessibilityIdentifier("exercise-statistics-\(exercise.id)")
+                        if catalogReady && catalogByExerciseID[exercise.id] == nil { ExerciseImageAssignmentButton(exercise: exercise) }
+                    }.padding(10).background(PivotTheme.surface, in: RoundedRectangle(cornerRadius: 18))
                 }
             }
         }.task(id: store.data.updatedAt) {
             let library = store.data.training ?? TrainingLibrary()
+            let entries = (try? await ExerciseCatalogLoader.shared.entries()) ?? []
             let result = await Task.detached(priority: .utility) {
                 var result: [TrainingExercise] = [], seen = Set<String>()
                 let active = library.activePlan.map { [$0] } ?? []
@@ -80,10 +132,104 @@ struct ExerciseGalleryView: View {
                 for session in library.sessions.sorted(by: { $0.start < $1.start }) {
                     for log in session.exercises where seen.insert(log.id).inserted { historyOnly.append(log.exercise) }
                 }
-                return result + historyOnly.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                let ordered = result + historyOnly.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                return (ordered, Dictionary(uniqueKeysWithValues: ordered.compactMap { exercise in
+                    ExerciseCatalog.match(exercise, in: entries).map { (exercise.id, $0) }
+                }))
             }.value
-            guard !Task.isCancelled else { return }; exercises = result
+            guard !Task.isCancelled else { return }
+            exercises = result.0; catalogByExerciseID = result.1; catalogReady = true
         }
+    }
+}
+
+struct ExerciseImageAssignmentButton: View {
+    @EnvironmentObject private var store: PivotStore
+    let exercise: TrainingExercise
+    @State private var choosing = false
+    @State private var message: String?
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button("Scegli tu l'immagine") { choosing = true }
+                .font(.caption.weight(.bold)).foregroundStyle(.red)
+                .accessibilityIdentifier("choose-exercise-image-\(exercise.id)")
+            if let message { Text(message).font(.caption2).foregroundStyle(PivotTheme.amber) }
+        }.sheet(isPresented: $choosing) {
+            ExerciseImagePickerView(exercise: exercise) { entry in
+                do {
+                    var library = store.data.training ?? TrainingLibrary()
+                    try TrainingEdits.associateCatalog(exerciseID: exercise.id, catalogID: entry.id, library: &library)
+                    if store.change({ $0.training = library }) { message = "Immagine associata." }
+                } catch { message = "Non sono riuscito ad associare l'immagine." }
+                choosing = false
+            }
+        }
+    }
+}
+
+struct ExerciseImagePickerView: View {
+    @Environment(\.dismiss) private var dismiss
+    let exercise: TrainingExercise
+    let onSelect: (CatalogExercise) -> Void
+    @State private var entries: [CatalogExercise] = []
+    @State private var query = ""
+    @State private var group: ExerciseMuscleGroup = .all
+    @State private var showAll = false
+    @State private var error: String?
+    private var suggestions: [CatalogExercise] { ExerciseCatalog.suggestions(for: exercise, in: entries) }
+    private var filtered: [CatalogExercise] {
+        let search = EventCoalescer.normalized(query)
+        return entries.filter { entry in
+            group.matches(entry) && (search.isEmpty || EventCoalescer.normalized(entry.name + " " + entry.displayName + " " + entry.muscleSummary + " " + entry.equipmentLabel).contains(search))
+        }
+    }
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text("Scegli soltanto la variante che corrisponde davvero all'esercizio. Cambia l'immagine e i muscoli mostrati, non il nome, la scheda o lo storico.").font(.caption)
+                } header: { Text(exercise.name) }
+                if !suggestions.isEmpty {
+                    Section("Varianti suggerite") {
+                        ForEach(suggestions) { entry in catalogRow(entry) }
+                    }
+                }
+                if !showAll {
+                    Section {
+                        Button("Non c'è? Cerca in tutto il catalogo") { showAll = true }
+                    }
+                } else {
+                    Section("Gruppo muscolare principale") { ExerciseGroupBar(selection: $group, includeUnresolved: false) }
+                    Section("Catalogo completo · \(filtered.count) risultati") {
+                        ForEach(Array(filtered.prefix(150))) { entry in catalogRow(entry) }
+                        if filtered.count > 150 { Text("Affina nome o gruppo muscolare per vedere gli altri risultati.").font(.caption) }
+                    }
+                }
+                if let error { Text(error).foregroundStyle(PivotTheme.amber) }
+            }.navigationTitle("Scegli immagine")
+                .searchable(text: $query, prompt: "Nome, muscolo o attrezzo")
+                .onChange(of: query) { _, value in if !value.isEmpty { showAll = true } }
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Annulla") { dismiss() } } }
+                .task {
+                    do { entries = try await ExerciseCatalogLoader.shared.entries() }
+                    catch { error = "Catalogo non disponibile." }
+                }
+        }
+    }
+    private func catalogRow(_ entry: CatalogExercise) -> some View {
+        Button { onSelect(entry) } label: {
+            HStack(spacing: 12) {
+                AsyncImage(url: entry.photoURL) { phase in
+                    if case .success(let image) = phase { image.resizable().scaledToFit() }
+                    else { Image(systemName: "photo").foregroundStyle(PivotTheme.blue) }
+                }.frame(width: 68, height: 68).background(.white, in: RoundedRectangle(cornerRadius: 10))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(entry.displayName).foregroundStyle(PivotTheme.text)
+                    if entry.displayName != entry.name { Text(entry.name).font(.caption2).foregroundStyle(PivotTheme.muted) }
+                    Text("Principale: \(entry.muscleSummary) · \(entry.equipmentLabel)").font(.caption).foregroundStyle(PivotTheme.blue)
+                }
+            }
+        }.buttonStyle(.plain)
     }
 }
 
@@ -93,10 +239,12 @@ struct ExerciseStatisticsView: View {
     var current: TrainingSession? = nil
     @State private var progress = ExerciseProgress(performances: [])
     @State private var catalogEntry: CatalogExercise?
+    @State private var catalogReady = false
     var body: some View {
         PivotScreen {
             PivotHeader(title: exercise.name, subtitle: "Solo serie fatte · stesso esercizio e stesso identificativo.")
             ExerciseThumbnail(exercise: exercise).frame(maxWidth: .infinity).frame(height: 210)
+            if catalogReady && catalogEntry == nil { ExerciseImageAssignmentButton(exercise: exercise) }
             if let entry = catalogEntry {
                 PivotCard {
                     Text("Principali: \(entry.muscleSummary)").font(.subheadline.weight(.semibold))
@@ -143,6 +291,7 @@ struct ExerciseStatisticsView: View {
                 let result = await Task.detached(priority: .utility) { ExerciseProgress.calculate(exerciseID: id, library: library, current: current) }.value
                 guard !Task.isCancelled else { return }; progress = result
                 if let entries = try? await ExerciseCatalogLoader.shared.entries() { catalogEntry = ExerciseCatalog.match(exercise, in: entries) }
+                catalogReady = true
             }
     }
     private func kg(_ value: Double?) -> String { value.map { "\($0.formatted(.number.precision(.fractionLength(1)))) kg" } ?? "—" }
@@ -155,14 +304,14 @@ struct ExercisePickerView: View {
     @State private var entries: [CatalogExercise] = []
     @State private var known: [TrainingExercise] = []
     @State private var query = ""
-    @State private var muscle = ""
+    @State private var group: ExerciseMuscleGroup = .all
     @State private var equipment = ""
     @State private var customName = ""
     @State private var error: String?
     private var filtered: [CatalogExercise] {
         let search = EventCoalescer.normalized(query)
         return entries.filter {
-            (muscle.isEmpty || $0.primaryMuscles.contains(muscle)) && (equipment.isEmpty || $0.equipment == equipment)
+            group.matches($0) && (equipment.isEmpty || $0.equipment == equipment)
             && (search.isEmpty || EventCoalescer.normalized($0.name + " " + $0.displayName + " " + $0.muscleSummary + " " + $0.equipmentLabel).contains(search))
         }
     }
@@ -170,10 +319,8 @@ struct ExercisePickerView: View {
         NavigationStack {
             List {
                 Section("Filtra il catalogo offline") {
-                    Picker("Muscoli principali", selection: $muscle) {
-                        Text("Tutti").tag("")
-                        ForEach(ExerciseCatalog.muscleNames.keys.sorted(), id: \.self) { Text(ExerciseCatalog.muscleNames[$0] ?? $0).tag($0) }
-                    }
+                    Text("Gruppo muscolare principale").font(.caption.weight(.semibold))
+                    ExerciseGroupBar(selection: $group, includeUnresolved: false)
                     Picker("Attrezzo", selection: $equipment) {
                         Text("Tutti").tag("")
                         ForEach(ExerciseCatalog.equipmentNames.keys.sorted(), id: \.self) { Text(ExerciseCatalog.equipmentNames[$0] ?? $0).tag($0) }

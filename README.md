@@ -1,3 +1,11 @@
+## 0.7.2 — palestra illustrata e grafici delle entrate
+
+- Le giornate e gli esercizi seguono l'ordine della scheda; l'editor permette di spostare i giorni.
+- Le tessere usano le immagini di free-exercise-db. Per nomi ambigui l'utente sceglie prima fra varianti suggerite e poi, se serve, nell'intero catalogo.
+- Galleria e ricerca filtrano per gruppo muscolare principale.
+- Il riepilogo Entrate è un pannello scorrevole con grafici a barre, linea o area per 30 giorni, 12 mesi, anno scelto o tutti gli anni.
+- Il comando Salute si chiama «Collega app Salute». Un'installazione rifirmata senza HealthKit viene spiegata in modo leggibile; progetto e IPA dichiarano la capacità, ma anche il profilo Apple usato dall'installatore deve conservarla.
+
 ## 0.7.1 — fluidità e studenti dal calendario
 
 - Salvataggi in background, seriali e raggruppati; stato e retry in Impostazioni → Prestazioni e salvataggio. I dati accettati in memoria vengono conservati in attesa del retry se il disco non è disponibile. Backup precedenti conservati e flush prima delle operazioni esterne.

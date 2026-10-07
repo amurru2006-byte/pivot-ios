@@ -1,4 +1,27 @@
 import SwiftUI
+import Charts
+
+private enum IncomeChartRange: String, CaseIterable, Identifiable {
+    case days, months, year, years
+    var id: String { rawValue }
+    var label: String {
+        switch self { case .days: "30 giorni"; case .months: "12 mesi"; case .year: "Anno scelto"; case .years: "Tutti gli anni" }
+    }
+}
+
+private enum IncomeChartStyle: String, CaseIterable, Identifiable {
+    case bars, line, area
+    var id: String { rawValue }
+    var label: String { switch self { case .bars: "Barre"; case .line: "Linea"; case .area: "Area" } }
+}
+
+private struct IncomeChartPoint: Identifiable {
+    var id: String { key }
+    var key: String
+    var label: String
+    var amountCents: Int
+    var euros: Double { Double(amountCents) / 100 }
+}
 
 struct IncomeView: View {
     @EnvironmentObject var store: PivotStore
@@ -9,6 +32,9 @@ struct IncomeView: View {
     @State private var exportFile: URL?
     @State private var exporting = false
     @State private var editingOpening = false
+    @State private var balancePage = 0
+    @State private var chartRange: IncomeChartRange = .year
+    @State private var chartStyle: IncomeChartStyle = .bars
     var currentYear: Int { PivotDate.calendar.component(.year, from: Date()) }
     var year: Int { selectedYear ?? currentYear }
     var ledger: AnnualLedger { store.data.ledger ?? AnnualLedger() }
@@ -26,7 +52,7 @@ struct IncomeView: View {
         NavigationStack {
             PivotScreen {
                 PivotHeader(title: "Le tue entrate", subtitle: "Ripetizioni, incassi e pagamenti da ricordare.")
-                balance
+                balanceCarousel
                 HStack {
                     Button { editingOpening = true } label: { Label("Importo pregresso", systemImage: "slider.horizontal.3") }.buttonStyle(PivotSecondaryButton()).disabled(store.locked)
                     Button {
@@ -118,6 +144,14 @@ struct IncomeView: View {
                 .sheet(isPresented: $editingOpening) { OpeningIncomeForm(year: year) }
         }
     }
+    private var balanceCarousel: some View {
+        TabView(selection: $balancePage) {
+            balance.tag(0)
+            incomeChart.tag(1)
+        }.tabViewStyle(.page(indexDisplayMode: .always)).frame(height: 350)
+            .accessibilityLabel("Riepilogo e grafico delle entrate, scorri orizzontalmente")
+            .accessibilityIdentifier("income-carousel")
+    }
     private var balance: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
@@ -135,9 +169,76 @@ struct IncomeView: View {
                 Label(progress >= 1 ? "Riferimento INPS raggiunto: verifica gli adempimenti" : "Ti avvicini al riferimento INPS: \(Money.display(max(0, ledger.referenceCents - annualTotal))) rimanenti", systemImage: "exclamationmark.triangle.fill").font(.caption.weight(.semibold)).foregroundStyle(balanceColor)
             }
             Text("Riferimento INPS 5.000 € · avviso da 4.500 €. Non è un limite esente da tasse. Il nuovo anno riparte da zero, senza cancellare lo storico.").font(.caption).foregroundStyle(PivotTheme.muted)
-        }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
+        }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(LinearGradient(colors: [Color(pivotHex: "22493F"), Color(pivotHex: "1C2C41"), PivotTheme.surface], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 26))
             .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(PivotTheme.accent.opacity(0.18)))
+    }
+    private var incomeChart: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Andamento incassi", systemImage: "chart.xyaxis.line").font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.blue)
+                Spacer()
+                Picker("Intervallo", selection: $chartRange) { ForEach(IncomeChartRange.allCases) { Text($0.label).tag($0) } }.pickerStyle(.menu)
+            }
+            HStack {
+                Text(chartRange == .year ? String(year) : chartRange.label).font(.caption).foregroundStyle(PivotTheme.muted)
+                Spacer()
+                Picker("Tipo di grafico", selection: $chartStyle) { ForEach(IncomeChartStyle.allCases) { Text($0.label).tag($0) } }.pickerStyle(.menu)
+            }
+            if chartPoints.allSatisfy({ $0.amountCents == 0 }) {
+                Spacer()
+                ContentUnavailableView("Nessun incasso datato", systemImage: "chart.bar", description: Text("Registra un pagamento per costruire il grafico."))
+                Spacer()
+            } else {
+                Chart(chartPoints) { point in
+                    switch chartStyle {
+                    case .bars:
+                        BarMark(x: .value("Periodo", point.label), y: .value("Euro", point.euros)).foregroundStyle(PivotTheme.accent.gradient)
+                    case .line:
+                        LineMark(x: .value("Periodo", point.label), y: .value("Euro", point.euros)).foregroundStyle(PivotTheme.blue).interpolationMethod(.catmullRom)
+                        PointMark(x: .value("Periodo", point.label), y: .value("Euro", point.euros)).foregroundStyle(PivotTheme.blue)
+                    case .area:
+                        AreaMark(x: .value("Periodo", point.label), y: .value("Euro", point.euros)).foregroundStyle(LinearGradient(colors: [PivotTheme.blue.opacity(0.65), PivotTheme.blue.opacity(0.08)], startPoint: .top, endPoint: .bottom))
+                        LineMark(x: .value("Periodo", point.label), y: .value("Euro", point.euros)).foregroundStyle(PivotTheme.blue)
+                    }
+                }.chartYScale(domain: 0...max(1, (chartPoints.map(\.euros).max() ?? 0) * 1.15))
+                    .chartYAxisLabel("€").frame(height: 205)
+            }
+            Text(chartRange == .years ? "La vista annuale comprende anche gli importi pregressi." : "Giorni e mesi mostrano soltanto pagamenti con una data; l'importo pregresso resta nel totale annuale.")
+                .font(.caption2).foregroundStyle(PivotTheme.muted)
+        }.padding(20).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(PivotTheme.surface, in: RoundedRectangle(cornerRadius: 26))
+            .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(PivotTheme.blue.opacity(0.2)))
+            .accessibilityIdentifier("income-chart")
+    }
+    private var chartPoints: [IncomeChartPoint] {
+        let calendar = PivotDate.calendar
+        switch chartRange {
+        case .days:
+            let today = calendar.startOfDay(for: Date())
+            return (0..<30).reversed().compactMap { offset in
+                guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else { return nil }
+                let next = calendar.date(byAdding: .day, value: 1, to: date)!
+                let cents = store.data.payments.filter { $0.date >= date && $0.date < next }.reduce(0) { $0 + $1.amountCents }
+                return IncomeChartPoint(key: PivotDate.dayKey(date), label: DisplayDate.label(date, format: "d/M"), amountCents: cents)
+            }
+        case .months:
+            let now = Date(), components = calendar.dateComponents([.year, .month], from: now)
+            guard let currentMonth = calendar.date(from: components) else { return [] }
+            return (0..<12).reversed().compactMap { offset in
+                guard let date = calendar.date(byAdding: .month, value: -offset, to: currentMonth), let next = calendar.date(byAdding: .month, value: 1, to: date) else { return nil }
+                let cents = store.data.payments.filter { $0.date >= date && $0.date < next }.reduce(0) { $0 + $1.amountCents }
+                return IncomeChartPoint(key: DisplayDate.label(date, format: "yyyy-MM"), label: DisplayDate.label(date, format: "MMM yy"), amountCents: cents)
+            }
+        case .year:
+            return (1...12).compactMap { month in
+                guard let date = calendar.date(from: DateComponents(year: year, month: month, day: 1)), let next = calendar.date(byAdding: .month, value: 1, to: date) else { return nil }
+                let cents = store.data.payments.filter { $0.date >= date && $0.date < next }.reduce(0) { $0 + $1.amountCents }
+                return IncomeChartPoint(key: "\(year)-\(month)", label: DisplayDate.label(date, format: "MMM"), amountCents: cents)
+            }
+        case .years:
+            return years.reversed().map { value in IncomeChartPoint(key: String(value), label: String(value), amountCents: ledger.total(year: value, payments: store.data.payments)) }
+        }
     }
     private func avatar(_ name: String) -> some View {
         Text(String(name.prefix(1)).uppercased()).font(.system(.headline, design: .rounded)).foregroundStyle(PivotTheme.blue)

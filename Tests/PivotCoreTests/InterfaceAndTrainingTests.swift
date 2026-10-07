@@ -186,4 +186,24 @@ final class InterfaceAndTrainingTests: XCTestCase {
         let ambiguous = TrainingExercise(id: "legacy-lunge", name: "Lunges", sets: 3, reps: "8", restSeconds: 90, coachNotes: "")
         XCTAssertNil(ExerciseCatalog.match(ambiguous, in: entries))
     }
+    func testAmbiguousExerciseGetsRelevantImageSuggestionsWithoutAutomaticMerge() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let entries = try ExerciseCatalog.load(from: root.appendingPathComponent("Pivot/Resources/exercises.json"))
+        let lunges = TrainingExercise(id: "legacy-lunges", name: "Lunges", sets: 3, reps: "10", restSeconds: 60, coachNotes: "")
+        XCTAssertNil(ExerciseCatalog.match(lunges, in: entries))
+        let suggestions = ExerciseCatalog.suggestions(for: lunges, in: entries)
+        XCTAssertFalse(suggestions.isEmpty)
+        XCTAssertTrue(suggestions.allSatisfy { EventCoalescer.normalized($0.name).contains("lunge") })
+    }
+    func testChoosingCatalogImagePreservesExerciseIdentityAndUpdatesPlanAndHistory() throws {
+        var library = library(); let plan = library.plans[0]
+        var session = library.makeSession(plan: plan, day: plan.payload.days[0], eventID: nil)
+        session.exercises[0].sets[0] = .init(number: 1, kg: 50, reps: 8, done: true)
+        library.sessions = [session]
+        try TrainingEdits.associateCatalog(exerciseID: "bench", catalogID: "Barbell_Bench_Press_-_Medium_Grip", library: &library)
+        XCTAssertEqual(library.plans[0].payload.days[0].exercises[0].id, "bench")
+        XCTAssertEqual(library.plans[0].payload.days[0].exercises[0].catalogID, "Barbell_Bench_Press_-_Medium_Grip")
+        XCTAssertEqual(library.sessions[0].exercises[0].exercise.catalogID, "Barbell_Bench_Press_-_Medium_Grip")
+        XCTAssertTrue(library.sessions[0].exercises[0].sets[0].done)
+    }
 }

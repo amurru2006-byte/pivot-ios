@@ -93,7 +93,7 @@ struct SettingsView: View {
     PivotCard(tint: PivotTheme.accent) {
         Label("Salute e Apple Watch", systemImage: "heart.text.square.fill").font(.headline)
         Text(health.status).font(.subheadline).foregroundStyle(PivotTheme.muted)
-        Button("Collega / verifica Salute") { Task { await health.connect(store: store, events: calendar.events); settings = store.data.settings } }
+        Button("Collega app Salute") { Task { await health.connect(store: store, events: calendar.events); settings = store.data.settings } }
             .buttonStyle(PivotPrimaryButton()).disabled(health.isRefreshing || store.locked)
         Button("Aggiorna dati da Salute") { Task { await health.refresh(store: store, events: calendar.events, force: true) } }
             .buttonStyle(PivotSecondaryButton()).disabled(health.isRefreshing || store.data.settings.healthEnabled != true)
