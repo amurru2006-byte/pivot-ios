@@ -8,8 +8,8 @@ settings:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "1,2"
     CODE_SIGNING_ALLOWED: NO
-    MARKETING_VERSION: "0.7.3"
-    CURRENT_PROJECT_VERSION: "17"
+    MARKETING_VERSION: "0.7.4"
+    CURRENT_PROJECT_VERSION: "18"
 packages:
   LLM:
     url: https://github.com/eastriverlee/LLM.swift.git
@@ -73,4 +73,3 @@ schemes:
     test:
       targets:
         - PivotUITests
-
