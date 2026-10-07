@@ -30,6 +30,7 @@ struct SettingsView: View {
                     settingsLink("Studio ed esami", subtitle: "Priorità e recuperi", icon: "graduationcap.fill") { studySettings }
                     settingsLink("Energia e riferimenti", subtitle: "Obiettivi dei valori da 0 a 10", icon: "chart.dots.scatter") { ratingSettings }
                     settingsLink("Prestazioni e salvataggio", subtitle: "Tempi di caricamento e stato dei dati", icon: "speedometer") { PerformanceView() }
+                    settingsLink("Crediti e licenze", subtitle: "Cataloghi e illustrazioni", icon: "doc.text.magnifyingglass") { creditsSettings }
                 }
                 Text("Le impostazioni si salvano automaticamente.").font(.caption).foregroundStyle(PivotTheme.muted)
 
@@ -87,6 +88,18 @@ struct SettingsView: View {
                 }
             }
             Text("Obiettivo dorato, media storica blu. La media usa le 4 settimane complete precedenti alla settimana dell'evento: prima la media di ogni settimana, poi la media delle settimane con dati. I valori non indicati non sono zeri. Questi riferimenti non compilano le tue sensazioni.").font(.caption).foregroundStyle(PivotTheme.muted)
+        }
+    }
+    private var creditsSettings: some View {
+        PivotCard {
+            Text("Catalogo esercizi").font(.headline)
+            Text("876 record da free-exercise-db · Unlicense.").font(.subheadline)
+            Link("Apri free-exercise-db", destination: URL(string: "https://github.com/yuhonas/free-exercise-db")!)
+            Divider()
+            Text("Illustrazioni esercizi").font(.headline)
+            Text("302 esercizi e 906 pose di Bryl Lim, basate su artwork Everkinetic · CC BY-SA 4.0.").font(.subheadline)
+            Link("Workout Guide e attribuzione", destination: URL(string: "https://github.com/bryllim/workout-guide")!)
+            Link("Licenza CC BY-SA 4.0", destination: URL(string: "https://creativecommons.org/licenses/by-sa/4.0/")!)
         }
     }
     private var healthSettings: some View {

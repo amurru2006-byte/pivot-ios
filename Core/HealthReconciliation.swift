@@ -8,8 +8,9 @@ enum HealthReconciliation {
         let matchCounts = Dictionary(matches.compactMap { $0.1.first?.id }.map { ($0, 1) }, uniquingKeysWith: +)
         var next = data, modified = false
         for (workout, candidates) in matches {
-            guard let event = candidates.first, matchCounts[event.id] == 1,
-                  (CardioKind.suggested(event.title) == nil || WorkoutContext.significantCardio(workout, settings: next.settings)),
+            guard let event = candidates.first, matchCounts[event.id] == 1 else { continue }
+            let programmedCardio = CardioKind.suggested(event.title) != nil
+            guard (programmedCardio || WorkoutContext.significantCardio(workout, settings: next.settings)),
                   workout.durationSeconds >= event.durationMinutes * 30,
                   next.records[event.id]?.health?.id != workout.id,
                   (next.records[event.id]?.status ?? .pending) == .pending else { continue }
@@ -22,7 +23,7 @@ enum HealthReconciliation {
             let marker = "[Salute \(review.id)]"
             guard !coach.messages.contains(where: { $0.text.contains(marker) }) else { continue }
             coach.messages.append(.init(dayKey: PivotDate.key(review.workout.start), role: .coach,
-                text: "Ho trovato \(WorkoutContext.strength(review.workout) ? "un allenamento di forza" : "un’attività cardio significativa") alle \(PivotDate.time(review.workout.start)), da collegare al programma. È l’allenamento del giorno che hai anticipato o spostato? Confermalo qui sotto: sonno e colazione restano da verificare. \(marker)", healthDerived: true))
+                text: "Ho trovato \(WorkoutContext.strength(review.workout) ? "un allenamento di forza" : "un’attività cardio significativa") alle \(PivotDate.time(review.workout.start)), da collegare al programma. È l’allenamento del giorno che hai anticipato o spostato? Confermalo qui sotto; i dati del sonno già disponibili arrivano automaticamente da Salute. \(marker)", healthDerived: true))
             next.coachState = coach; modified = true
         }
         for (key, summary) in sleeps {

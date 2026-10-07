@@ -38,7 +38,7 @@ final class CalendarService: ObservableObject {
         guard !PreviewMode.enabled else { return }
         let filter = CalendarFilter(settings)
         if !force, inFlight == nil, lastFilter == filter, snapshotRevision == invalidation,
-           let lastRefresh, Date().timeIntervalSince(lastRefresh) < 60 { return }
+           let lastRefresh, Date().timeIntervalSince(lastRefresh) < 15 { return }
         while let active = inFlight {
             _ = await active.value
             // Another waiter can resume before the publisher; yield so it can finish.

@@ -1,8 +1,11 @@
-## 0.7.4 — Entrate leggibili e diagnosi della firma Salute
+## 0.7.4 — Salute automatica, calendario vivo e palestra completa
 
 - Navigazione del carosello separata dalle schede, altezza misurata e spiegazione completa su più righe. Il test UI usa un incasso di esempio, verifica lo swipe e controlla che il testo non venga tagliato o coperto dai comandi.
 - Dettagli dell’errore Salute con versione, fase, dominio e codice; il problema dei permessi di lettura è distinto da quello del solo aggiornamento in background. Osservatori dopo l’autorizzazione, ripristinati dopo il caricamento delle impostazioni.
-- **Il collegamento sul telefono non è ancora risolto.** AltStore Classic 2.3 usa una versione di AltSign senza mappatura HealthKit nel profilo Apple. Una sorgente che dichiara i permessi e un IPA con entitlements non garantiscono che la firma finale li conservi. Serve verificare un percorso di firma compatibile prima di altre reinstallazioni. Non disinstallare Pivot o cambiare Apple ID senza un backup verificato.
+- Il percorso AltStore HK Test conserva HealthKit nella firma e il collegamento è stato verificato dall’utente sul suo iPhone. Sonno, sveglia e attività compatibili si compilano da Salute; un cardio programmato con corrispondenza univoca viene completato automaticamente. I campi manuali restano disponibili solo come correzione esplicita.
+- Aggiornamento calendario su notifica EventKit, ritorno in primo piano e controllo di sicurezza ogni 20 secondi: lezioni eliminate o spostate spariscono dall’agenda senza attendere un riavvio.
+- Serie manuali di riscaldamento, allenanti, back-off, superset e drop set; cedimento separato. La struttura torna nella seduta successiva. Le serie di riscaldamento ricordano la proporzione rispetto al carico allenante e scalano quando l’utente cambia quel carico.
+- Catalogo offline di 876 esercizi più 302 illustrazioni tecniche senza persone reali (906 pose disponibili online), con attribuzione CC BY-SA 4.0. Le vecchie fotografie non vengono più mostrate.
 - Riferimenti tecnici: [AltStore #1762](https://github.com/altstoreio/AltStore/pull/1762) e [AltSign #45](https://github.com/rileytestut/AltSign/pull/45), chiuse senza integrazione. Il successo della compilazione verifica il pacchetto, non il profilo finale dell’iPhone.
 
 ## 0.7.3 — tentativo di collegamento Salute e sincronizzazione automatica
@@ -16,7 +19,7 @@
 ## 0.7.2 — palestra illustrata e grafici delle entrate
 
 - Le giornate e gli esercizi seguono l'ordine della scheda; l'editor permette di spostare i giorni.
-- Le tessere usano le immagini di free-exercise-db. Per nomi ambigui l'utente sceglie prima fra varianti suggerite e poi, se serve, nell'intero catalogo.
+- Le tessere associano il catalogo di free-exercise-db alle illustrazioni tecniche di Workout Guide. Per nomi ambigui l'utente sceglie prima fra varianti suggerite e poi, se serve, nell'intero catalogo.
 - Galleria e ricerca filtrano per gruppo muscolare principale.
 - Il riepilogo Entrate è un pannello scorrevole con grafici a barre, linea o area per 30 giorni, 12 mesi, anno scelto o tutti gli anni.
 - Il comando Salute si chiama «Collega app Salute». Un'installazione rifirmata senza HealthKit viene spiegata in modo leggibile; progetto e IPA dichiarano la capacità, ma anche il profilo Apple usato dall'installatore deve conservarla.

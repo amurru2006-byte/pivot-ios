@@ -1,7 +1,7 @@
 name: Compila Pivot per iPhone
 on:
   push:
-    branches: [main, 'codex/pivot-0.7.1-performance']
+    branches: [main, 'codex/pivot-0.7.1-performance', 'codex/pivot-0.7.4']
   workflow_dispatch:
 permissions:
   contents: write
@@ -88,11 +88,11 @@ jobs:
           Path('build/altstore-source.json').write_text(source)
           PY
       - name: Pubblica la 0.7.4 per la sorgente AltStore
-        if: github.ref == 'refs/heads/codex/pivot-0.7.1-performance'
+        if: github.ref == 'refs/heads/codex/pivot-0.7.4'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view v0.7.4 >/dev/null 2>&1 || gh release create v0.7.4 --target "$GITHUB_SHA" --prerelease --title "Pivot 0.7.4" --notes "Carosello Entrate senza sovrapposizioni e diagnostica Salute. HealthKit resta subordinato al profilo e alla firma creati dall’installatore: aggiungere la sorgente non garantisce l’accesso."
+          gh release view v0.7.4 >/dev/null 2>&1 || gh release create v0.7.4 --target "$GITHUB_SHA" --prerelease --title "Pivot 0.7.4" --notes "Salute automatica per sonno e cardio programmato, calendario aggiornato più rapidamente, serie avanzate con riscaldamento proporzionale e catalogo 876 + 302 illustrazioni tecniche. Installare sopra la versione attuale senza disinstallare."
           gh release upload v0.7.4 build/Pivot-0.7.4.ipa#Pivot-0.7.4.ipa build/altstore-source.json#altstore-source.json --clobber
       - name: Carica anteprime iPhone
         if: always()

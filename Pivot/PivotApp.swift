@@ -48,7 +48,9 @@ struct RootView: View {
     @State private var previewReady = !PreviewMode.enabled
     @State private var refreshGate = RefreshGate()
     @State private var notificationGate = RefreshGate()
-    private let refreshClock = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+    // EventKit normally pushes changes immediately. This short safety refresh
+    // also catches delayed iCloud deletions/moves without blocking the UI.
+    private let refreshClock = Timer.publish(every: 20, on: .main, in: .common).autoconnect()
     var body: some View {
         Group {
             if !previewReady {
@@ -107,7 +109,7 @@ struct RootView: View {
         }
         .onReceive(refreshClock) { _ in if scene == .active { requestRefresh(); rebuildAgenda() } }
         .onChange(of: scene) { _, value in
-            if value == .active { requestRefresh() }
+            if value == .active { requestRefresh(force: true) }
             else { coachModel.pauseAndUnload() }
             if value == .background { store.saveBeforeBackground() }
         }

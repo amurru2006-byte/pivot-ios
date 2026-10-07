@@ -135,4 +135,3 @@ final class DictationService: ObservableObject {
         return first + " " + second
     }
 }
-

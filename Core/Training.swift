@@ -69,12 +69,83 @@ struct TrainingPlanRevision: Codable, Identifiable {
     var note: String
 }
 
+enum TrainingSetKind: String, Codable, CaseIterable, Identifiable {
+    case warmup, working, backoff, superset, dropSet
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .warmup: return "Riscaldamento"
+        case .working: return "Allenante"
+        case .backoff: return "Back-off"
+        case .superset: return "Superset"
+        case .dropSet: return "Drop set"
+        }
+    }
+}
+
 struct TrainingSet: Codable, Identifiable {
     var id = UUID()
     var number: Int
-    var kg: Double?
-    var reps: Int?
+    var kg: Double? = nil
+    var reps: Int? = nil
     var done = false
+    // Optional fields preserve every backup created before 0.7.4.
+    var kind: TrainingSetKind? = nil
+    var toFailure: Bool? = nil
+    var supersetGroup: String? = nil
+    // Warm-up load divided by the working load. It lets the same warm-up
+    // structure follow a manually changed working weight next time.
+    var loadFraction: Double? = nil
+    var resolvedKind: TrainingSetKind { kind ?? .working }
+    var reachesFailure: Bool { toFailure == true }
+}
+
+enum TrainingSetTemplate {
+    static func workingLoad(_ sets: [TrainingSet]) -> Double? {
+        sets.filter { [.working, .superset].contains($0.resolvedKind) }
+            .compactMap(\.kg).filter { $0.isFinite && $0 > 0 }.max()
+    }
+    static func next(previous: TrainingExerciseLog?, prescribedWorkingSets: Int) -> [TrainingSet] {
+        guard let previous else {
+            return (1...prescribedWorkingSets).map { TrainingSet(number: $0, kind: .working) }
+        }
+        let oldTarget = workingLoad(previous.sets)
+        var result = previous.sets.enumerated().map { offset, old -> TrainingSet in
+            var fraction = old.loadFraction
+            if old.resolvedKind == .warmup, fraction == nil, let kg = old.kg, let oldTarget, oldTarget > 0 {
+                fraction = kg / oldTarget
+            }
+            return TrainingSet(number: offset + 1, kg: old.kg, reps: old.reps, kind: old.resolvedKind,
+                               toFailure: old.toFailure, supersetGroup: old.supersetGroup, loadFraction: fraction)
+        }
+        let currentWorkingCount = result.filter { $0.resolvedKind != .warmup }.count
+        if currentWorkingCount < prescribedWorkingSets {
+            for _ in currentWorkingCount..<prescribedWorkingSets {
+                result.append(TrainingSet(number: result.count + 1, kind: .working))
+            }
+        }
+        rescaleWarmups(in: &result, workingLoad: oldTarget)
+        return renumbered(result)
+    }
+    static func rememberWarmupFractions(in sets: inout [TrainingSet]) {
+        guard let target = workingLoad(sets), target > 0 else { return }
+        for index in sets.indices where sets[index].resolvedKind == .warmup {
+            if let kg = sets[index].kg, kg > 0 { sets[index].loadFraction = kg / target }
+        }
+    }
+    static func rescaleWarmups(in sets: inout [TrainingSet], workingLoad: Double?) {
+        guard let workingLoad, workingLoad > 0 else { return }
+        for index in sets.indices where sets[index].resolvedKind == .warmup && !sets[index].done {
+            guard let fraction = sets[index].loadFraction, fraction.isFinite, fraction > 0 else { continue }
+            sets[index].kg = roundedPlateLoad(workingLoad * fraction)
+        }
+    }
+    static func renumbered(_ sets: [TrainingSet]) -> [TrainingSet] {
+        sets.enumerated().map { offset, value in var copy = value; copy.number = offset + 1; return copy }
+    }
+    private static func roundedPlateLoad(_ value: Double) -> Double {
+        max(0, (value / 2.5).rounded() * 2.5)
+    }
 }
 
 struct TrainingExerciseLog: Codable, Identifiable {
@@ -110,10 +181,7 @@ struct TrainingLibrary: Codable {
     func makeSession(plan: TrainingPlan, day: TrainingDay, eventID: String?, now: Date = Date()) -> TrainingSession {
         let logs = day.exercises.map { exercise in
             let last = previous(exerciseID: exercise.id, before: now)
-            let sets = (1...exercise.sets).map { number -> TrainingSet in
-                let old = last?.sets.first { $0.number == number && $0.done }
-                return TrainingSet(number: number, kg: old?.kg, reps: old?.reps)
-            }
+            let sets = TrainingSetTemplate.next(previous: last, prescribedWorkingSets: exercise.sets)
             return TrainingExerciseLog(exercise: exercise, sets: sets)
         }
         return TrainingSession(planID: plan.id, dayName: day.name, calendarEventID: eventID, start: now, exercises: logs, dayID: day.id)
@@ -130,10 +198,12 @@ struct TrainingLibrary: Codable {
             guard session.end.map({ $0 >= session.start }) ?? true,
                   Set(session.exercises.map(\.id)).count == session.exercises.count else { throw TrainingError.invalidPlan }
             for log in session.exercises {
-                guard log.exercise.isValid, Set(log.sets.map(\.number)).count == log.sets.count,
-                      log.sets.allSatisfy({ set in (1...30).contains(set.number)
+                guard log.exercise.isValid, (1...60).contains(log.sets.count), Set(log.sets.map(\.number)).count == log.sets.count,
+                      log.sets.allSatisfy({ set in (1...60).contains(set.number)
                           && (set.kg.map { $0.isFinite && (0...2000).contains($0) } ?? true)
                           && (set.reps.map { (0...1000).contains($0) } ?? true)
+                          && (set.loadFraction.map { $0.isFinite && (0...1.5).contains($0) } ?? true)
+                          && (set.supersetGroup.map { $0.count <= 20 } ?? true)
                           && (!set.done || (set.kg != nil && set.reps != nil)) }) else { throw TrainingError.invalidPlan }
             }
         }
@@ -178,7 +248,11 @@ enum TrainingExport {
             if let last = library.previous(exerciseID: log.id, before: session.start, excluding: session.id) {
                 rows.append("Precedente: " + last.sets.filter(\.done).map { "\($0.kg ?? 0) kg × \($0.reps ?? 0)" }.joined(separator: "; "))
             }
-            for set in log.sets { rows.append("Serie \(set.number): \(set.kg.map { String($0) } ?? "—") kg × \(set.reps.map(String.init) ?? "—") · \(set.done ? "fatta" : "non fatta")") }
+            for set in log.sets {
+                let group = set.resolvedKind == .superset && !(set.supersetGroup ?? "").isEmpty ? " \(set.supersetGroup!)" : ""
+                let failure = set.reachesFailure ? " · cedimento" : ""
+                rows.append("Serie \(set.number) · \(set.resolvedKind.label)\(group): \(set.kg.map { String($0) } ?? "—") kg × \(set.reps.map(String.init) ?? "—") · \(set.done ? "fatta" : "non fatta")\(failure)")
+            }
             if !log.notes.isEmpty { rows.append("Note: \(log.notes)") }
             if let tip = library.tips[log.id], !tip.isEmpty { rows.append("Promemoria tecnici: \(tip)") }
         }
