@@ -5,7 +5,17 @@ struct TodayView: View {
     @EnvironmentObject var calendar: CalendarService
     @EnvironmentObject var health: HealthService
     @EnvironmentObject var agenda: AgendaService
-    @State private var day = Date()
+    @State private var day = Self.initialDay
+    private static var initialDay: Date {
+        #if DEBUG && targetEnvironment(simulator)
+        // The weekly-payment fixture records Monday and edits Wednesday, regardless
+        // of the wall-clock day on which CI runs. Real devices always open today.
+        if ProcessInfo.processInfo.arguments.contains("--payment-schedule-test") {
+            return PivotDate.calendar.date(byAdding: .day, value: 2, to: StudentPayments.week(containing: Date()).start)!
+        }
+        #endif
+        return Date()
+    }
     @State private var showDecisions = false
     @State private var showHealth = false
     @State private var quickRecord: EventRecord?
