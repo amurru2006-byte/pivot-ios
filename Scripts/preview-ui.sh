@@ -34,3 +34,4 @@ xcodebuild -project Pivot.xcodeproj -scheme Pivot -configuration Debug \
   -derivedDataPath build/DerivedData -parallel-testing-enabled NO \
   -resultBundlePath build/interaction-tests.xcresult \
   CODE_SIGNING_ALLOWED=NO test > build/interaction-tests.log 2>&1
+xcrun xcresulttool export attachments --path build/interaction-tests.xcresult --output-path build/Previews/Interactions

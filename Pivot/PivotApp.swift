@@ -4,7 +4,6 @@ import UIKit
 
 final class PivotAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        Task { @MainActor in HealthService.shared.prepareBackgroundObservers() }
         return true
     }
 }
@@ -94,8 +93,7 @@ struct RootView: View {
                     agenda.rebuild(events: calendar.events, hasAccess: calendar.hasAccess, store: store, diagnostics: store.diagnostics)
                     await health.refresh(store: store, events: calendar.events, force: true)
                 }
-                health.prepareBackgroundObservers()
-                if store.data.settings.healthEnabled == true { await health.setBackgroundDelivery(enabled: true) }
+                if store.data.settings.healthEnabled == true { await health.resumeBackgroundUpdates() }
                 requestRefresh()
                 #if DEBUG && targetEnvironment(simulator)
                 if ProcessInfo.processInfo.arguments.contains("--interaction-test") {
@@ -199,4 +197,3 @@ struct PivotLaunchView: View {
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.black.ignoresSafeArea())
     }
 }
-

@@ -23,6 +23,13 @@ private struct IncomeChartPoint: Identifiable {
     var euros: Double { Double(amountCents) / 100 }
 }
 
+private struct IncomePageHeight: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 struct IncomeView: View {
     @EnvironmentObject var store: PivotStore
     @EnvironmentObject var agenda: AgendaService
@@ -33,6 +40,7 @@ struct IncomeView: View {
     @State private var exporting = false
     @State private var editingOpening = false
     @State private var balancePage = 0
+    @State private var carouselHeight: CGFloat = 350
     @State private var chartRange: IncomeChartRange = .year
     @State private var chartStyle: IncomeChartStyle = .bars
     var currentYear: Int { PivotDate.calendar.component(.year, from: Date()) }
@@ -145,14 +153,49 @@ struct IncomeView: View {
         }
     }
     private var balanceCarousel: some View {
-        TabView(selection: $balancePage) {
-            balance.tag(0)
-            incomeChart.tag(1)
-        }.tabViewStyle(.page(indexDisplayMode: .always)).frame(height: 350)
+        VStack(spacing: 10) {
+            TabView(selection: $balancePage) {
+                balance.tag(0)
+                incomeChart.tag(1)
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(height: carouselHeight)
+            .onPreferenceChange(IncomePageHeight.self) { height in
+                if height > 0, abs(carouselHeight - max(350, height)) > 1 {
+                    carouselHeight = max(350, height)
+                }
+            }
             .accessibilityLabel("Riepilogo e grafico delle entrate, scorri orizzontalmente")
             .accessibilityIdentifier("income-carousel")
+
+            // Navigation lives outside the cards: it cannot cover chart labels
+            // or the explanation, even with larger accessibility text.
+            HStack(spacing: 20) {
+                incomePageButton("Riepilogo", page: 0)
+                incomePageButton("Grafico", page: 1)
+            }
+        }
+    }
+    private func incomePageButton(_ title: String, page: Int) -> some View {
+        Button { withAnimation { balancePage = page } } label: {
+            HStack(spacing: 6) {
+                Circle().fill(balancePage == page ? PivotTheme.accent : PivotTheme.muted).frame(width: 7, height: 7)
+                Text(title).font(.caption.weight(balancePage == page ? .semibold : .regular))
+            }.foregroundStyle(balancePage == page ? PivotTheme.accent : PivotTheme.muted)
+                .padding(.vertical, 8)
+        }.buttonStyle(.plain)
+            .accessibilityAddTraits(balancePage == page ? .isSelected : [])
+            .accessibilityIdentifier("income-page-\(page)")
+    }
+    private func measuredIncomePage<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content().fixedSize(horizontal: false, vertical: true)
+            .background(GeometryReader { geometry in
+                Color.clear.preference(key: IncomePageHeight.self, value: geometry.size.height)
+            })
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
     private var balance: some View {
+        measuredIncomePage {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
                 Label("Incassato nell’anno", systemImage: "eurosign.circle.fill").font(.subheadline)
@@ -169,26 +212,23 @@ struct IncomeView: View {
                 Label(progress >= 1 ? "Riferimento INPS raggiunto: verifica gli adempimenti" : "Ti avvicini al riferimento INPS: \(Money.display(max(0, ledger.referenceCents - annualTotal))) rimanenti", systemImage: "exclamationmark.triangle.fill").font(.caption.weight(.semibold)).foregroundStyle(balanceColor)
             }
             Text("Riferimento INPS 5.000 € · avviso da 4.500 €. Non è un limite esente da tasse. Il nuovo anno riparte da zero, senza cancellare lo storico.").font(.caption).foregroundStyle(PivotTheme.muted)
-        }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }.padding(24).frame(maxWidth: .infinity, alignment: .topLeading)
+        }
             .background(LinearGradient(colors: [Color(pivotHex: "22493F"), Color(pivotHex: "1C2C41"), PivotTheme.surface], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 26))
             .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(PivotTheme.accent.opacity(0.18)))
     }
     private var incomeChart: some View {
+        measuredIncomePage {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label("Andamento incassi", systemImage: "chart.xyaxis.line").font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.blue)
-                Spacer()
-                Picker("Intervallo", selection: $chartRange) { ForEach(IncomeChartRange.allCases) { Text($0.label).tag($0) } }.pickerStyle(.menu)
-            }
+            Label("Andamento incassi", systemImage: "chart.xyaxis.line").font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.blue)
+            Picker("Intervallo", selection: $chartRange) { ForEach(IncomeChartRange.allCases) { Text($0.label).tag($0) } }.pickerStyle(.menu)
             HStack {
                 Text(chartRange == .year ? String(year) : chartRange.label).font(.caption).foregroundStyle(PivotTheme.muted)
                 Spacer()
                 Picker("Tipo di grafico", selection: $chartStyle) { ForEach(IncomeChartStyle.allCases) { Text($0.label).tag($0) } }.pickerStyle(.menu)
             }
             if chartPoints.allSatisfy({ $0.amountCents == 0 }) {
-                Spacer()
                 ContentUnavailableView("Nessun incasso datato", systemImage: "chart.bar", description: Text("Registra un pagamento per costruire il grafico."))
-                Spacer()
             } else {
                 Chart(chartPoints) { point in
                     switch chartStyle {
@@ -203,10 +243,14 @@ struct IncomeView: View {
                     }
                 }.chartYScale(domain: 0...max(1, (chartPoints.map(\.euros).max() ?? 0) * 1.15))
                     .chartYAxisLabel("€").frame(height: 205)
+                    .accessibilityIdentifier("income-chart-plot")
             }
             Text(chartRange == .years ? "La vista annuale comprende anche gli importi pregressi." : "Giorni e mesi mostrano soltanto pagamenti con una data; l'importo pregresso resta nel totale annuale.")
                 .font(.caption2).foregroundStyle(PivotTheme.muted)
-        }.padding(20).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("income-chart-explanation")
+        }.padding(20).frame(maxWidth: .infinity, alignment: .topLeading)
+        }
             .background(PivotTheme.surface, in: RoundedRectangle(cornerRadius: 26))
             .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(PivotTheme.blue.opacity(0.2)))
             .accessibilityIdentifier("income-chart")

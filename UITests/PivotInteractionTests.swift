@@ -9,6 +9,19 @@ final class PivotInteractionTests: XCTestCase {
         XCTAssertTrue(carousel.waitForExistence(timeout: 8)); carousel.swipeLeft()
         let chart = app.staticTexts["Andamento incassi"]
         XCTAssertTrue(chart.waitForExistence(timeout: 5)); XCTAssertTrue(chart.isHittable)
+        let explanation = app.staticTexts["income-chart-explanation"]
+        let pageButton = app.buttons["income-page-1"]
+        XCTAssertTrue(explanation.waitForExistence(timeout: 5))
+        XCTAssertTrue(pageButton.isHittable)
+        XCTAssertLessThanOrEqual(explanation.frame.maxY, pageButton.frame.minY, "La navigazione non deve coprire la spiegazione del grafico")
+        XCTAssertGreaterThan(explanation.frame.height, 25, "La spiegazione deve andare a capo, non essere troncata in una riga")
+        app.buttons["income-page-0"].tap()
+        XCTAssertTrue(app.staticTexts["Incassato nell’anno"].waitForExistence(timeout: 5))
+        pageButton.tap()
+        XCTAssertTrue(chart.isHittable)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "income-chart-no-overlap"; screenshot.lifetime = .keepAlways
+        add(screenshot)
     }
     func testAutofilledActivityRetainsManualCorrectionAfterRelaunch() {
         continueAfterFailure = false

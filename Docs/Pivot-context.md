@@ -10,9 +10,19 @@ Quando registra una ripetizione e il guadagno, lo studente deve essere ricavato 
 
 Pagamenti: alcuni studenti pagano sempre settimanalmente, altri a ogni lezione. È richiesta un’abitudine persistente per studente e una scelta separata per una sola lezione: prossima lezione o data scelta. Il residuo di un pagamento parziale non scompare. I settimanali non sono in ritardo prima dell’ultima lezione prevista della settimana, da lunedì a domenica. Promemoria locali e saldo dello studente; un incasso può coprire più lezioni, dalla più vecchia, ma non viene mai inventato alla scadenza. Un anticipo superiore al saldo già guadagnato non viene registrato come compenso.
 
+## Intervento 0.7.4 — bug segnalati sul telefono
+
+- Il dispositivo continua a non collegarsi a Salute dopo la procedura 0.7.3: non dichiarare risolto il problema. L’email delle 12:01 mostra l’errore sulla firma; l’email delle 14:07 contiene 10 immagini, fra cui il carosello Entrate con pallini sopra la spiegazione. Le altre immagini sono riferimenti palestra, non nuove istruzioni.
+- Carosello: indicatori/comandi separati sotto la scheda; altezza ricavata dai contenuti, spiegazione multilinea. Test UI verifica geometricamente che la navigazione non copra il testo.
+- Salute: errori completi con fase, dominio/codice e versione/build, nessun dato sanitario nella diagnostica. Distinzione fra fallimento dei permessi e solo background; osservatori dopo la richiesta di autorizzazione, rimossi quando si disattiva l’integrazione.
+- Causa esterna verificata nel codice: AltStore Classic v2.3 punta ad AltSign `0d3c1a3cac608e724ca0c8d7404253cd5fee9495`, che non mappa HealthKit in `ALTCapabilities.m`. PR AltStore #1762 e AltSign #45 descrivono esattamente la perdita del permesso nella rifirma; sono chiuse, non integrate. Una sorgente dichiara permessi ma non aggiunge la mappatura mancante. Non promettere che reinstallare tramite la sorgente risolva, né consigliare l’acquisto di un account come garanzia.
+- Per risolvere sul dispositivo serve un percorso di firma/profilo compatibile. Non cambiare installatore, certificati, account o identificativo dell’app senza accordo e backup verificato. Non chiedere password in chat. Il successo CI dell’IPA non verifica la firma finale del telefono.
+
+Fonti: https://github.com/altstoreio/AltStore/pull/1762 ; https://github.com/rileytestut/AltSign/pull/45 ; https://github.com/rileytestut/AltSign/blob/0d3c1a3cac608e724ca0c8d7404253cd5fee9495/AltSign/Capabilities/ALTCapabilities.m
+
 ## Intervento 0.7.3
 
-- Correzione della firma e della distribuzione AltStore: HealthKit e consegna in background devono essere dichiarati anche dalla sorgente usata per rifirmare l'app, non soltanto dall'IPA.
+- Tentativo sulla firma e distribuzione: entitlements nell’IPA e dichiarazioni nella sorgente. Non sufficiente a garantire HealthKit nel profilo finale AltStore, come verificato dopo il fallimento sul dispositivo.
 - Osservatori HealthKit per sonno e allenamenti; dopo il consenso iOS può risvegliare Pivot e avviare l'importazione senza un'apertura manuale.
 - Dettatura locale continua fra più frasi, punteggiatura Apple e vocabolario contestuale di Pivot, studenti ed eventi. Il testo già scritto o dettato non viene sostituito dai risultati successivi.
 - Verifica automatica conclusa sul commit `48a701067157bb848790f02af6d71cd13a23edbf`: 178 test core senza errori, build Release per iPhone, interfaccia su simulatore, entitlements HealthKit e pubblicazione della sorgente AltStore riusciti. Restano da verificare sul dispositivo reale l'autorizzazione finale di Salute, i risvegli decisi da iOS e la fluidità.
@@ -64,4 +74,3 @@ Recuperare progressivamente con l’utente i restanti obiettivi personali, le ab
 ## Verifica e installazione
 
 I test core e i test di interazione sul simulatore sono nel workflow macOS. La 0.7.3 è pubblicata come prerelease insieme a una sorgente AltStore che dichiara HealthKit e HealthKit background delivery. La misura della fluidità reale e dell’AI richiede ancora l’iPhone 15. Prima dell’aggiornamento verificare/esportare il backup. Installare sopra Pivot esistente con lo stesso Apple ID, senza disinstallare: la cancellazione dell’app elimina la copia locale e il modello scaricato.
-

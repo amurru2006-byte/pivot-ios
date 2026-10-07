@@ -93,8 +93,13 @@ struct SettingsView: View {
     PivotCard(tint: PivotTheme.accent) {
         Label("Salute e Apple Watch", systemImage: "heart.text.square.fill").font(.headline)
         Text(health.status).font(.subheadline).foregroundStyle(PivotTheme.muted)
+        if let diagnostic = health.connectionDiagnostic {
+            DisclosureGroup("Dettagli del collegamento Salute") {
+                Text(diagnostic).font(.caption).textSelection(.enabled)
+            }
+        }
         Button("Collega app Salute") { Task { await health.connect(store: store, events: calendar.events); settings = store.data.settings } }
-            .buttonStyle(PivotPrimaryButton()).disabled(health.isRefreshing || store.locked)
+            .buttonStyle(PivotPrimaryButton()).disabled(health.isRefreshing || health.isConnecting || store.locked)
         Button("Aggiorna dati da Salute") { Task { await health.refresh(store: store, events: calendar.events, force: true) } }
             .buttonStyle(PivotSecondaryButton()).disabled(health.isRefreshing || store.data.settings.healthEnabled != true)
         Text("Sola lettura. Dopo il consenso, iOS può avvisare Pivot in background quando cambiano sonno o allenamenti; non viene avviato un monitoraggio continuo. Le camminate fuori dagli orari di allenamento restano attività generale. Per revocare i permessi usa l’app Salute.").font(.caption).foregroundStyle(PivotTheme.muted)
@@ -200,4 +205,3 @@ struct SettingsView: View {
         if await store.flushPendingWrites() { message = "Impostazioni salvate." }
     }
 }
-

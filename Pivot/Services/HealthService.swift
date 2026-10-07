@@ -8,6 +8,8 @@ final class HealthService: ObservableObject {
     @Published private(set) var status = "Salute non collegata"
     @Published private(set) var isRefreshing = false
     @Published private(set) var automaticUpdatesActive = false
+    @Published private(set) var connectionDiagnostic: String?
+    @Published private(set) var isConnecting = false
     @Published private(set) var workouts: [HealthWorkoutSummary] = []
     @Published private(set) var lastRefresh: Date?
     private let healthStore = HKHealthStore()
@@ -18,6 +20,7 @@ final class HealthService: ObservableObject {
     private var isHandlingBackgroundUpdate = false
     private var backgroundUpdateHandler: (@MainActor () async -> Void)?
     private var automaticUpdateError: String?
+    private var authorizationRequestCompleted = false
     private var readTypes: Set<HKObjectType> {
         var types: Set<HKObjectType> = [HKObjectType.workoutType()]
         if let sleep = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) { types.insert(sleep) }
@@ -36,7 +39,7 @@ final class HealthService: ObservableObject {
         backgroundUpdateHandler = handler
     }
     func prepareBackgroundObservers() {
-        guard observerQueries.isEmpty, HKHealthStore.isHealthDataAvailable() else { return }
+        guard authorizationRequestCompleted, observerQueries.isEmpty, HKHealthStore.isHealthDataAvailable() else { return }
         for type in backgroundTypes {
             let query = HKObserverQuery(sampleType: type, predicate: nil) { [weak self] _, completion, error in
                 Task { @MainActor in
@@ -51,11 +54,17 @@ final class HealthService: ObservableObject {
     func setBackgroundDelivery(enabled: Bool) async {
         guard HKHealthStore.isHealthDataAvailable() else { return }
         if !enabled {
+            for query in observerQueries { healthStore.stop(query) }
+            observerQueries.removeAll()
+            finishPendingBackgroundUpdates()
             for type in backgroundTypes { try? await healthStore.disableBackgroundDelivery(for: type) }
             automaticUpdatesActive = false
             automaticUpdateError = nil
             return
         }
+        // Successful presentation is not proof of read permission. iOS hides
+        // that distinction, but errors here must not be reported as read failures.
+        guard authorizationRequestCompleted else { return }
         prepareBackgroundObservers()
         do {
             for type in backgroundTypes {
@@ -65,28 +74,59 @@ final class HealthService: ObservableObject {
             automaticUpdateError = nil
         } catch {
             automaticUpdatesActive = false
-            automaticUpdateError = Self.connectionMessage(for: error)
+            automaticUpdateError = "Lettura disponibile aprendo Pivot, ma aggiornamenti in background non disponibili. \(error.localizedDescription)"
+            recordDiagnostic(error, phase: "Aggiornamenti in background")
         }
     }
     func connect(store: PivotStore, events: [CalendarItem]) async {
+        guard !isConnecting else { return }
         guard HKHealthStore.isHealthDataAvailable() else { status = "Salute non disponibile su questo dispositivo"; return }
+        isConnecting = true
+        connectionDiagnostic = nil
+        defer { isConnecting = false }
         do {
             // Read only. No workouts or sleep are ever written back to Apple Health.
             try await healthStore.requestAuthorization(toShare: [], read: readTypes)
+            authorizationRequestCompleted = true
             guard store.change({ $0.settings.healthEnabled = true }) else { return }
             prepareBackgroundObservers()
             await setBackgroundDelivery(enabled: true)
             await refresh(store: store, events: events, force: true)
         } catch {
+            authorizationRequestCompleted = false
+            recordDiagnostic(error, phase: "Richiesta dei permessi Salute")
             status = Self.connectionMessage(for: error)
         }
     }
     private static func connectionMessage(for error: Error) -> String {
         let details = error.localizedDescription.lowercased()
-        if details.contains("com.apple.developer.healthkit") || details.contains("missing entitlement") {
-            return "Questa installazione non può accedere all’app Salute: la firma usata per installare Pivot non include HealthKit. Reinstalla Pivot con un profilo Apple che abiliti Salute."
+        let nsError = error as NSError
+        if (nsError.domain == HKErrorDomain && nsError.code == HKError.Code.errorMissingEntitlement.rawValue)
+            || details.contains("missing entitlement") {
+            return "iOS ha bloccato l’accesso a Salute: nella firma di questa installazione manca un’autorizzazione HealthKit. Non è un permesso che puoi attivare in Salute. Aggiungere la sorgente o aggiornare soltanto Pivot non basta: va verificato il profilo creato dal programma di installazione. Apri i dettagli qui sotto per identificare l’errore."
         }
         return "Non è stato possibile collegare l’app Salute. Controlla in Salute → profilo → App → Pivot e riprova. Dettaglio: \(error.localizedDescription)"
+    }
+    private func recordDiagnostic(_ error: Error, phase: String) {
+        let error = error as NSError
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        connectionDiagnostic = "Pivot \(version) (\(build))\n\(phase)\n\(error.domain) · codice \(error.code)\n\(error.localizedDescription)"
+    }
+    func resumeBackgroundUpdates() async {
+        // Re-establish authorization before installing observers on a later launch.
+        // Previously authorized types don't prompt again; never prompt on launch
+        // if the user has not explicitly enabled the Health integration.
+        guard HKHealthStore.isHealthDataAvailable(), !isConnecting else { return }
+        do {
+            try await healthStore.requestAuthorization(toShare: [], read: readTypes)
+            authorizationRequestCompleted = true
+            await setBackgroundDelivery(enabled: true)
+        } catch {
+            authorizationRequestCompleted = false
+            recordDiagnostic(error, phase: "Ripristino del collegamento Salute")
+            status = Self.connectionMessage(for: error)
+        }
     }
     func refresh(store: PivotStore, events: [CalendarItem], force: Bool = false) async {
         guard !PreviewMode.enabled, store.data.settings.healthEnabled == true, !store.locked, !store.isRestoring, !store.isLoading, !isRefreshing else { return }
@@ -160,7 +200,10 @@ final class HealthService: ObservableObject {
             } else {
                 status = base
             }
-        } catch { status = "Dati non aggiornati: \(error.localizedDescription)" }
+        } catch {
+            recordDiagnostic(error, phase: "Lettura sonno e allenamenti")
+            status = Self.connectionMessage(for: error)
+        }
     }
     func sleep(on day: Date) -> HealthSleepSummary? {
         sleepByDay[PivotDate.key(day)]
@@ -222,4 +265,3 @@ final class HealthService: ObservableObject {
         }
     }
 }
-
