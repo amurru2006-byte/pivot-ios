@@ -285,7 +285,7 @@ enum TrainingExport {
         for log in session.exercises {
             rows.append("\n\(log.exercise.name) · programma \(log.exercise.sets) × \(log.exercise.reps)")
             if let last = library.previous(exerciseID: log.id, before: session.start, excluding: session.id) {
-                rows.append("Precedente: " + last.sets.filter(\.done).map { TrainingReports.performance($0, exercise: last.exercise) }.joined(separator: "; "))
+                rows.append("Precedente: " + last.sets.filter(\.done).map { last.exercise.usesDuration ? TrainingReports.performance($0, exercise: last.exercise) : "\($0.kg ?? 0) kg × \($0.reps ?? 0)" }.joined(separator: "; "))
             }
             for set in log.sets {
                 let group = set.resolvedKind == .superset && !(set.supersetGroup ?? "").isEmpty ? " \(set.supersetGroup!)" : ""
