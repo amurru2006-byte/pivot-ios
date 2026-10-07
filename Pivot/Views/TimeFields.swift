@@ -91,7 +91,7 @@ struct DecimalField: View {
             value = trimmed.isEmpty ? nil : Double(trimmed.replacingOccurrences(of: ",", with: ".")) ?? .nan
         }
         .onChange(of: value) { _, new in
-            if !focused { input = new.map { String($0).replacingOccurrences(of: ".", with: ",") } ?? "" }
+            if !focused && (new?.isFinite ?? true) { input = new.map { String($0).replacingOccurrences(of: ".", with: ",") } ?? "" }
         }
     }
 }

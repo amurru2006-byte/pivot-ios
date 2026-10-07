@@ -18,6 +18,7 @@ enum WorkoutRuntime {
         }
         guard !store.locked, !store.isLoading, !store.isRestoring,
               var session = store.data.training?.sessions.first(where: { $0.id.uuidString == sessionID }), session.end == nil else { throw TrainingError.invalidPlan }
+        status = ""
         if ["pause", "reset", "next"].contains(action) {
             if action == "pause" { session.rest?.togglePause() }
             if action == "reset", let rest = session.rest { session.rest = .init(exerciseID: rest.exerciseID, setID: rest.setID, seconds: rest.plannedSeconds) }

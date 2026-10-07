@@ -273,6 +273,12 @@ final class PivotInteractionTests: XCTestCase {
 
     func testTrainingPDFImportSetLoggingAndPersistence() {
         continueAfterFailure = false
+        addUIInterruptionMonitor(withDescription: "Permesso notifiche per il timer") { alert in
+            for title in ["Allow", "Consenti"] where alert.buttons[title].exists {
+                alert.buttons[title].tap(); return true
+            }
+            return false
+        }
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--training-test"]; app.launch()
         XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 10))
         app.tabBars.buttons["Palestra"].tap()
@@ -294,6 +300,10 @@ final class PivotInteractionTests: XCTestCase {
         reps.tap(); reps.typeText("8"); app.buttons["Fine"].tap()
         let done = app.switches["set-done-test-exercise-0"]
         XCTAssertTrue(done.exists); done.tap()
+        let permission = app.alerts.firstMatch
+        if permission.waitForExistence(timeout: 3) {
+            for title in ["Allow", "Consenti"] where permission.buttons[title].exists { permission.buttons[title].tap(); break }
+        }
         let finish = app.buttons["Termina allenamento"]
         for _ in 0..<8 { if finish.isHittable { break }; app.swipeDown() }
         finish.tap()
