@@ -64,6 +64,9 @@ enum EventCoalescer {
         return a.id < b.id
     }
     static func unique(_ events: [CalendarItem], data: AppData) -> [CalendarItem] {
+        let records = Array(data.records.values)
+        let recordIndex = SnapshotIndex(records.map(\.snapshot))
+        let moveIndex = SnapshotIndex(data.moves.map(\.source))
         var groups: [[CalendarItem]] = []
         var idIndex: [String: Int] = [:]
         var titleIndex: [String: Set<Int>] = [:]
@@ -90,17 +93,46 @@ enum EventCoalescer {
                 chosen.calendarRGB = original.calendarRGB
             }
             // Keep an existing answer/timer under its original ID, while displaying current calendar metadata.
-            let records = data.records.values.filter { record in group.contains(where: { savedOccurrence(record.snapshot, $0) }) }
-            if let saved = records.sorted(by: { a, b in
+            let matchingRecords = recordIndex.candidates(for: group).map { records[$0] }
+                .filter { record in group.contains(where: { savedOccurrence(record.snapshot, $0) }) }
+            if let saved = matchingRecords.sorted(by: { a, b in
                 if (a.status == .running) != (b.status == .running) { return a.status == .running }
                 if (a.status != .pending) != (b.status != .pending) { return a.status != .pending }
                 if a.updatedAt != b.updatedAt { return a.updatedAt > b.updatedAt }
                 return a.id < b.id
             }).first { chosen.id = saved.id }
-            else if let move = data.moves.last(where: { move in group.contains(where: { matches(move.source, $0) }) }) {
+            else if let index = moveIndex.candidates(for: group).sorted().last(where: { index in group.contains(where: { matches(data.moves[index].source, $0) }) }) {
+                let move = data.moves[index]
                 chosen.id = move.source.id
             }
             return chosen
         }.sorted { a, b in a.start == b.start ? a.id < b.id : a.start < b.start }
+    }
+
+    private struct SnapshotIndex {
+        var ids: [String: Set<Int>] = [:]
+        var occurrences: [String: Set<Int>] = [:]
+        var titles: [String: Set<Int>] = [:]
+        var external: [String: Set<Int>] = [:]
+        init(_ snapshots: [CalendarItem]) {
+            for (index, item) in snapshots.enumerated() {
+                ids[item.id, default: []].insert(index)
+                occurrences[Self.occurrence(item), default: []].insert(index)
+                titles[Self.title(item), default: []].insert(index)
+                if let uid = item.externalIdentifier { external[uid, default: []].insert(index) }
+            }
+        }
+        func candidates(for group: [CalendarItem]) -> Set<Int> {
+            var result: Set<Int> = []
+            for item in group {
+                result.formUnion(ids[item.id] ?? [])
+                result.formUnion(occurrences[Self.occurrence(item)] ?? [])
+                result.formUnion(titles[Self.title(item)] ?? [])
+                if let uid = item.externalIdentifier { result.formUnion(external[uid] ?? []) }
+            }
+            return result
+        }
+        private static func occurrence(_ item: CalendarItem) -> String { item.calendarIdentifier + "|" + item.eventIdentifier }
+        private static func title(_ item: CalendarItem) -> String { normalized(item.calendarTitle) + "|" + normalized(item.title) }
     }
 }

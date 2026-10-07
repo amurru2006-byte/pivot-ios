@@ -82,9 +82,10 @@ final class Pivot040Tests: XCTestCase {
         let restored = try StudyFiles.installBackup(backup, directory: folder)
         let restoredPlan = try XCTUnwrap(restored.training?.activePlan)
         XCTAssertEqual(restoredPlan.id, plan.id)
-        XCTAssertNotEqual(restoredPlan.document.id, document.id)
+        let restoredDocument = try XCTUnwrap(restoredPlan.document)
+        XCTAssertNotEqual(restoredDocument.id, document.id)
         XCTAssertEqual(restored.training?.tips["test-exercise"], "Panca test livello 5")
-        XCTAssertEqual(try Data(contentsOf: StudyFiles.url(for: restoredPlan.document.id, directory: folder)), pdf)
+        XCTAssertEqual(try Data(contentsOf: StudyFiles.url(for: restoredDocument.id, directory: folder)), pdf)
     }
     func testSleepCardioAndLogisticsSurviveRoundTripAndAppearInReport() throws {
         let event = item("walk", title: "camminata", kind: .workout)

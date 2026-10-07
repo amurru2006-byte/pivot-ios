@@ -131,6 +131,9 @@ struct EventRecord: Codable, Identifiable {
     var hungerBefore: Int? = nil
     var hungerAfter: Int? = nil
     var energy: Int? = nil
+    var fatigue: Int? = nil
+    // A suggestion from the calendar, never a measured value. Manual edits persist.
+    var timingFromCalendar: Bool? = nil
     var followedMeal: Bool? = nil
     var reflection: ActivityReflection? = nil
     var study: StudySession? = nil
@@ -179,6 +182,8 @@ struct DayCheckIn: Codable, Identifiable {
     var energyEvening: Int? = nil
     var moodMorning: Int? = nil
     var moodEvening: Int? = nil
+    var fatigueMorning: Int? = nil
+    var fatigueEvening: Int? = nil
     var notes: String = ""
     // Optional so backups from 0.2 decode without this field.
     var universityAttendance: Bool? = nil
@@ -190,6 +195,7 @@ struct Client: Codable, Identifiable {
     var id = UUID()
     var name: String
     var rateCents: Int
+    var paymentCadence: PaymentCadence? = nil
 }
 
 struct IncomeEntry: Codable, Identifiable {
@@ -202,6 +208,10 @@ struct IncomeEntry: Codable, Identifiable {
     var paidCents: Int = 0
     var notes: String = ""
     var calendarEventID: String? = nil
+    var paymentTiming: PaymentTiming? = nil
+    var promisedPaymentDate: Date? = nil
+    var paymentDeferralAfter: Date? = nil
+    var lastKnownPaymentDate: Date? = nil
     var outstandingCents: Int { max(0, amountCents - paidCents) }
 }
 
@@ -285,6 +295,8 @@ struct Settings: Codable, Equatable {
     var notificationPolicyVersion: Int? = nil
     var cardioReviewMinimumMinutes: Int? = nil
     var cardioReviewMinimumCalories: Int? = nil
+    // -1 explicitly disables a target; absent energy defaults to the editable 7/10.
+    var ratingTargets: [String: Int]? = nil
 }
 
 struct AppData: Codable {
@@ -323,6 +335,9 @@ struct ActivityDraft: Codable {
     var receivedAmount: String
     var received: Bool
     var receiptDate: Date
+    var paymentTiming: PaymentTiming? = nil
+    var promisedPaymentDate: Date? = nil
+    var rememberPaymentCadence: Bool? = nil
 }
 
 enum PivotDate {

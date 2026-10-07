@@ -7,6 +7,7 @@ struct SettingsView: View {
     @EnvironmentObject var calendar: CalendarService
     @EnvironmentObject var notifications: NotificationService
     @EnvironmentObject var health: HealthService
+    @EnvironmentObject var agenda: AgendaService
     @State private var settings = Settings()
     @State private var folderPicker = false
     @State private var importing = false
@@ -15,6 +16,7 @@ struct SettingsView: View {
     @State private var exporting = false
     @State private var exportFile: URL?
     @State private var message: String?
+    @State private var saveTask: Task<Void, Never>?
     private var installedVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—" }
     var body: some View {
         NavigationStack {
@@ -26,6 +28,8 @@ struct SettingsView: View {
                     settingsLink("Notifiche", subtitle: "Quando e come avvisarti", icon: "bell.fill") { notificationSettings }
                     settingsLink("Backup e privacy", subtitle: "Proteggi il tuo storico", icon: "externaldrive.fill") { backupSettings }
                     settingsLink("Studio ed esami", subtitle: "Priorità e recuperi", icon: "graduationcap.fill") { studySettings }
+                    settingsLink("Energia e riferimenti", subtitle: "Obiettivi dei valori da 0 a 10", icon: "chart.dots.scatter") { ratingSettings }
+                    settingsLink("Prestazioni e salvataggio", subtitle: "Tempi di caricamento e stato dei dati", icon: "speedometer") { PerformanceView() }
                 }
                 Text("Le impostazioni si salvano automaticamente.").font(.caption).foregroundStyle(PivotTheme.muted)
 
@@ -41,12 +45,19 @@ struct SettingsView: View {
                 }.foregroundStyle(PivotTheme.muted).padding(.top, 4)
             }.navigationTitle("Impostazioni")
                 .onAppear { settings = store.data.settings }
+                .onChange(of: store.isLoading) { _, loading in if !loading { settings = store.data.settings } }
                 .onChange(of: settings) { _, _ in
-                    guard settings != store.data.settings else { return }
-                    if store.change({ $0.settings = settings }) {
-                        let saved = settings
-                        Task { await calendar.refresh(settings: saved) }
+                    saveTask?.cancel()
+                    guard !store.isLoading, settings != store.data.settings else { return }
+                    saveTask = Task {
+                        do { try await Task.sleep(nanoseconds: 350_000_000) } catch { return }
+                        guard !Task.isCancelled, settings != store.data.settings else { return }
+                        store.change { $0.settings = settings }
                     }
+                }
+                .onDisappear {
+                    saveTask?.cancel()
+                    if !store.isLoading, settings != store.data.settings { store.change { $0.settings = settings } }
                 }
                 .sheet(isPresented: $folderPicker) { FolderPicker { store.selectBackupFolder($0) } }
                 .sheet(isPresented: $exporting) { if let exportFile { ShareSheet(items: [exportFile]) } }
@@ -65,16 +76,34 @@ struct SettingsView: View {
                 } message: { Text("Il backup sostituirà i dati attuali. Pivot conserva una copia locale dei dati precedenti; un file non valido non verrà applicato.") }
         }
     }
+    private var ratingSettings: some View {
+        PivotCard {
+            ForEach(RatingMetric.allCases) { metric in
+                Picker(metric.label, selection: Binding(get: { metric.target(in: settings) ?? -1 }, set: { value in
+                    var targets = settings.ratingTargets ?? [:]; targets[metric.rawValue] = value; settings.ratingTargets = targets
+                })) {
+                    Text("Nessun obiettivo").tag(-1)
+                    ForEach(0...10, id: \.self) { Text("\($0)/10").tag($0) }
+                }
+            }
+            Text("Obiettivo dorato, media storica blu. La media usa le 4 settimane complete precedenti alla settimana dell'evento: prima la media di ogni settimana, poi la media delle settimane con dati. I valori non indicati non sono zeri. Questi riferimenti non compilano le tue sensazioni.").font(.caption).foregroundStyle(PivotTheme.muted)
+        }
+    }
     private var healthSettings: some View {
     PivotCard(tint: PivotTheme.accent) {
         Label("Salute e Apple Watch", systemImage: "heart.text.square.fill").font(.headline)
         Text(health.status).font(.subheadline).foregroundStyle(PivotTheme.muted)
-        Button("Collega / verifica Salute") { Task { await health.connect(store: store, events: calendar.events); settings = store.data.settings } }
-            .buttonStyle(PivotPrimaryButton()).disabled(health.isRefreshing || store.locked)
+        if let diagnostic = health.connectionDiagnostic {
+            DisclosureGroup("Dettagli del collegamento Salute") {
+                Text(diagnostic).font(.caption).textSelection(.enabled)
+            }
+        }
+        Button("Collega app Salute") { Task { await health.connect(store: store, events: calendar.events); settings = store.data.settings } }
+            .buttonStyle(PivotPrimaryButton()).disabled(health.isRefreshing || health.isConnecting || store.locked)
         Button("Aggiorna dati da Salute") { Task { await health.refresh(store: store, events: calendar.events, force: true) } }
             .buttonStyle(PivotSecondaryButton()).disabled(health.isRefreshing || store.data.settings.healthEnabled != true)
-        Text("Sola lettura, quando apri Pivot. Nessuna registrazione continua. Le camminate fuori dagli orari di allenamento restano attività generale. Per revocare i permessi usa l’app Salute.").font(.caption).foregroundStyle(PivotTheme.muted)
-                Toggle("Leggi Salute all’apertura", isOn: Binding(get: { settings.healthEnabled == true }, set: { settings.healthEnabled = $0 }))
+        Text("Sola lettura. Dopo il consenso, iOS può avvisare Pivot in background quando cambiano sonno o allenamenti; non viene avviato un monitoraggio continuo. Le camminate fuori dagli orari di allenamento restano attività generale. Per revocare i permessi usa l’app Salute.").font(.caption).foregroundStyle(PivotTheme.muted)
+                Toggle("Sincronizza automaticamente da Salute", isOn: Binding(get: { settings.healthEnabled == true }, set: { settings.healthEnabled = $0 }))
                 DisclosureGroup("Quando chiedere se una camminata vale come cardio") {
                     Stepper("Durata minima: \(settings.cardioReviewMinimumMinutes ?? 20) min", value: Binding(get: { settings.cardioReviewMinimumMinutes ?? 20 }, set: { settings.cardioReviewMinimumMinutes = $0 }), in: 5...120, step: 5)
                     Stepper("Calorie attive minime: \(settings.cardioReviewMinimumCalories ?? 100)", value: Binding(get: { settings.cardioReviewMinimumCalories ?? 100 }, set: { settings.cardioReviewMinimumCalories = $0 }), in: 0...1000, step: 25)
@@ -132,7 +161,7 @@ struct SettingsView: View {
     PivotCard {
         Label("Promemoria", systemImage: "bell.badge.fill").font(.headline).foregroundStyle(PivotTheme.amber)
         Text(notifications.status).font(.subheadline).foregroundStyle(PivotTheme.muted)
-        Button("Consenti notifiche") { Task { await notifications.requestAccess(); await notifications.schedule(events: calendar.events, data: store.data) } }.buttonStyle(PivotSecondaryButton())
+        Button("Consenti notifiche") { Task { await notifications.requestAccess(); await notifications.schedule(events: agenda.planned, data: store.data) } }.buttonStyle(PivotSecondaryButton())
         Button("Apri impostazioni notifiche di iOS") {
             if let url = URL(string: UIApplication.openNotificationSettingsURLString) { UIApplication.shared.open(url) }
         }.font(.subheadline).foregroundStyle(PivotTheme.accent)
@@ -171,6 +200,8 @@ struct SettingsView: View {
         }.buttonStyle(.plain)
     }
     private func saveSettings() async {
-        if store.change({ $0.settings = settings }) { await calendar.refresh(settings: settings); message = "Impostazioni salvate." }
+        saveTask?.cancel()
+        guard store.change({ $0.settings = settings }) else { return }
+        if await store.flushPendingWrites() { message = "Impostazioni salvate." }
     }
 }

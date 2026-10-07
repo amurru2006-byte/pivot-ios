@@ -1,10 +1,10 @@
 name: Compila Pivot per iPhone
 on:
   push:
-    branches: [main]
+    branches: [main, 'codex/pivot-0.7.1-performance']
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: pivot-build-${{ github.ref }}
   cancel-in-progress: true
@@ -62,27 +62,51 @@ jobs:
           python3 - <<'PY'
           import plistlib
           with open('build/packaged-entitlements.plist', 'rb') as file:
-              assert plistlib.load(file).get('com.apple.developer.healthkit') is True
+              entitlements = plistlib.load(file)
+              assert entitlements.get('com.apple.developer.healthkit') is True
+              assert entitlements.get('com.apple.developer.healthkit.background-delivery') is True
           PY
           mkdir -p build/Package/Payload
           cp -R build/DerivedData/Build/Products/Release-iphoneos/Pivot.app build/Package/Payload/
           cd build/Package
-          zip -qr ../Pivot-unsigned.ipa Payload
+          zip -qr ../Pivot-0.7.4.ipa Payload
       - name: Verifica interfaccia su simulatore iPhone
         run: bash Scripts/preview-ui.sh
+      - name: Prepara sorgente AltStore con integrità verificabile
+        run: |
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          ipa = Path('build/Pivot-0.7.4.ipa')
+          template = Path('Distribution/altstore-source.template.json').read_text()
+          source = template.replace('__IPA_SIZE__', str(ipa.stat().st_size))
+          source = source.replace('__IPA_SHA256__', hashlib.sha256(ipa.read_bytes()).hexdigest())
+          parsed = json.loads(source)
+          permissions = parsed['apps'][0]['appPermissions']['entitlements']
+          assert 'com.apple.developer.healthkit' in permissions
+          assert 'com.apple.developer.healthkit.background-delivery' in permissions
+          Path('build/altstore-source.json').write_text(source)
+          PY
+      - name: Pubblica la 0.7.4 per la sorgente AltStore
+        if: github.ref == 'refs/heads/codex/pivot-0.7.1-performance'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view v0.7.4 >/dev/null 2>&1 || gh release create v0.7.4 --target "$GITHUB_SHA" --prerelease --title "Pivot 0.7.4" --notes "Carosello Entrate senza sovrapposizioni e diagnostica Salute. HealthKit resta subordinato al profilo e alla firma creati dall’installatore: aggiungere la sorgente non garantisce l’accesso."
+          gh release upload v0.7.4 build/Pivot-0.7.4.ipa#Pivot-0.7.4.ipa build/altstore-source.json#altstore-source.json --clobber
       - name: Carica anteprime iPhone
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Pivot-iPhone-previews
-          path: build/Previews/*.png
+          path: build/Previews/**/*.png
           retention-days: 14
           if-no-files-found: ignore
       - name: Carica app verificata scaricabile
         uses: actions/upload-artifact@v4
         with:
           name: Pivot-iPhone-unsigned
-          path: build/Pivot-unsigned.ipa
+          path: build/Pivot-0.7.4.ipa
           retention-days: 14
           if-no-files-found: error
       - name: Conserva log di compilazione
@@ -96,4 +120,5 @@ jobs:
             build/interaction-tests.log
             build/export-validation.xlsx
             build/packaged-entitlements.plist
+            build/altstore-source.json
           if-no-files-found: ignore

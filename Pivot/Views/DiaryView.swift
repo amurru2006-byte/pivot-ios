@@ -3,17 +3,14 @@ import SwiftUI
 struct DiaryView: View {
     @EnvironmentObject var store: PivotStore
     @EnvironmentObject var calendar: CalendarService
+    @EnvironmentObject var agenda: AgendaService
     @State private var day = Date()
     @State private var sharing = false
-    var history: [CalendarItem] {
-        var map = Dictionary(store.data.records.values.map { ($0.id, $0.snapshot) }, uniquingKeysWith: { _, newest in newest })
-        for item in Planner.effectiveEvents(calendar.events, data: store.data) { map[item.id] = item }
-        return Array(map.values)
-    }
+    @State private var items: [CalendarItem] = []
+    @State private var report = ""
+    private var refreshKey: String { "\(PivotDate.key(day))|\(agenda.revision)|\(store.data.updatedAt.timeIntervalSince1970)" }
     var check: DayCheckIn? { store.data.checkIns[PivotDate.key(day)] }
-    var report: String { Report.day(day, events: history, data: store.data) }
     var body: some View {
-        let items = Planner.plannedEvents(history, data: store.data).filter { $0.occurs(on: day) }.sorted { $0.start < $1.start }
         let answered = items.filter { [.completed, .partial, .skipped].contains(store.data.records[$0.id]?.status ?? .pending) }.count
         let completed = items.filter { store.data.records[$0.id]?.status == .completed }.count
         NavigationStack {
@@ -41,7 +38,7 @@ struct DiaryView: View {
                                     if !record.notes.isEmpty { Text(record.notes).font(.caption).foregroundStyle(PivotTheme.muted).lineLimit(3).padding(.leading, 59) }
                                 }
                             }
-                        }.buttonStyle(.plain)
+                        }.buttonStyle(.plain).accessibilityIdentifier("diary-event-\(item.id)")
                     }
                 }
                 if let check, !check.notes.isEmpty { PivotCard { SectionHeading(title: "Le tue parole"); Text(check.notes).font(.subheadline).textSelection(.enabled) } }
@@ -62,6 +59,18 @@ struct DiaryView: View {
                     DisclosureGroup("Resoconto completo") { Text(report).font(.callout).foregroundStyle(PivotTheme.muted).textSelection(.enabled).padding(.top, 12) }
                 }
             }.navigationTitle("Diario")
+                .task(id: refreshKey) {
+                    let snapshot = store.data, date = day, current = agenda.effective
+                    let result = await Task.detached(priority: .userInitiated) {
+                        var map = Dictionary(snapshot.records.values.map { ($0.id, $0.snapshot) }, uniquingKeysWith: { _, newest in newest })
+                        for item in current { map[item.id] = item }
+                        let history = Array(map.values)
+                        let items = Planner.plannedEvents(history.filter { $0.occurs(on: date) }, data: snapshot).sorted { $0.start < $1.start }
+                        return (items, Report.day(date, events: history, data: snapshot))
+                    }.value
+                    guard !Task.isCancelled else { return }
+                    items = result.0; report = result.1
+                }
                 .sheet(isPresented: $sharing) { ShareSheet(items: [report]) }
         }
     }

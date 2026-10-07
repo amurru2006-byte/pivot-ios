@@ -29,21 +29,16 @@ struct LessonLogistics: Codable {
     }
     static func key(_ name: String) -> String { EventCoalescer.normalized(name) }
     static func suggestedName(_ event: CalendarItem, clients: [Client]) -> String {
-        let title = EventCoalescer.normalized(event.title)
-        let matches = clients.filter { title.contains(EventCoalescer.normalized($0.name)) }
-        if matches.count == 1 { return matches[0].name }
-        // This is only an editable suggestion, never an automatic person association.
-        var result = event.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        for prefix in ["lezione con ", "ripetizioni con ", "ripetizione con ", "lezione ", "ripetizioni "] {
-            if result.lowercased().hasPrefix(prefix) { result = String(result.dropFirst(prefix.count)); break }
-        }
-        return result
+        StudentRecognition.recognize(title: event.title, clients: clients).name
     }
     static func pending(events: [CalendarItem], data: AppData, now: Date) -> [CalendarItem] {
+        pendingEffective(events: Planner.effectiveEvents(events, data: data), data: data, now: now)
+    }
+    static func pendingEffective(events: [CalendarItem], data: AppData, now: Date) -> [CalendarItem] {
         guard let prompts = data.lessonPrompts else { return [] }
         let answeredSeries = Set(data.records.values.filter { $0.logistics?.confirmedAt != nil }.map { LessonPromptState.seriesKey($0.snapshot) })
         var included: Set<String> = []
-        return Planner.effectiveEvents(events, data: data).sorted { $0.start < $1.start }.filter {
+        return events.sorted { $0.start < $1.start }.filter {
             let key = LessonPromptState.seriesKey($0)
             return $0.kind == .tutoring && $0.end > now && prompts.pendingSeries.contains(key)
                 && !answeredSeries.contains(key)

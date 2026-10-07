@@ -1,0 +1,45 @@
+{
+  "name": "Pivot",
+  "subtitle": "Aggiornamenti verificati di Pivot",
+  "description": "Sorgente personale per gli aggiornamenti Pivot. Dichiara i permessi, ma non garantisce che il programma di installazione abiliti HealthKit nel profilo Apple.",
+  "iconURL": "https://raw.githubusercontent.com/amurru2006-byte/pivot-ios/main/Pivot/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
+  "website": "https://github.com/amurru2006-byte/pivot-ios",
+  "tintColor": "#71E0CC",
+  "apps": [
+    {
+      "name": "Pivot",
+      "bundleIdentifier": "app.pivot.personal",
+      "developerName": "Alessandro Murru",
+      "subtitle": "Agenda, abitudini, palestra e resoconti",
+      "localizedDescription": "Pivot 0.7.4 corregge la sovrapposizione del carosello Entrate e mostra dettagli distinti per gli errori Salute. L’accesso HealthKit richiede una firma e un profilo Apple compatibili; la sorgente AltStore da sola non risolve un’autorizzazione mancante.",
+      "iconURL": "https://raw.githubusercontent.com/amurru2006-byte/pivot-ios/main/Pivot/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
+      "tintColor": "#71E0CC",
+      "category": "utilities",
+      "versions": [
+        {
+          "version": "0.7.4",
+          "buildVersion": "18",
+          "date": "2026-10-07",
+          "localizedDescription": "Carosello Entrate senza sovrapposizioni, diagnostica Salute e osservatori avviati dopo l’autorizzazione. Il problema di firma HealthKit dell’installatore resta da risolvere separatamente.",
+          "downloadURL": "https://github.com/amurru2006-byte/pivot-ios/releases/download/v0.7.4/Pivot-0.7.4.ipa",
+          "size": __IPA_SIZE__,
+          "sha256": "__IPA_SHA256__",
+          "minOSVersion": "17.0"
+        }
+      ],
+      "appPermissions": {
+        "entitlements": [
+          "com.apple.developer.healthkit",
+          "com.apple.developer.healthkit.background-delivery"
+        ],
+        "privacy": {
+          "NSCalendarsFullAccessUsageDescription": "Pivot legge i calendari e modifica solo gli eventi che approvi esplicitamente.",
+          "NSHealthShareUsageDescription": "Pivot legge sonno e allenamenti per collegarli ai tuoi eventi. I dati restano sul dispositivo e sono esclusi dalle esportazioni salvo tua scelta.",
+          "NSMicrophoneUsageDescription": "Pivot usa il microfono solo quando premi Dettatura, per scrivere il messaggio che potrai controllare prima di inviare.",
+          "NSSpeechRecognitionUsageDescription": "Pivot trascrive in italiano sul dispositivo quando disponibile. L'audio non viene salvato né inviato dal Coach."
+        }
+      }
+    }
+  ],
+  "news": []
+}

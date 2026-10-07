@@ -4,21 +4,25 @@ struct TodayView: View {
     @EnvironmentObject var store: PivotStore
     @EnvironmentObject var calendar: CalendarService
     @EnvironmentObject var health: HealthService
+    @EnvironmentObject var agenda: AgendaService
     @State private var day = Date()
     @State private var showDecisions = false
     @State private var showHealth = false
     @State private var quickRecord: EventRecord?
+    @State private var lessonToConfirm: CalendarItem?
     private var check: DayCheckIn? { store.data.checkIns[PivotDate.key(day)] }
     private var items: [CalendarItem] {
-        Planner.plannedEvents(calendar.events, data: store.data).filter { $0.occurs(on: day) && store.data.records[$0.id]?.status != .skipped }
+        agenda.planned.filter { $0.occurs(on: day) && store.data.records[$0.id]?.status != .skipped }
     }
     private var active: [CalendarItem] { items.filter { ![Completion.completed, .partial].contains(store.data.records[$0.id]?.status ?? .pending) } }
     private var finished: [CalendarItem] { items.filter { [Completion.completed, .partial].contains(store.data.records[$0.id]?.status ?? .pending) } }
     private var focused: CalendarItem? {
-        PivotDate.calendar.isDateInToday(day) ? Planner.preferredEvent(active, data: store.data, now: Date()) : active.first
+        PivotDate.calendar.isDateInToday(day) ? Planner.preferredPlannedEvent(active, data: store.data, now: Date()) : active.first
     }
     private var decisions: [EventDecision] { (store.data.decisions ?? []).filter { PivotDate.calendar.isDate($0.date, inSameDayAs: day) } }
     var body: some View {
+        let items = self.items, active = self.active, finished = self.finished, focused = self.focused
+        let remaining = active.filter { $0.id != focused?.id }
         NavigationStack {
             PivotScreen {
                 DaySelector(day: $day)
@@ -34,7 +38,9 @@ struct TodayView: View {
                     }
                         .accessibilityLabel("Parla con Pivot").accessibilityIdentifier("open-pivot-coach")
                 }
-                if store.locked {
+                if store.isLoading {
+                    ProgressView("Carico il tuo storico…")
+                } else if store.locked {
                     EmptyCard(title: "Storico da ripristinare", message: "Recupera il backup nelle Impostazioni. I dati originali sono protetti.", icon: "lock.shield")
                 } else if !calendar.hasAccess {
                     PivotCard {
@@ -58,16 +64,31 @@ struct TodayView: View {
                 if store.data.actualWorkoutDraft != nil || (store.data.workoutReviews ?? []).contains(where: { !$0.resolved && !$0.dismissed }) {
                     NavigationLink { CoachView() } label: { Label("Pivot ha una domanda sull’allenamento", systemImage: "bubble.left.and.bubble.right") }.buttonStyle(PivotSecondaryButton())
                 }
+                let endOfDay = PivotDate.calendar.date(byAdding: .day, value: 1, to: PivotDate.calendar.startOfDay(for: day))!
+                let duePayments = agenda.paymentDues.filter { $0.date.map { $0 < endOfDay } ?? false }
+                ForEach(Array(duePayments.prefix(3))) { due in
+                    if let client = store.data.clients.first(where: { $0.id == due.clientID }) {
+                        NavigationLink { ClientDetailView(client: client) } label: {
+                            PivotCard(tint: PivotTheme.amber) {
+                                Label("\(due.clientName): \(Money.display(due.amountCents)) da ricevere", systemImage: "eurosign.circle")
+                                PaymentDueLabel(due: due)
+                            }
+                        }.buttonStyle(.plain)
+                    }
+                }
+                if let lesson = LessonLogistics.pendingEffective(events: agenda.effective, data: store.data, now: Date()).first {
+                    Button { lessonToConfirm = lesson } label: { Label("Conferma luogo: " + lesson.title, systemImage: "person.2.fill") }.buttonStyle(PivotSecondaryButton())
+                }
 
                 VStack(alignment: .leading, spacing: 12) {
-                    SectionHeading(title: "La tua agenda", detail: "\(active.filter { $0.id != focused?.id }.count)")
+                    SectionHeading(title: "La tua agenda", detail: "\(remaining.count)")
                     Text("Spunta ciò che hai fatto, anche fuori dall’orario previsto.").font(.caption).foregroundStyle(PivotTheme.muted)
-                    ForEach(Array(active.filter { $0.id != focused?.id }.prefix(3))) { event in
+                    ForEach(Array(remaining.prefix(3))) { event in
                         agendaRow(event)
                     }
-                    if active.filter({ $0.id != focused?.id }).count > 3 {
+                    if remaining.count > 3 {
                         DisclosureGroup("Mostra le altre attività") {
-                            ForEach(Array(active.filter { $0.id != focused?.id }.dropFirst(3))) { event in
+                            ForEach(Array(remaining.dropFirst(3))) { event in
                                 agendaRow(event)
                             }
                         }.font(.subheadline)
@@ -92,7 +113,7 @@ struct TodayView: View {
                     }.font(.subheadline).foregroundStyle(PivotTheme.muted)
                 }
                 Button { showHealth = true } label: {
-                    Label(store.data.settings.healthEnabled == true ? "Salute e attività rilevate" : "Collega Salute e Apple Watch", systemImage: "heart.text.square")
+                    Label(store.data.settings.healthEnabled == true ? "Salute e attività rilevate" : "Collega app Salute", systemImage: "heart.text.square")
                 }.font(.caption).foregroundStyle(PivotTheme.muted)
                 if let sync = calendar.lastRefresh {
                     Label("Calendario aggiornato alle \(PivotDate.time(sync))", systemImage: "arrow.triangle.2.circlepath").font(.caption2).foregroundStyle(PivotTheme.muted).accessibilityIdentifier("calendar-updated")
@@ -104,6 +125,7 @@ struct TodayView: View {
             .refreshable { await calendar.refresh(settings: store.data.settings); await health.refresh(store: store, events: calendar.events, force: true) }
             .sheet(isPresented: $showDecisions) { DecisionInboxView() }
             .sheet(isPresented: $showHealth) { healthSheet }
+            .sheet(item: $lessonToConfirm) { event in LessonLogisticsView(event: event) }
             .sheet(item: $quickRecord) { record in NavigationStack { EventDetailView(event: record.snapshot, initial: record, rule: store.rule(for: record.snapshot)) }.presentationDragIndicator(.visible) }
         }
     }
@@ -131,7 +153,7 @@ struct TodayView: View {
             PivotScreen {
                 PivotHeader(title: "Salute", subtitle: "Dati disponibili, senza registrare tutto a mano")
                 Text(health.status).font(.subheadline).foregroundStyle(PivotTheme.muted)
-                Button("Collega / aggiorna Salute") { Task { await health.connect(store: store, events: calendar.events) } }.buttonStyle(PivotPrimaryButton()).disabled(health.isRefreshing || store.locked)
+                Button(store.data.settings.healthEnabled == true ? "Aggiorna dati da Salute" : "Collega app Salute") { Task { await health.connect(store: store, events: calendar.events) } }.buttonStyle(PivotPrimaryButton()).disabled(health.isRefreshing || store.locked)
                 if let sleep = health.sleep(on: day) {
                     PivotCard { Label("Sonno rilevato", systemImage: "bed.double.fill"); Text(ActivityTiming.duration(sleep.durationSeconds)).font(.title2.bold()); Text("\(PivotDate.shortDate(sleep.start)) \(PivotDate.time(sleep.start)) – \(PivotDate.time(sleep.end))").font(.caption) }
                 }
@@ -164,13 +186,14 @@ struct TodayView: View {
     private func complete(_ event: CalendarItem) {
         guard !store.locked else { return }
         var record = store.record(for: event)
+        EventAutofill.complete(&record, event: event)
         if [.tutoring, .work, .workout].contains(event.kind) || event.title.lowercased().contains("sonno") {
             record.status = .completed; quickRecord = record; return
         }
         record.status = .completed; record.updatedAt = Date()
         store.change { data in
             data.records[event.id] = record
-            var coach = data.coachState; coach.messages.append(.init(dayKey: PivotDate.key(day), role: .user, text: "Ho svolto ‘\(event.title)’. Orari reali non indicati.")); data.coachState = coach
+            var coach = data.coachState; coach.messages.append(.init(dayKey: PivotDate.key(day), role: .user, text: "Ho svolto ‘\(event.title)’ come previsto. Gli orari suggeriti dal calendario restano correggibili.")); data.coachState = coach
         }
     }
     private func attendance(_ value: Bool) {
@@ -200,8 +223,9 @@ struct DayCheckInView: View {
             PivotCard(tint: PivotTheme.amber) {
                 Label("La tua mattina", systemImage: "sun.max.fill").font(.headline)
                 ClockField(title: "Sveglia reale", value: $check.wakeTime, fallback: wake)
-                RatingField(title: "Energia", value: $check.energyMorning)
-                RatingField(title: "Umore", value: $check.moodMorning)
+                RatingField(title: "Energia", value: $check.energyMorning, metric: .energy, referenceDate: day)
+                RatingField(title: "Stanchezza", value: $check.fatigueMorning, metric: .fatigue, referenceDate: day)
+                RatingField(title: "Umore", value: $check.moodMorning, metric: .mood, referenceDate: day)
             }
             PivotCard(tint: PivotTheme.blue) {
                 Label("Sonno", systemImage: "bed.double.fill").font(.headline)
@@ -221,8 +245,9 @@ struct DayCheckInView: View {
             }
             PivotCard {
                 DisclosureGroup("La tua sera e le note") {
-                    RatingField(title: "Energia sera", value: $check.energyEvening)
-                    RatingField(title: "Umore sera", value: $check.moodEvening)
+                    RatingField(title: "Energia sera", value: $check.energyEvening, metric: .energy, referenceDate: day)
+                    RatingField(title: "Stanchezza sera", value: $check.fatigueEvening, metric: .fatigue, referenceDate: day)
+                    RatingField(title: "Umore sera", value: $check.moodEvening, metric: .mood, referenceDate: day)
                     TextField("Cosa ti ha aiutato, cosa ti ha bloccato…", text: $check.notes, axis: .vertical).lineLimit(3...8)
                 }.font(.subheadline)
             }

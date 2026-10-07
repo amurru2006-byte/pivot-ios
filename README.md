@@ -1,3 +1,35 @@
+## 0.7.4 — Entrate leggibili e diagnosi della firma Salute
+
+- Navigazione del carosello separata dalle schede, altezza misurata e spiegazione completa su più righe. Il test UI usa un incasso di esempio, verifica lo swipe e controlla che il testo non venga tagliato o coperto dai comandi.
+- Dettagli dell’errore Salute con versione, fase, dominio e codice; il problema dei permessi di lettura è distinto da quello del solo aggiornamento in background. Osservatori dopo l’autorizzazione, ripristinati dopo il caricamento delle impostazioni.
+- **Il collegamento sul telefono non è ancora risolto.** AltStore Classic 2.3 usa una versione di AltSign senza mappatura HealthKit nel profilo Apple. Una sorgente che dichiara i permessi e un IPA con entitlements non garantiscono che la firma finale li conservi. Serve verificare un percorso di firma compatibile prima di altre reinstallazioni. Non disinstallare Pivot o cambiare Apple ID senza un backup verificato.
+- Riferimenti tecnici: [AltStore #1762](https://github.com/altstoreio/AltStore/pull/1762) e [AltSign #45](https://github.com/rileytestut/AltSign/pull/45), chiuse senza integrazione. Il successo della compilazione verifica il pacchetto, non il profilo finale dell’iPhone.
+
+## 0.7.3 — tentativo di collegamento Salute e sincronizzazione automatica
+
+- La firma dichiara sia HealthKit sia la consegna in background richiesta da iOS 15 e successivi.
+- Dopo il consenso, Pivot registra osservatori per sonno e allenamenti. iOS può risvegliare l’app quando arrivano nuovi dati; Pivot aggiorna quindi sonno, attività e abbinamenti senza richiedere l’apertura manuale.
+- Gli aggiornamenti simultanei vengono raggruppati e il completamento viene sempre comunicato a HealthKit, evitando letture duplicate o nuovi tentativi inutili.
+- Per AltStore viene pubblicata una sorgente dedicata che dichiara entrambe le autorizzazioni. La prova sul telefono ha mostrato che questo non basta: anche l’installazione dalla sorgente può perderle durante la rifirma.
+- La dettatura locale prosegue dopo le pause, aggiunge punteggiatura e usa nomi/eventi di Pivot come vocabolario contestuale. Risultati successivi e testo scritto durante l’ascolto non cancellano quanto già presente.
+
+## 0.7.2 — palestra illustrata e grafici delle entrate
+
+- Le giornate e gli esercizi seguono l'ordine della scheda; l'editor permette di spostare i giorni.
+- Le tessere usano le immagini di free-exercise-db. Per nomi ambigui l'utente sceglie prima fra varianti suggerite e poi, se serve, nell'intero catalogo.
+- Galleria e ricerca filtrano per gruppo muscolare principale.
+- Il riepilogo Entrate è un pannello scorrevole con grafici a barre, linea o area per 30 giorni, 12 mesi, anno scelto o tutti gli anni.
+- Il comando Salute si chiama «Collega app Salute». Un'installazione rifirmata senza HealthKit viene spiegata in modo leggibile; progetto e IPA dichiarano la capacità, ma anche il profilo Apple usato dall'installatore deve conservarla.
+
+## 0.7.1 — fluidità e studenti dal calendario
+
+- Salvataggi in background, seriali e raggruppati; stato e retry in Impostazioni → Prestazioni e salvataggio. I dati accettati in memoria vengono conservati in attesa del retry se il disco non è disponibile. Backup precedenti conservati e flush prima delle operazioni esterne.
+- Agenda condivisa calcolata fuori dall’interfaccia, storico indicizzato, letture Calendario/Salute indipendenti dai singoli salvataggi. Diario e pianificatore Coach in background; notifiche aggiornate soltanto dove cambiano. Nessuna apertura automatica di questionari: le conferme restano disponibili volontariamente.
+- Modello AI locale invariato e file scaricato conservato, ma contesto ridotto a 2.048 token e stop richiesto dopo 12 secondi. La memoria viene rilasciata quando si lascia il Coach, in background, dopo un minuto di inattività o in caso di pressione sulle risorse. Non è un limite rigido di latenza né una verifica su iPhone 15 fisico.
+- Lo studente viene riconosciuto dal titolo del calendario. Un abbinamento univoco collega il cliente già salvato; un nome nuovo viene precompilato e resta modificabile. In caso di ambiguità serve scegliere. Importo e incasso non sono inventati o confermati in automatico.
+- Pagamento abituale per studente (a ogni lezione o a fine settimana) e rinvio soltanto per una lezione (prossima lezione/data scelta). I settimanali hanno un promemoria all’ultima lezione prevista della settimana nel calendario, non a ogni lezione. Se manca un abbinamento, non viene inventata una scadenza: aggiornare il calendario o scegliere una data esplicita. Saldi scaduti riproposti nella mattina utile, nelle ore consentite. Notifiche locali richiedono permessi e aggiornamento di Pivot; iOS/Full immersion possono silenziarle. Incassi cumulativi distribuiti sulle lezioni più vecchie, residui conservati e nessuna registrazione automatica del pagamento.
+- Nessun backend AI esterno attivato. Obiettivi più ampi e richieste future in [Docs/Pivot-context.md](Docs/Pivot-context.md).
+
 ## 0.7.0 — attività pratiche e Coach più semplice
 
 - Agenda con pulsanti di esito sotto gli orari; il timer è facoltativo. Il lavoro richiede ancora la registrazione del compenso, il sonno e gli allenamenti aprono i dettagli adatti.
