@@ -100,9 +100,11 @@ final class HealthService: ObservableObject {
     }
     private static func connectionMessage(for error: Error) -> String {
         let details = error.localizedDescription.lowercased()
-        let nsError = error as NSError
-        if (nsError.domain == HKErrorDomain && nsError.code == HKError.Code.errorMissingEntitlement.rawValue)
-            || details.contains("missing entitlement") {
+        // HealthKit has no public missing-entitlement error-code case. Do not
+        // classify all authorization errors as signing failures: preserve the
+        // original domain/code in diagnostics and use an explicit error detail.
+        if details.contains("missing entitlement")
+            || (details.contains("missing") && details.contains("com.apple.developer.healthkit")) {
             return "iOS ha bloccato l’accesso a Salute: nella firma di questa installazione manca un’autorizzazione HealthKit. Non è un permesso che puoi attivare in Salute. Aggiungere la sorgente o aggiornare soltanto Pivot non basta: va verificato il profilo creato dal programma di installazione. Apri i dettagli qui sotto per identificare l’errore."
         }
         return "Non è stato possibile collegare l’app Salute. Controlla in Salute → profilo → App → Pivot e riprova. Dettaglio: \(error.localizedDescription)"
@@ -269,3 +271,4 @@ final class HealthService: ObservableObject {
         }
     }
 }
+
