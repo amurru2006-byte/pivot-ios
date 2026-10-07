@@ -109,13 +109,16 @@ enum TrainingSetTemplate {
         guard let previous else {
             return (1...prescribedWorkingSets).map { TrainingSet(number: $0, kind: .working) }
         }
-        let oldTarget = workingLoad(previous.sets)
+        // Only work actually performed becomes the next session's suggested
+        // load.  We still preserve the manually arranged set types, but an
+        // abandoned or half-filled set must not silently become history.
+        let oldTarget = workingLoad(previous.sets.filter(\.done))
         var result = previous.sets.enumerated().map { offset, old -> TrainingSet in
-            var fraction = old.loadFraction
-            if old.resolvedKind == .warmup, fraction == nil, let kg = old.kg, let oldTarget, oldTarget > 0 {
+            var fraction = old.done ? old.loadFraction : nil
+            if old.done, old.resolvedKind == .warmup, fraction == nil, let kg = old.kg, let oldTarget, oldTarget > 0 {
                 fraction = kg / oldTarget
             }
-            return TrainingSet(number: offset + 1, kg: old.kg, reps: old.reps, kind: old.resolvedKind,
+            return TrainingSet(number: offset + 1, kg: old.done ? old.kg : nil, reps: old.done ? old.reps : nil, kind: old.resolvedKind,
                                toFailure: old.toFailure, supersetGroup: old.supersetGroup, loadFraction: fraction)
         }
         let currentWorkingCount = result.filter { $0.resolvedKind != .warmup }.count
