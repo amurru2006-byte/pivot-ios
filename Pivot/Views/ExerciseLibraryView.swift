@@ -107,7 +107,7 @@ struct ExerciseStatisticsView: View {
             } else if ExerciseCatalog.hasBenchIllustration(exercise) {
                 Text("Principali: pettorali · secondari: deltoide anteriore e tricipiti.").font(.caption).foregroundStyle(PivotTheme.muted)
             }
-            Text("Le aree rosse indicano i gruppi coinvolti, non misurano la tua attivazione. La tecnica e gli adattamenti si verificano con il coach. Le foto online si aprono solo su tua richiesta.").font(.caption).foregroundStyle(PivotTheme.muted)
+            Text("Le aree rosse indicano i gruppi coinvolti, non misurano la tua attivazione. La tecnica e gli adattamenti si verificano con il coach. Le miniature visibili vengono caricate da GitHub senza inviare il tuo storico.").font(.caption).foregroundStyle(PivotTheme.muted)
             if progress.performances.isEmpty {
                 EmptyCard(title: "Il tuo storico parte da qui", message: "Carichi proposti e serie non fatte non entrano nelle statistiche.", icon: "chart.xyaxis.line")
             } else {
