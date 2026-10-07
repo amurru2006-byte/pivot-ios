@@ -205,5 +205,11 @@ final class InterfaceAndTrainingTests: XCTestCase {
         XCTAssertEqual(library.plans[0].payload.days[0].exercises[0].catalogID, "Barbell_Bench_Press_-_Medium_Grip")
         XCTAssertEqual(library.sessions[0].exercises[0].exercise.catalogID, "Barbell_Bench_Press_-_Medium_Grip")
         XCTAssertTrue(library.sessions[0].exercises[0].sets[0].done)
+        let oldOpenSession = session
+        let resaved = TrainingEdits.preservingCatalogChoices(in: oldOpenSession, library: library)
+        XCTAssertEqual(resaved.exercises[0].exercise.catalogID, "Barbell_Bench_Press_-_Medium_Grip")
+        XCTAssertEqual(resaved.exercises[0].exercise.name, oldOpenSession.exercises[0].exercise.name)
+        XCTAssertEqual(resaved.exercises[0].sets[0].kg, 50)
+        XCTAssertTrue(resaved.exercises[0].sets[0].done)
     }
 }

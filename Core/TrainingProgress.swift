@@ -35,6 +35,22 @@ struct ExerciseProgress {
 }
 
 enum TrainingEdits {
+    static func withSavedCatalog(_ exercise: TrainingExercise, library: TrainingLibrary) -> TrainingExercise {
+        var resolved = exercise
+        let planCatalog = library.plans.lazy.flatMap { $0.payload.days }.flatMap { $0.exercises }
+            .first { $0.id == exercise.id && $0.catalogID != nil }?.catalogID
+        let sessionCatalog = library.sessions.lazy.flatMap { $0.exercises }
+            .first { $0.id == exercise.id && $0.exercise.catalogID != nil }?.exercise.catalogID
+        resolved.catalogID = planCatalog ?? sessionCatalog ?? exercise.catalogID
+        return resolved
+    }
+    static func preservingCatalogChoices(in session: TrainingSession, library: TrainingLibrary) -> TrainingSession {
+        var updated = session
+        for index in updated.exercises.indices {
+            updated.exercises[index].exercise = withSavedCatalog(updated.exercises[index].exercise, library: library)
+        }
+        return updated
+    }
     static func associateCatalog(exerciseID: String, catalogID: String, library: inout TrainingLibrary) throws {
         guard !exerciseID.isEmpty, !catalogID.isEmpty else { throw TrainingError.invalidPlan }
         var updated = library

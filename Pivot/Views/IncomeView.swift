@@ -220,7 +220,7 @@ struct IncomeView: View {
                 guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else { return nil }
                 let next = calendar.date(byAdding: .day, value: 1, to: date)!
                 let cents = store.data.payments.filter { $0.date >= date && $0.date < next }.reduce(0) { $0 + $1.amountCents }
-                return IncomeChartPoint(key: PivotDate.dayKey(date), label: DisplayDate.label(date, format: "d/M"), amountCents: cents)
+                return IncomeChartPoint(key: PivotDate.key(date), label: DisplayDate.label(date, format: "d/M"), amountCents: cents)
             }
         case .months:
             let now = Date(), components = calendar.dateComponents([.year, .month], from: now)
