@@ -78,7 +78,7 @@ diff --git a/AltStore/Operations/FetchProvisioningProfilesOperation.swift b/AltS
 +                        ])
 +                    }
 +                }
-+                
++
                  var profiles = [app.bundleIdentifier: profile]
                  var error: Error?
                  
