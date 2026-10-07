@@ -1,6 +1,17 @@
 import XCTest
 
 final class PivotInteractionTests: XCTestCase {
+    func testWorkoutIntentActionsPersistBothSidesAndRestState() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--workout-controls-test"]; app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 15)); app.tabBars.buttons["Palestra"].tap()
+        let button = app.buttons["workout-controls-fixture"]
+        for _ in 0..<15 { if button.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(button.isHittable); button.tap()
+        let message = app.staticTexts["training-message"]
+        XCTAssertTrue(message.waitForExistence(timeout: 15))
+        XCTAssertEqual(message.label, "Controlli allenamento verificati")
+    }
     func testTrainingPDFUsesActualRendererAndSyntheticWeeklyData() {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--report-test"]; app.launch()

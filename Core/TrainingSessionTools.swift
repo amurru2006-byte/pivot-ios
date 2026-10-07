@@ -7,19 +7,17 @@ struct TrainingRest: Codable, Equatable {
     var startedAt: Date
     var deadline: Date?
     var remainingWhenPaused: Int? = nil
-    var elapsedBeforePause: Int = 0
-    var runningSince: Date?
     init(exerciseID: String, setID: UUID, seconds: Int, now: Date = Date()) {
         self.exerciseID = exerciseID; self.setID = setID; plannedSeconds = seconds
-        startedAt = now; deadline = now.addingTimeInterval(Double(seconds)); runningSince = now
+        startedAt = now; deadline = now.addingTimeInterval(Double(seconds))
     }
     func remaining(at now: Date) -> Int { max(0, deadline.map { Int(ceil($0.timeIntervalSince(now))) } ?? remainingWhenPaused ?? 0) }
-    func elapsed(at now: Date) -> Int { elapsedBeforePause + max(0, runningSince.map { Int(now.timeIntervalSince($0)) } ?? 0) }
+    func elapsed(at now: Date) -> Int { max(0, Int(now.timeIntervalSince(startedAt))) }
     mutating func togglePause(now: Date = Date()) {
         if deadline != nil {
-            remainingWhenPaused = remaining(at: now); elapsedBeforePause = elapsed(at: now); deadline = nil; runningSince = nil
+            remainingWhenPaused = remaining(at: now); deadline = nil
         } else {
-            deadline = now.addingTimeInterval(Double(remainingWhenPaused ?? 0)); remainingWhenPaused = nil; runningSince = now
+            deadline = now.addingTimeInterval(Double(remainingWhenPaused ?? 0)); remainingWhenPaused = nil
         }
     }
 }
