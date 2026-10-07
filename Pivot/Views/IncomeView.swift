@@ -198,7 +198,9 @@ struct IncomeView: View {
         measuredIncomePage {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
-                Label("Incassato nell’anno", systemImage: "eurosign.circle.fill").font(.subheadline)
+                Label {
+                    Text("Incassato nell’anno").accessibilityIdentifier("income-summary-title")
+                } icon: { Image(systemName: "eurosign.circle.fill") }.font(.subheadline)
                 Spacer()
                 Picker("Anno", selection: Binding(get: { year }, set: { selectedYear = $0 == currentYear ? nil : $0 })) { ForEach(years, id: \.self) { Text(String($0)).tag($0) } }.pickerStyle(.menu)
             }.foregroundStyle(PivotTheme.accent)
@@ -220,7 +222,10 @@ struct IncomeView: View {
     private var incomeChart: some View {
         measuredIncomePage {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Andamento incassi", systemImage: "chart.xyaxis.line").font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.blue)
+            Label {
+                Text("Andamento incassi").accessibilityIdentifier("income-chart-title")
+            } icon: { Image(systemName: "chart.xyaxis.line") }
+                .font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.blue)
             Picker("Intervallo", selection: $chartRange) { ForEach(IncomeChartRange.allCases) { Text($0.label).tag($0) } }.pickerStyle(.menu)
             HStack {
                 Text(chartRange == .year ? String(year) : chartRange.label).font(.caption).foregroundStyle(PivotTheme.muted)
@@ -253,6 +258,7 @@ struct IncomeView: View {
         }
             .background(PivotTheme.surface, in: RoundedRectangle(cornerRadius: 26))
             .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(PivotTheme.blue.opacity(0.2)))
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("income-chart")
     }
     private var chartPoints: [IncomeChartPoint] {
@@ -421,67 +427,7 @@ struct IncomeDetailView: View {
                     PivotCard {
                         SectionHeading(title: "Registra un pagamento")
                         DatePicker("Data pagamento", selection: $paymentDate)
-                        TextField("Importo ricevuto in euro", text: $payment).keyboardType(.decimalPad).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
-                        Button("Registra importo") { collect(entry, cents: Money.cents(from: payment) ?? 0) }.buttonStyle(PivotPrimaryButton()).disabled(store.locked || (Money.cents(from: payment) ?? 0) <= 0)
-                        Button("Registra il saldo completo") { collect(entry, cents: entry.outstandingCents) }.buttonStyle(PivotSecondaryButton()).disabled(store.locked)
-                    }
-                    if let client = store.data.clients.first(where: { $0.id == entry.clientID }) {
-                        NavigationLink("Paga più lezioni / vedi il saldo dello studente") { ClientDetailView(client: client) }.buttonStyle(PivotSecondaryButton())
-                    }
-                }
-                let payments = store.data.payments.filter { $0.incomeID == entry.id }.sorted { $0.date > $1.date }
-                if !payments.isEmpty {
-                    PivotCard {
-                        SectionHeading(title: "Pagamenti ricevuti")
-                        ForEach(payments) { p in HStack { Text(DisplayDate.label(p.date, format: "d MMM yyyy")).foregroundStyle(PivotTheme.muted); Spacer(); Text("+ \(Money.display(p.amountCents))").foregroundStyle(PivotTheme.accent) }.font(.subheadline) }
-                    }
-                }
-            } else { EmptyCard(title: "Lezione non disponibile", message: "Torna alle entrate per scegliere una lezione.", icon: "eurosign.circle") }
-            if let message { Label(message, systemImage: "info.circle").font(.subheadline).foregroundStyle(PivotTheme.amber) }
-        }.navigationTitle("Pagamento").onAppear {
-            if let entry { timing = StudentPayments.timing(for: entry, data: store.data); promisedDate = entry.promisedPaymentDate ?? Date() }
-        }
-    }
-    private func collect(_ entry: IncomeEntry, cents: Int) {
-        guard cents > 0 && cents <= entry.outstandingCents else { message = "Inserisci un importo positivo, non superiore al saldo mancante."; return }
-        if store.change({ data in
-            guard let index = data.income.firstIndex(where: { $0.id == entry.id }) else { return }
-            data.income[index].paidCents += cents
-            data.payments.append(.init(incomeID: entry.id, clientName: entry.clientName, date: paymentDate, amountCents: cents))
-        }) { payment = ""; message = "Pagamento registrato." }
-    }
-}
-
-struct ClientDetailView: View {
-    @EnvironmentObject var store: PivotStore
-    @EnvironmentObject var agenda: AgendaService
-    let client: Client
-    var entries: [IncomeEntry] { store.data.income.filter { $0.clientID == client.id }.sorted { $0.date > $1.date } }
-    var body: some View {
-        PivotScreen {
-            PivotHeader(title: client.name, subtitle: "\(Money.display(client.rateCents)) all'ora · \(entries.count) lezioni registrate")
-            HStack(spacing: 10) {
-                MetricTile(title: "Ricevuto", value: Money.display(entries.reduce(0) { $0 + $1.paidCents }), icon: "checkmark.circle.fill")
-                MetricTile(title: "Da incassare", value: Money.display(entries.reduce(0) { $0 + $1.outstandingCents }), icon: "clock.fill", color: PivotTheme.amber)
-            }
-            PivotCard {
-                Picker("Come ti paga di solito?", selection: Binding(get: { store.data.clients.first { $0.id == client.id }?.paymentCadence ?? .everyLesson }, set: { value in
-                    store.change { data in if let index = data.clients.firstIndex(where: { $0.id == client.id }) { data.clients[index].paymentCadence = value } }
-                })) {
-                    ForEach(PaymentCadence.allCases, id: \.self) { Text($0.label).tag($0) }
-                }.accessibilityIdentifier("student-payment-cadence")
-                Text("Questa preferenza verrà proposta nelle prossime lezioni. Un rinvio scelto per una singola lezione rimane separato.").font(.caption).foregroundStyle(PivotTheme.muted)
-            }
-            if StudentPayments.balance(clientID: client.id, data: store.data) > 0 {
-                StudentBalancePaymentView(clientID: client.id, clientName: client.name)
-            } else {
-                Text("Non ci sono saldi da incassare per questo studente.").font(.caption).accessibilityIdentifier("student-balance-clear")
-            }
-            SectionHeading(title: "Le lezioni")
-            if entries.isEmpty { EmptyCard(title: "Pronto per la prima lezione", message: "Registra una lezione dalla schermata Entrate.", icon: "person.2.fill") }
-            ForEach(entries) { entry in
-                NavigationLink { IncomeDetailView(entryID: entry.id) } label: {
-                    PivotCard {
+                        TextField("Importo ricevuto in euro", text: $payment).keyboardType(.decimalPad).padding(12).background(PivotTheme.raised, in: RoundedRe…1186 tokens truncated…otCard {
                         HStack {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("\(DisplayDate.label(entry.date, format: "d MMM yyyy")) · \(entry.minutes) min").font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.text)

@@ -7,17 +7,24 @@ final class PivotInteractionTests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["Entrate"].waitForExistence(timeout: 10)); app.tabBars.buttons["Entrate"].tap()
         let carousel = app.collectionViews["income-carousel"]
         XCTAssertTrue(carousel.waitForExistence(timeout: 8)); carousel.swipeLeft()
-        let chart = app.staticTexts["Andamento incassi"]
+        let afterSwipe = XCTAttachment(screenshot: app.screenshot())
+        afterSwipe.name = "income-immediately-after-swipe"; afterSwipe.lifetime = .keepAlways
+        add(afterSwipe)
+        // Only synthetic preview data is used in this test. Keep the hierarchy
+        // when a failure prevents the final screenshot from being reached.
+        print("INCOME_AFTER_SWIPE\n\(app.debugDescription)")
+        let chart = app.descendants(matching: .any)["income-chart-title"].firstMatch
         XCTAssertTrue(chart.waitForExistence(timeout: 5)); XCTAssertTrue(chart.isHittable)
-        let explanation = app.staticTexts["income-chart-explanation"]
+        let explanation = app.descendants(matching: .any)["income-chart-explanation"].firstMatch
         let pageButton = app.buttons["income-page-1"]
+        XCTAssertTrue(pageButton.isSelected, "Lo swipe deve selezionare la pagina Grafico, non soltanto mostrare un elemento fuori schermo")
         XCTAssertTrue(explanation.waitForExistence(timeout: 5))
         XCTAssertTrue(pageButton.isHittable)
         XCTAssertLessThanOrEqual(explanation.frame.maxY, pageButton.frame.minY, "La navigazione non deve coprire la spiegazione del grafico")
         XCTAssertLessThanOrEqual(explanation.frame.maxY, carousel.frame.maxY, "La spiegazione deve rientrare nella pagina, senza tagli")
         XCTAssertGreaterThan(explanation.frame.height, 25, "La spiegazione deve andare a capo, non essere troncata in una riga")
         app.buttons["income-page-0"].tap()
-        XCTAssertTrue(app.staticTexts["Incassato nell’anno"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["income-summary-title"].firstMatch.waitForExistence(timeout: 5))
         pageButton.tap()
         XCTAssertTrue(chart.isHittable)
         let screenshot = XCTAttachment(screenshot: app.screenshot())
