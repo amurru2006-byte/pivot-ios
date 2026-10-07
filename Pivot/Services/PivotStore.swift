@@ -313,6 +313,7 @@ final class PivotStore: ObservableObject {
 
     @discardableResult func saveTraining(_ session: TrainingSession, tips: [String: String], event: CalendarItem?) -> Bool {
         var library = data.training ?? TrainingLibrary()
+        let previous = library.sessions.first { $0.id == session.id }
         if let index = library.sessions.firstIndex(where: { $0.id == session.id }) { library.sessions[index] = session }
         else { library.sessions.append(session) }
         for (key, value) in tips { library.tips[key] = value }
@@ -321,12 +322,9 @@ final class PivotStore: ObservableObject {
         return change { data in
             data.training = library
             if let event = event ?? session.calendarEventID.flatMap({ data.records[$0]?.snapshot }) {
-                var record = data.records[event.id] ?? EventRecord(id: event.id, snapshot: event)
-                record.actualStart = session.start; record.actualEnd = session.end
-                record.timingFromCalendar = false
-                record.activeMinutes = max(0, Int((session.end ?? Date()).timeIntervalSince(session.start) / 60))
-                record.status = session.end == nil ? .running : .completed
-                record.updatedAt = Date(); data.records[event.id] = record
+                let existing = data.records[event.id]
+                let record = existing ?? EventRecord(id: event.id, snapshot: event)
+                data.records[event.id] = TrainingTiming.merging(session, previous: existing == nil ? nil : previous, into: record)
             }
         }
     }
