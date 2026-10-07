@@ -1,0 +1,104 @@
+name: Verifica AltStore HealthKit sperimentale
+on:
+  push:
+    branches: ['codex/altstore-healthkit-windows']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: altstore-healthkit-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - name: Seleziona Xcode e scarica sorgenti ufficiali fissati
+        run: |
+          set -euo pipefail
+          test -d /Applications/Xcode_16.4.app
+          sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+          xcodebuild -version
+          mkdir -p build
+          git clone --filter=blob:none --no-checkout https://github.com/altstoreio/AltStore.git build/AltStore
+          git -C build/AltStore checkout --detach 04311c072d3f587a93335235d324a9fafca8ecf9
+          git -C build/AltStore submodule update --init --recursive --depth 1
+          test "$(git -C build/AltStore/Dependencies/AltSign rev-parse HEAD)" = 0d3c1a3cac608e724ca0c8d7404253cd5fee9495
+      - name: Applica modifica HealthKit e verifica mappature
+        run: |
+          set -euo pipefail
+          git -C build/AltStore apply --check "$GITHUB_WORKSPACE/Tooling/AltStoreHealthKit/capabilities.patch"
+          git -C build/AltStore apply "$GITHUB_WORKSPACE/Tooling/AltStoreHealthKit/capabilities.patch"
+          git -C build/AltStore diff --check
+          git -C build/AltStore/Dependencies/AltSign diff --check
+          clang -fobjc-arc -framework Foundation \
+            -I build/AltStore/Dependencies/AltSign/AltSign/Capabilities \
+            Tooling/AltStoreHealthKit/CapabilityMappingTests.m \
+            build/AltStore/Dependencies/AltSign/AltSign/Capabilities/ALTCapabilities.m \
+            -o build/capability-mapping-tests
+          build/capability-mapping-tests | tee build/capability-tests.log
+      - name: Compila AltStore sperimentale senza account Apple
+        run: |
+          set -o pipefail
+          xcodebuild -workspace build/AltStore/AltStore.xcworkspace -scheme AltStore \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            CURRENT_PROJECT_VERSION=6501 build > build/altstore-build.log 2>&1
+      - name: Prepara pacchetto sperimentale e sorgenti corrispondenti
+        run: |
+          set -euo pipefail
+          mkdir -p build/Experimental/Payload build/Experimental/Tooling
+          cp -R build/DerivedData/Build/Products/Release-iphoneos/AltStore.app build/Experimental/Payload/
+          PIVOT_ALT_APP="$GITHUB_WORKSPACE/build/Experimental/Payload/AltStore.app"
+          /usr/libexec/PlistBuddy -c 'Add :CFBundleDisplayName string AltStore HK Test' "$PIVOT_ALT_APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Add :ALTHealthKitPatchVersion string hk1' "$PIVOT_ALT_APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Set :ALTDeviceID ""' "$PIVOT_ALT_APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Set :ALTServerID ""' "$PIVOT_ALT_APP/Info.plist"
+          for PIVOT_ALT_EXTENSION in "$PIVOT_ALT_APP"/PlugIns/*.appex; do
+            codesign --force --sign - --generate-entitlement-der \
+              --entitlements build/AltStore/AltWidget/AltWidgetExtension.entitlements "$PIVOT_ALT_EXTENSION"
+          done
+          codesign --force --sign - --generate-entitlement-der \
+            --entitlements build/AltStore/AltStore/AltStore.entitlements "$PIVOT_ALT_APP"
+          codesign --verify "$PIVOT_ALT_APP"
+          (cd build/Experimental && zip -qr AltStore-2.3-HealthKit-hk1.ipa Payload)
+          cp build/AltStore/LICENSE build/Experimental/LICENSE-AltStore.txt
+          cp Tooling/AltStoreHealthKit/* build/Experimental/Tooling/
+          cp .github/workflows/altstore-healthkit.yml build/Experimental/Tooling/
+          git -C build/AltStore rev-parse HEAD > build/Experimental/source-commit.txt
+          git -C build/AltStore submodule status --recursive >> build/Experimental/source-commit.txt
+          shasum -a 256 Tooling/AltStoreHealthKit/capabilities.patch build/Experimental/AltStore-2.3-HealthKit-hk1.ipa > build/Experimental/SHA256.txt
+          tar --exclude=.git -czf build/Experimental/AltStore-HealthKit-corresponding-sources.tar.gz -C build AltStore
+          python3 - <<'PY'
+          import plistlib, zipfile
+          with zipfile.ZipFile('build/Experimental/AltStore-2.3-HealthKit-hk1.ipa') as ipa:
+              assert ipa.testzip() is None
+              info = plistlib.loads(ipa.read('Payload/AltStore.app/Info.plist'))
+              assert info['CFBundleIdentifier'] == 'com.rileytestut.AltStore'
+              assert info['CFBundleVersion'] == '6501'
+              assert info['ALTHealthKitPatchVersion'] == 'hk1'
+              assert info['ALTDeviceID'] == '' and info['ALTServerID'] == ''
+          PY
+      - name: Carica copia di prova NON verificata sul telefono
+        uses: actions/upload-artifact@v4
+        with:
+          name: AltStore-HealthKit-experimental
+          path: |
+            build/Experimental/*.ipa
+            build/Experimental/*.txt
+            build/Experimental/*.tar.gz
+            build/Experimental/Tooling/
+          retention-days: 30
+          if-no-files-found: error
+      - name: Conserva diagnostica di compilazione senza credenziali
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AltStore-HealthKit-build-logs
+          path: |
+            build/altstore-build.log
+            build/capability-tests.log
+          retention-days: 14
+          if-no-files-found: ignore
