@@ -105,7 +105,11 @@ enum TrainingEdits {
     }
     private static func newLog(_ exercise: TrainingExercise, library: TrainingLibrary, before date: Date) -> TrainingExerciseLog {
         let previous = library.previous(exerciseID: exercise.id, before: date)
-        return TrainingExerciseLog(exercise: exercise, sets: TrainingSetTemplate.next(previous: previous, prescribedWorkingSets: exercise.sets))
+        var resolved = exercise
+        resolved.isometric = exercise.isometric ?? previous?.exercise.isometric
+        resolved.separateSides = exercise.separateSides ?? previous?.exercise.separateSides
+        resolved.weightedHold = exercise.weightedHold ?? previous?.exercise.weightedHold
+        return TrainingExerciseLog(exercise: resolved, sets: TrainingSetTemplate.next(previous: previous, prescribedWorkingSets: exercise.sets))
     }
 }
 
