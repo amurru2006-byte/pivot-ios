@@ -25,8 +25,11 @@ targets:
     sources:
       - path: Pivot
       - path: Core
+      - path: WorkoutLive
     dependencies:
       - package: LLM
+      - target: PivotWorkoutWidget
+        embed: true
     info:
       path: build/Info.plist
       properties:
@@ -48,12 +51,37 @@ targets:
         LSSupportsOpeningDocumentsInPlace: YES
         UIFileSharingEnabled: YES
         ITSAppUsesNonExemptEncryption: NO
+        NSSupportsLiveActivities: YES
+        CFBundleURLTypes:
+          - CFBundleURLName: app.pivot.workout
+            CFBundleURLSchemes: [pivot]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.pivot.personal
         GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: Pivot/Pivot.entitlements
+  PivotWorkoutWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: WorkoutWidget
+      - path: WorkoutLive
+    info:
+      path: build/Widget-Info.plist
+      properties:
+        CFBundleDisplayName: Allenamento Pivot
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.pivot.personal.workout
+        GENERATE_INFOPLIST_FILE: NO
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: PIVOT_WIDGET
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
   PivotUITests:
     type: bundle.ui-testing
     platform: iOS

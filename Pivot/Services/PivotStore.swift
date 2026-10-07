@@ -66,6 +66,9 @@ final class PivotStore: ObservableObject {
                 self.error = "Non riesco a leggere lo storico. Non lo sovrascriverò. Ripristina un backup valido. Dettaglio: \(error.localizedDescription)"
             }
             isLoading = false
+            if !locked, var library = data.training, TrainingIsometry.migrate(&library) {
+                change { $0.training = library }
+            }
             diagnostics.record("Caricamento storico", seconds: ProcessInfo.processInfo.systemUptime - started)
             if !locked { applyInitialSettings() }
             #if DEBUG && targetEnvironment(simulator)
@@ -333,13 +336,17 @@ final class PivotStore: ObservableObject {
         }
     }
 
+    func flushWorkoutChanges() async -> Bool { await writer.flush() }
+
     func trainingExportURL(_ session: TrainingSession) async throws -> URL {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Allenamento-Pivot-\(PivotDate.key(session.start))-\(session.id.uuidString.prefix(8)).txt")
+        try TrainingReportPDF.write(sessions: [session], library: data.training ?? TrainingLibrary(), title: "Diario allenamento")
+    }
+    func trainingWeekExportURL(containing date: Date) async throws -> URL {
         let library = data.training ?? TrainingLibrary()
-        return try await Task.detached(priority: .utility) {
-            try Data(TrainingExport.text(session, library: library).utf8).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-            return url
-        }.value
+        let interval = TrainingReports.week(containing: date)
+        let sessions = TrainingReports.performed(in: interval, library: library)
+        guard !sessions.isEmpty else { throw TrainingReportPDF.ExportError.empty }
+        return try TrainingReportPDF.write(sessions: sessions, library: library, title: "Riepilogo settimanale", interval: interval)
     }
 
     func incomeExcelURL(year: Int) async throws -> URL {

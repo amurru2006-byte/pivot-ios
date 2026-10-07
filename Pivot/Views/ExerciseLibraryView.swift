@@ -285,9 +285,30 @@ struct ExerciseStatisticsView: View {
             }
             Text("Le aree rosse e i gruppi indicati descrivono i muscoli coinvolti, non misurano la tua attivazione. La tecnica e gli adattamenti si verificano con il coach. Le illustrazioni non mostrano persone reali e vengono caricate da GitHub senza inviare il tuo storico.").font(.caption).foregroundStyle(PivotTheme.muted)
             Text("Illustrazioni: Bryl Lim, basate su Everkinetic · CC BY-SA 4.0.").font(.caption2).foregroundStyle(PivotTheme.muted)
+            ExerciseTechniqueCard(exercise: displayedExercise, catalog: catalogEntry)
+            if !exercise.coachNotes.isEmpty {
+                PivotCard { Text("Indicazioni del PT").font(.headline); Text(exercise.coachNotes).font(.subheadline) }
+            }
+            if let tip = store.data.training?.tips[exercise.id], !tip.isEmpty {
+                PivotCard { Text("Promemoria personali").font(.headline); Text(tip).font(.subheadline) }
+            }
             if progress.performances.isEmpty {
                 EmptyCard(title: "Il tuo storico parte da qui", message: "Carichi proposti e serie non fatte non entrano nelle statistiche.", icon: "chart.xyaxis.line")
             } else {
+                if displayedExercise.usesDuration {
+                    HStack {
+                        MetricTile(title: "Migliore tenuta", value: progress.bestHold.map { "\($0) s" } ?? "—", icon: "timer")
+                        MetricTile(title: "Allenamenti", value: "\(progress.performances.count)", icon: "calendar")
+                    }
+                    PivotCard {
+                        Text("Progressione della durata").font(.headline)
+                        Chart(Array(progress.performances.suffix(30))) { point in
+                            LineMark(x: .value("Data", point.date), y: .value("Secondi", point.bestHold))
+                            PointMark(x: .value("Data", point.date), y: .value("Secondi", point.bestHold))
+                        }.foregroundStyle(PivotTheme.accent).frame(height: 180)
+                        Text("Migliore tenuta per lato o centrale. Nessuna stima di massimale o volume kg × Reps per le isometrie.").font(.caption).foregroundStyle(PivotTheme.muted)
+                    }
+                } else {
                 HStack {
                     MetricTile(title: "Miglior carico", value: kg(progress.bestLoad), icon: "dumbbell.fill")
                     MetricTile(title: "Massimale stimato", value: kg(progress.estimatedMax), icon: "chart.line.uptrend.xyaxis", color: PivotTheme.blue)
@@ -305,12 +326,14 @@ struct ExerciseStatisticsView: View {
                     Text("Migliore serie di ogni allenamento · fino agli ultimi 30").font(.caption).foregroundStyle(PivotTheme.muted)
                 }
                 Text("Stima Epley: kg × (1 + ripetizioni/30), solo serie da 1 a 10 ripetizioni; a 1 ripetizione mostro il carico fatto. È un riferimento teorico, soprattutto se non eri vicino al cedimento: non è un carico da provare. Volume = somma di kg × ripetizioni, secondo il carico che inserisci (per manubri usa sempre la stessa convenzione).").font(.caption).foregroundStyle(PivotTheme.muted)
+                }
                 SectionHeading(title: "Cronologia recente")
                 ForEach(Array(progress.performances.reversed().prefix(12))) { point in
                     PivotCard {
                         Text(DisplayDate.label(point.date, format: "d MMM yyyy") + (point.finished ? "" : " · in corso")).font(.headline)
-                        Text(point.sets.map { "\(($0.kg ?? 0).formatted()) kg × \($0.reps ?? 0)" }.joined(separator: " · ")).font(.subheadline)
-                        Text("Volume \(point.volume.formatted()) kg·rep · stima \(kg(point.estimatedMax))").font(.caption).foregroundStyle(PivotTheme.blue)
+                        Text(point.sets.map { TrainingReports.performance($0, exercise: displayedExercise) }.joined(separator: " · ")).font(.subheadline)
+                        if displayedExercise.usesDuration { Text("Tenuta totale \(point.totalHold) s").font(.caption).foregroundStyle(PivotTheme.blue) }
+                        else { Text("Volume \(point.volume.formatted()) kg·rep · stima \(kg(point.estimatedMax))").font(.caption).foregroundStyle(PivotTheme.blue) }
                     }
                 }
             }

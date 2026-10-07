@@ -11,7 +11,7 @@ final class PivotAppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct PivotApp: App {
     @UIApplicationDelegateAdaptor(PivotAppDelegate.self) private var appDelegate
-    @StateObject private var store = PivotStore()
+    @StateObject private var store = WorkoutRuntime.store
     @StateObject private var calendar = CalendarService()
     @StateObject private var notifications = NotificationService()
     @StateObject private var coachModel = LocalCoachService()
@@ -48,6 +48,7 @@ struct RootView: View {
     @State private var previewReady = !PreviewMode.enabled
     @State private var refreshGate = RefreshGate()
     @State private var notificationGate = RefreshGate()
+    @State private var workoutLink: WorkoutDeepLink?
     // EventKit normally pushes changes immediately. This short safety refresh
     // also catches delayed iCloud deletions/moves without blocking the UI.
     private let refreshClock = Timer.publish(every: 20, on: .main, in: .common).autoconnect()
@@ -108,6 +109,21 @@ struct RootView: View {
             }
         }
         .onReceive(refreshClock) { _ in if scene == .active { requestRefresh(); rebuildAgenda() } }
+        .onOpenURL { url in
+            if url.scheme == "pivot", url.host == "workout",
+               let id = UUID(uuidString: url.lastPathComponent) {
+                let value = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "set" }?.value
+                let set = value.flatMap { UUID(uuidString: $0) }
+                workoutLink = WorkoutDeepLink(id: id, setID: set)
+            }
+        }
+        .sheet(item: $workoutLink) { link in
+            NavigationStack {
+                if let session = store.data.training?.sessions.first(where: { $0.id == link.id }) {
+                    TrainingSessionView(session: session, tips: store.data.training?.tips ?? [:], event: nil, focusSetID: link.setID)
+                } else { Text("Attendi il caricamento dello storico oppure apri Palestra.").padding() }
+            }
+        }
         .onChange(of: scene) { _, value in
             if value == .active { requestRefresh(force: true) }
             else { coachModel.pauseAndUnload() }
@@ -120,6 +136,16 @@ struct RootView: View {
             if ProcessInfo.processInfo.isLowPowerModeEnabled { coachModel.pauseAndUnload() }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in coachModel.pauseAndUnload() }
+        .onReceive(NotificationCenter.default.publisher(for: UITextField.textDidBeginEditingNotification)) { note in
+            if let field = note.object as? UITextField {
+                DispatchQueue.main.async { field.selectedTextRange = field.textRange(from: field.endOfDocument, to: field.endOfDocument) }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UITextView.textDidBeginEditingNotification)) { note in
+            if let field = note.object as? UITextView {
+                DispatchQueue.main.async { field.selectedTextRange = field.textRange(from: field.endOfDocument, to: field.endOfDocument) }
+            }
+        }
         .onChange(of: store.isLoading) { _, loading in
             if !loading {
                 if store.data.settings.healthEnabled == true {
@@ -163,6 +189,9 @@ struct RootView: View {
                 else if route.destination == "payment", let id = route.clientID, let client = store.data.clients.first(where: { $0.id.uuidString == id }) { ClientDetailView(client: client) }
                 else if route.destination == "payment" { IncomeView() }
                 else if route.destination == "coach" { CoachView() }
+                else if route.destination == "workout", let session = store.data.training?.sessions.first(where: { $0.id.uuidString == route.sessionID }) {
+                    TrainingSessionView(session: session, tips: store.data.training?.tips ?? [:], event: nil)
+                }
                 else { Text("Questo evento è cambiato. Apri la giornata aggiornata.").padding() }
             }.presentationDragIndicator(.visible)
         }

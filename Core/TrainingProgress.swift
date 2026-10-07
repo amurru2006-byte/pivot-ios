@@ -8,6 +8,8 @@ struct ExercisePerformance: Identifiable {
     var bestLoad: Double
     var estimatedMax: Double?
     var finished: Bool
+    var bestHold: Int = 0
+    var totalHold: Int = 0
 }
 
 struct ExerciseProgress {
@@ -15,8 +17,9 @@ struct ExerciseProgress {
     var bestLoad: Double? { performances.map(\.bestLoad).max() }
     var bestVolume: Double? { performances.map(\.volume).max() }
     var estimatedMax: Double? { performances.compactMap(\.estimatedMax).max() }
+    var bestHold: Int? { performances.map(\.bestHold).filter { $0 > 0 }.max() }
     static func estimatedMax(_ set: TrainingSet) -> Double? {
-        guard set.done, let kg = set.kg, kg.isFinite, kg > 0, let reps = set.reps, (1...10).contains(reps) else { return nil }
+        guard set.holdTotal == 0, set.done, let kg = set.kg, kg.isFinite, kg > 0, let reps = set.reps, (1...10).contains(reps) else { return nil }
         return reps == 1 ? kg : kg * (1 + Double(reps) / 30)
     }
     static func calculate(exerciseID: String, library: TrainingLibrary, current: TrainingSession? = nil) -> ExerciseProgress {
@@ -24,11 +27,13 @@ struct ExerciseProgress {
         if let current { sessions.removeAll { $0.id == current.id }; sessions.append(current) }
         let performances = sessions.compactMap { session -> ExercisePerformance? in
             guard let log = session.exercises.first(where: { $0.id == exerciseID }) else { return nil }
-            let sets = log.sets.filter { $0.done && ($0.kg.map { $0.isFinite && $0 >= 0 } ?? false) && ($0.reps.map { $0 > 0 } ?? false) }
+            let sets = log.sets.filter { $0.done && $0.canComplete(log.exercise) }
             guard !sets.isEmpty else { return nil }
             return .init(id: session.id, date: session.start, sets: sets,
-                         volume: sets.reduce(0) { $0 + ($1.kg ?? 0) * Double($1.reps ?? 0) }, bestLoad: sets.compactMap(\.kg).max() ?? 0,
-                         estimatedMax: sets.compactMap { estimatedMax($0) }.max(), finished: session.end != nil)
+                         volume: log.exercise.usesDuration ? 0 : sets.reduce(0) { $0 + ($1.kg ?? 0) * Double($1.reps ?? 0) }, bestLoad: sets.compactMap(\.kg).max() ?? 0,
+                         estimatedMax: log.exercise.usesDuration ? nil : sets.compactMap { estimatedMax($0) }.max(), finished: session.end != nil,
+                         bestHold: sets.map { max($0.durationSeconds ?? 0, max($0.leftSeconds ?? 0, $0.rightSeconds ?? 0)) }.max() ?? 0,
+                         totalHold: sets.reduce(0) { $0 + $1.holdTotal })
         }.sorted { $0.date < $1.date }
         return .init(performances: performances)
     }
@@ -95,10 +100,7 @@ enum TrainingEdits {
     }
     private static func newLog(_ exercise: TrainingExercise, library: TrainingLibrary, before date: Date) -> TrainingExerciseLog {
         let previous = library.previous(exerciseID: exercise.id, before: date)
-        return TrainingExerciseLog(exercise: exercise, sets: (1...exercise.sets).map { number in
-            let old = previous?.sets.first { $0.number == number && $0.done }
-            return TrainingSet(number: number, kg: old?.kg, reps: old?.reps)
-        })
+        return TrainingExerciseLog(exercise: exercise, sets: TrainingSetTemplate.next(previous: previous, prescribedWorkingSets: exercise.sets))
     }
 }
 

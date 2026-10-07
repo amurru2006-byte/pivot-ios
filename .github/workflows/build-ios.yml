@@ -53,6 +53,7 @@ jobs:
           # An entirely unsigned binary loses its declared capabilities when
           # AltStore inspects it. Carry HealthKit in an ad-hoc signature; this
           # is NOT a developer/distribution signature and still requires AltStore.
+          codesign --force --sign - build/DerivedData/Build/Products/Release-iphoneos/Pivot.app/PlugIns/PivotWorkoutWidget.appex
           codesign --force --sign - --generate-entitlement-der \
             --entitlements Pivot/Pivot.entitlements \
             build/DerivedData/Build/Products/Release-iphoneos/Pivot.app
@@ -121,4 +122,5 @@ jobs:
             build/export-validation.xlsx
             build/packaged-entitlements.plist
             build/altstore-source.json
+            build/Pivot-QA-report.pdf
           if-no-files-found: ignore
