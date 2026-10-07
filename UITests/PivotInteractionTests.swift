@@ -3,7 +3,7 @@ import XCTest
 final class PivotInteractionTests: XCTestCase {
     func testIncomeSummarySwipesToChart() {
         continueAfterFailure = false
-        let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--payment-schedule-test"]; app.launch()
+        let app = XCUIApplication(); app.launchArguments = ["--preview", "--screen=income"]; app.launch()
         XCTAssertTrue(app.tabBars.buttons["Entrate"].waitForExistence(timeout: 10)); app.tabBars.buttons["Entrate"].tap()
         let carousel = app.collectionViews["income-carousel"]
         XCTAssertTrue(carousel.waitForExistence(timeout: 8)); carousel.swipeLeft()
@@ -14,6 +14,7 @@ final class PivotInteractionTests: XCTestCase {
         XCTAssertTrue(explanation.waitForExistence(timeout: 5))
         XCTAssertTrue(pageButton.isHittable)
         XCTAssertLessThanOrEqual(explanation.frame.maxY, pageButton.frame.minY, "La navigazione non deve coprire la spiegazione del grafico")
+        XCTAssertLessThanOrEqual(explanation.frame.maxY, carousel.frame.maxY, "La spiegazione deve rientrare nella pagina, senza tagli")
         XCTAssertGreaterThan(explanation.frame.height, 25, "La spiegazione deve andare a capo, non essere troncata in una riga")
         app.buttons["income-page-0"].tap()
         XCTAssertTrue(app.staticTexts["Incassato nell’anno"].waitForExistence(timeout: 5))

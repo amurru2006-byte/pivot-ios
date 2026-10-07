@@ -1,9 +1,16 @@
-## 0.7.3 — collegamento Salute e sincronizzazione automatica
+## 0.7.4 — Entrate leggibili e diagnosi della firma Salute
+
+- Navigazione del carosello separata dalle schede, altezza misurata e spiegazione completa su più righe. Il test UI usa un incasso di esempio, verifica lo swipe e controlla che il testo non venga tagliato o coperto dai comandi.
+- Dettagli dell’errore Salute con versione, fase, dominio e codice; il problema dei permessi di lettura è distinto da quello del solo aggiornamento in background. Osservatori dopo l’autorizzazione, ripristinati dopo il caricamento delle impostazioni.
+- **Il collegamento sul telefono non è ancora risolto.** AltStore Classic 2.3 usa una versione di AltSign senza mappatura HealthKit nel profilo Apple. Una sorgente che dichiara i permessi e un IPA con entitlements non garantiscono che la firma finale li conservi. Serve verificare un percorso di firma compatibile prima di altre reinstallazioni. Non disinstallare Pivot o cambiare Apple ID senza un backup verificato.
+- Riferimenti tecnici: [AltStore #1762](https://github.com/altstoreio/AltStore/pull/1762) e [AltSign #45](https://github.com/rileytestut/AltSign/pull/45), chiuse senza integrazione. Il successo della compilazione verifica il pacchetto, non il profilo finale dell’iPhone.
+
+## 0.7.3 — tentativo di collegamento Salute e sincronizzazione automatica
 
 - La firma dichiara sia HealthKit sia la consegna in background richiesta da iOS 15 e successivi.
 - Dopo il consenso, Pivot registra osservatori per sonno e allenamenti. iOS può risvegliare l’app quando arrivano nuovi dati; Pivot aggiorna quindi sonno, attività e abbinamenti senza richiedere l’apertura manuale.
 - Gli aggiornamenti simultanei vengono raggruppati e il completamento viene sempre comunicato a HealthKit, evitando letture duplicate o nuovi tentativi inutili.
-- Per AltStore viene pubblicata una sorgente dedicata che dichiara entrambe le autorizzazioni prima della rifirma. L’installazione diretta del solo file IPA può rimuoverle.
+- Per AltStore viene pubblicata una sorgente dedicata che dichiara entrambe le autorizzazioni. La prova sul telefono ha mostrato che questo non basta: anche l’installazione dalla sorgente può perderle durante la rifirma.
 - La dettatura locale prosegue dopo le pause, aggiunge punteggiatura e usa nomi/eventi di Pivot come vocabolario contestuale. Risultati successivi e testo scritto durante l’ascolto non cancellano quanto già presente.
 
 ## 0.7.2 — palestra illustrata e grafici delle entrate
@@ -222,4 +229,3 @@ Il workflow compila anche per il simulatore iPhone e produce l'artefatto
 `Pivot-iPhone-previews` con le schermate principali e i moduli di registrazione. I dati dimostrativi sono abilitati
 soltanto in Debug sul simulatore con `--preview`; sono esclusi dall'IPA Release.
 L'identificativo dell'app e lo schema dei dati rimangono quelli della 0.1.
-
