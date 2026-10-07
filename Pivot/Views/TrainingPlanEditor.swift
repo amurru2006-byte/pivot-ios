@@ -41,13 +41,18 @@ struct TrainingPlanEditor: View {
                         if payload.days.count > 1 { Button("Rimuovi giorno", role: .destructive) { payload.days.remove(at: index) } }
                     } header: { Text(payload.days[index].name) }
                 }
+                EditButton()
                 Button("Aggiungi giorno") { payload.days.append(TrainingDay(id: UUID().uuidString, name: "Nuovo giorno", exercises: [])) }.disabled(payload.days.count >= 14)
                 if let message { Text(message).foregroundStyle(PivotTheme.amber) }
-                Button("Salva scheda") { save() }.disabled(store.locked).accessibilityIdentifier("training-plan-save")
-            }.pivotForm().navigationTitle(planID == nil ? "Nuova scheda" : "Modifica scheda")
+                Button("Salva scheda") { save() }.disabled(store.locked).accessibilityIdentifier("training-plan-save-bottom")
+            }.pivotForm().scrollDismissesKeyboard(.interactively).navigationTitle(planID == nil ? "Nuova scheda" : "Modifica scheda")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Annulla") { dismiss() } }
-                    ToolbarItem(placement: .primaryAction) { EditButton() }
+                    ToolbarItem(placement: .confirmationAction) { Button("Salva") { save() }.disabled(store.locked).accessibilityIdentifier("training-plan-save") }
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Fine") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
+                    }
                 }
                 .sheet(isPresented: $selecting) {
                     ExercisePickerView { exercise in
