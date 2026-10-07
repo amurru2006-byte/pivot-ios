@@ -248,7 +248,7 @@ final class PivotStore: ObservableObject {
         guard await flushPendingWrites() else { return }
         let pdfDirectory = documentsDirectory
         do {
-            let restored = try await Task.detached(priority: .utility) {
+            var restored = try await Task.detached(priority: .utility) {
                 let access = url.startAccessingSecurityScopedResource()
                 defer { if access { url.stopAccessingSecurityScopedResource() } }
                 let decoded = try BackupCodec.decode(Data(contentsOf: url))
@@ -257,6 +257,9 @@ final class PivotStore: ObservableObject {
                 }
                 return try StudyFiles.installBackup(decoded, directory: pdfDirectory)
             }.value
+            if var library = restored.training, TrainingIsometry.migrate(&library) {
+                try library.validate(); restored.training = library
+            }
             try await persistence.save(restored, restoring: true)
             data = restored
             locked = false
