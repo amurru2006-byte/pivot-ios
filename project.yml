@@ -8,8 +8,8 @@ settings:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "1,2"
     CODE_SIGNING_ALLOWED: NO
-    MARKETING_VERSION: "0.7.1"
-    CURRENT_PROJECT_VERSION: "15"
+    MARKETING_VERSION: "0.7.2"
+    CURRENT_PROJECT_VERSION: "16"
 packages:
   LLM:
     url: https://github.com/eastriverlee/LLM.swift.git
@@ -18,6 +18,10 @@ targets:
   Pivot:
     type: application
     platform: iOS
+    attributes:
+      SystemCapabilities:
+        com.apple.HealthKit:
+          enabled: 1
     sources:
       - path: Pivot
       - path: Core

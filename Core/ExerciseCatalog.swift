@@ -37,6 +37,23 @@ enum ExerciseCatalog {
         let matches = entries.filter { EventCoalescer.normalized($0.name) == name || EventCoalescer.normalized($0.displayName) == name }
         return matches.count == 1 ? matches[0] : nil
     }
+    static func suggestions(for exercise: TrainingExercise, in entries: [CatalogExercise], limit: Int = 12) -> [CatalogExercise] {
+        let query = EventCoalescer.normalized(exercise.name)
+        let queryTokens = Set(query.split(separator: " ").map(String.init).filter { $0.count > 2 })
+        guard !queryTokens.isEmpty else { return [] }
+        return entries.compactMap { entry -> (CatalogExercise, Int)? in
+            let candidate = EventCoalescer.normalized(entry.name + " " + entry.displayName)
+            let tokens = Set(candidate.split(separator: " ").map(String.init))
+            let overlap = queryTokens.intersection(tokens).count
+            guard overlap > 0 else { return nil }
+            var score = overlap * 10
+            if candidate.contains(query) || query.contains(candidate) { score += 30 }
+            if let equipment = entry.equipment, queryTokens.contains(equipment) { score += 8 }
+            return (entry, score)
+        }.sorted { lhs, rhs in
+            lhs.1 == rhs.1 ? lhs.0.name.localizedCaseInsensitiveCompare(rhs.0.name) == .orderedAscending : lhs.1 > rhs.1
+        }.prefix(max(1, limit)).map { $0.0 }
+    }
     static func hasBenchIllustration(_ exercise: TrainingExercise) -> Bool {
         if let id = exercise.catalogID { return id == "Barbell_Bench_Press_-_Medium_Grip" }
         return ["bench press", "panca piana", "panca piana bilanciere", "panca piana con bilanciere", "barbell bench press medium grip", "flat barbell bench press"].contains(EventCoalescer.normalized(exercise.name))

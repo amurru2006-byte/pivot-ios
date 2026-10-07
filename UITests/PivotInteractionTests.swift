@@ -1,6 +1,15 @@
 import XCTest
 
 final class PivotInteractionTests: XCTestCase {
+    func testIncomeSummarySwipesToChart() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--payment-schedule-test"]; app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Entrate"].waitForExistence(timeout: 10)); app.tabBars.buttons["Entrate"].tap()
+        let carousel = app.descendants(matching: .any)["income-carousel"]
+        XCTAssertTrue(carousel.waitForExistence(timeout: 8)); carousel.swipeLeft()
+        let chart = app.descendants(matching: .any)["income-chart"]
+        XCTAssertTrue(chart.waitForExistence(timeout: 5)); XCTAssertTrue(chart.isHittable)
+    }
     func testAutofilledActivityRetainsManualCorrectionAfterRelaunch() {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--student-recognition-test", "--autofill-test"]; app.launch()
@@ -51,6 +60,12 @@ final class PivotInteractionTests: XCTestCase {
         for _ in 0..<8 { if save.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(save.isHittable); save.tap()
         XCTAssertTrue(app.staticTexts["Scheda TEST aggiornata"].waitForExistence(timeout: 5))
+        let imageChoice = app.buttons["choose-exercise-image-test-exercise"]
+        for _ in 0..<8 { if imageChoice.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(imageChoice.waitForExistence(timeout: 8)); imageChoice.tap()
+        XCTAssertTrue(app.navigationBars["Scegli immagine"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Non c'è? Cerca in tutto il catalogo"].waitForExistence(timeout: 5))
+        app.buttons["Annulla"].tap()
         let statistics = app.buttons["exercise-statistics-test-exercise"]
         for _ in 0..<8 { if statistics.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(statistics.isHittable); statistics.tap()
@@ -139,7 +154,7 @@ final class PivotInteractionTests: XCTestCase {
         let health = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Salute e Apple Watch")).firstMatch
         for _ in 0..<5 { if health.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(health.isHittable); health.tap()
-        XCTAssertTrue(app.buttons["Collega / verifica Salute"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Collega app Salute"].waitForExistence(timeout: 5))
         app.tabBars.buttons["Oggi"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["calendar-updated"].waitForExistence(timeout: 15))
         let coach = app.buttons["open-pivot-coach"]
