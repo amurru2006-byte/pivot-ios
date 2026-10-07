@@ -28,7 +28,7 @@ struct TrainingView: View {
                         NavigationLink("Versioni e ripristino della scheda") { TrainingRevisionsView(planID: plan.id) }
                     }
                 }
-                ForEach(plan.payload.days) { day in
+                ForEach(TrainingDayOrder.corrected(plan.payload.days)) { day in
                     NavigationLink {
                         TrainingSessionView(plan: plan, day: day, library: library, event: event)
                     } label: {
@@ -88,7 +88,7 @@ struct TrainingView: View {
                 NavigationStack {
                     PivotScreen {
                         PivotHeader(title: "Conferma la scheda", subtitle: plan.payload.name)
-                        ForEach(plan.payload.days) { day in
+                        ForEach(TrainingDayOrder.corrected(plan.payload.days)) { day in
                             PivotCard {
                                 Text(day.name).font(.headline)
                                 ForEach(day.exercises) { exercise in

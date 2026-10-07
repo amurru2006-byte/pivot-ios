@@ -13,14 +13,38 @@ actor ExerciseCatalogLoader {
 
 struct ExerciseThumbnail: View {
     let exercise: TrainingExercise
+    @State private var photoURL: URL?
+    @State private var lookupFinished = false
     var body: some View {
         Group {
             if ExerciseCatalog.hasBenchIllustration(exercise) {
                 Image("ExerciseBenchPress").resizable().scaledToFit().background(.white)
+            } else if let photoURL {
+                AsyncImage(url: photoURL, transaction: Transaction(animation: .easeInOut(duration: 0.2))) { phase in
+                    switch phase {
+                    case .success(let image): image.resizable().scaledToFit()
+                    case .failure: fallback
+                    default: ProgressView().tint(PivotTheme.blue)
+                    }
+                }.background(.white)
             } else {
-                Image(systemName: "dumbbell.fill").resizable().scaledToFit().padding(22).foregroundStyle(PivotTheme.blue).background(PivotTheme.raised)
+                fallback
             }
         }.clipShape(RoundedRectangle(cornerRadius: 14)).accessibilityHidden(true)
+            .task(id: exercise.id + "|" + exercise.name) {
+                guard !ExerciseCatalog.hasBenchIllustration(exercise) else { lookupFinished = true; return }
+                if let entries = try? await ExerciseCatalogLoader.shared.entries() {
+                    photoURL = ExerciseCatalog.match(exercise, in: entries)?.photoURL
+                }
+                lookupFinished = true
+            }
+    }
+    private var fallback: some View {
+        ZStack {
+            PivotTheme.raised
+            Image(systemName: lookupFinished ? "figure.strengthtraining.traditional" : "photo")
+                .resizable().scaledToFit().padding(24).foregroundStyle(PivotTheme.blue)
+        }
     }
 }
 
@@ -44,10 +68,19 @@ struct ExerciseGalleryView: View {
         }.task(id: store.data.updatedAt) {
             let library = store.data.training ?? TrainingLibrary()
             let result = await Task.detached(priority: .utility) {
-                var byID: [String: TrainingExercise] = [:]
-                for session in library.sessions.sorted(by: { $0.start < $1.start }) { for log in session.exercises { byID[log.id] = log.exercise } }
-                for plan in library.plans { for day in plan.payload.days { for exercise in day.exercises { byID[exercise.id] = exercise } } }
-                return byID.values.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                var result: [TrainingExercise] = [], seen = Set<String>()
+                let active = library.activePlan.map { [$0] } ?? []
+                let plans = active + library.plans.filter { $0.id != library.activePlanID }
+                for plan in plans {
+                    for day in TrainingDayOrder.corrected(plan.payload.days) {
+                        for exercise in day.exercises where seen.insert(exercise.id).inserted { result.append(exercise) }
+                    }
+                }
+                var historyOnly: [TrainingExercise] = []
+                for session in library.sessions.sorted(by: { $0.start < $1.start }) {
+                    for log in session.exercises where seen.insert(log.id).inserted { historyOnly.append(log.exercise) }
+                }
+                return result + historyOnly.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             }.value
             guard !Task.isCancelled else { return }; exercises = result
         }

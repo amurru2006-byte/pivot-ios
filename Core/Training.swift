@@ -39,6 +39,21 @@ struct TrainingPlanPayload: Codable, Equatable {
     }
 }
 
+enum TrainingDayOrder {
+    /// The first Pivot training PDF stored this specific three-day plan in
+    /// alphabetical order. Keep every other plan exactly as authored.
+    static func corrected(_ days: [TrainingDay]) -> [TrainingDay] {
+        let names = days.map { EventCoalescer.normalized($0.name) }
+        guard names == ["bench", "deadlift", "squat"] else { return days }
+        return [days[2], days[0], days[1]]
+    }
+    static func corrected(_ payload: TrainingPlanPayload) -> TrainingPlanPayload {
+        var result = payload
+        result.days = corrected(payload.days)
+        return result
+    }
+}
+
 struct TrainingPlan: Codable, Identifiable {
     var id = UUID()
     var payload: TrainingPlanPayload

@@ -33,13 +33,28 @@ enum ExerciseCatalog {
     static func match(_ exercise: TrainingExercise, in entries: [CatalogExercise]) -> CatalogExercise? {
         if let id = exercise.catalogID { return entries.first { $0.id == id } }
         let name = EventCoalescer.normalized(exercise.name)
+        if let id = legacyAliases[name] { return entries.first { $0.id == id } }
         let matches = entries.filter { EventCoalescer.normalized($0.name) == name || EventCoalescer.normalized($0.displayName) == name }
         return matches.count == 1 ? matches[0] : nil
     }
     static func hasBenchIllustration(_ exercise: TrainingExercise) -> Bool {
         if let id = exercise.catalogID { return id == "Barbell_Bench_Press_-_Medium_Grip" }
-        return ["panca piana", "panca piana bilanciere", "panca piana con bilanciere", "barbell bench press medium grip", "flat barbell bench press"].contains(EventCoalescer.normalized(exercise.name))
+        return ["bench press", "panca piana", "panca piana bilanciere", "panca piana con bilanciere", "barbell bench press medium grip", "flat barbell bench press"].contains(EventCoalescer.normalized(exercise.name))
     }
+    /// Conservative mappings for the short labels used by the user's first
+    /// imported plan. Ambiguous labels intentionally remain unmatched.
+    static let legacyAliases: [String: String] = [
+        "assisted pull up": "Band_Assisted_Pull-Up",
+        "bench press": "Barbell_Bench_Press_-_Medium_Grip",
+        "cable fly": "Cable_Crossover",
+        "calf raises": "Standing_Calf_Raises",
+        "deadlift": "Barbell_Deadlift",
+        "military press": "Standing_Military_Press",
+        "machine low row": "Seated_Cable_Rows",
+        "dumbbell lateral raise": "Side_Lateral_Raise",
+        "hammer curls": "Hammer_Curls",
+        "tricep pushdown": "Triceps_Pushdown"
+    ]
     static let italianNames: [String: String] = [
         "Barbell_Bench_Press_-_Medium_Grip": "Panca piana con bilanciere",
         "Barbell_Incline_Bench_Press_-_Medium_Grip": "Panca inclinata con bilanciere",

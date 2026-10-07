@@ -12,7 +12,7 @@ struct TrainingPlanEditor: View {
     @State private var message: String?
     init(plan: TrainingPlan? = nil) {
         planID = plan?.id
-        _payload = State(initialValue: plan?.payload ?? TrainingPlanPayload(formatVersion: 1, name: "Nuovo obiettivo", days: [TrainingDay(id: UUID().uuidString, name: "Giorno A", exercises: [])]))
+        _payload = State(initialValue: plan.map { TrainingDayOrder.corrected($0.payload) } ?? TrainingPlanPayload(formatVersion: 1, name: "Nuovo obiettivo", days: [TrainingDay(id: UUID().uuidString, name: "Giorno A", exercises: [])]))
     }
     var body: some View {
         NavigationStack {
@@ -21,6 +21,21 @@ struct TrainingPlanEditor: View {
                     TextField("Nome della scheda", text: $payload.name).accessibilityIdentifier("training-plan-name")
                     TextField("Motivo / indicazioni del coach", text: $changeNote, axis: .vertical)
                     Text("I vecchi allenamenti restano invariati. Le modifiche si applicano alle nuove sessioni, non a quelle già iniziate.").font(.caption)
+                }
+                Section("Ordine degli allenamenti") {
+                    Text("Il primo elemento appare in cima alla pagina Palestra. Usa le frecce per seguire l'ordine reale della scheda.").font(.caption)
+                    ForEach(payload.days.indices, id: \.self) { index in
+                        HStack {
+                            Text("\(index + 1). \(payload.days[index].name)")
+                            Spacer()
+                            Button { moveDay(at: index, by: -1) } label: { Image(systemName: "arrow.up") }
+                                .buttonStyle(.borderless).disabled(index == 0)
+                                .accessibilityLabel("Sposta \(payload.days[index].name) prima")
+                            Button { moveDay(at: index, by: 1) } label: { Image(systemName: "arrow.down") }
+                                .buttonStyle(.borderless).disabled(index == payload.days.count - 1)
+                                .accessibilityLabel("Sposta \(payload.days[index].name) dopo")
+                        }
+                    }
                 }
                 ForEach(payload.days.indices, id: \.self) { index in
                     Section {
@@ -65,6 +80,11 @@ struct TrainingPlanEditor: View {
                     }
                 }
         }
+    }
+    private func moveDay(at index: Int, by offset: Int) {
+        let destination = index + offset
+        guard payload.days.indices.contains(index), payload.days.indices.contains(destination) else { return }
+        payload.days.swapAt(index, destination)
     }
     private func save() {
         do {
