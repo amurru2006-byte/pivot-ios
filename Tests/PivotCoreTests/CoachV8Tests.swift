@@ -150,4 +150,27 @@ final class CoachV8Tests: XCTestCase {
         let tooMany = (0..<49).map { item("id-\($0)", title: "Pranzo \($0)", kind: .meal, start: "11:00", end: "11:45") }
         XCTAssertThrowsError(try CoachV8Snapshot.make(message: "Pranzo", events: tooMany, data: state(tooMany), now: now))
     }
+    func testExistingConfirmationQueuesBothMovesAndRejectsNewConflictsWithoutPartialAcceptance() throws {
+        let events = [lunch, gym]
+        var data = state(events)
+        let snapshot = try CoachV8Snapshot.make(message: "Pranzo poi palestra", events: events, data: data, now: now)
+        let result = try CoachV8Planner.preview(response(snapshot), snapshot: snapshot, events: events, data: data, now: now)
+        let option = try XCTUnwrap(result.options.first)
+        let conflict = item("new-conflict", title: "Impegno", kind: .work, start: "12:05", end: "13:05")
+        XCTAssertNotNil(CoachPlanner.accept(option, events: events + [conflict], data: &data, now: now))
+        XCTAssertTrue(data.moves.isEmpty)
+        XCTAssertTrue(data.coachState.pendingCalendarChanges.isEmpty)
+        XCTAssertNil(CoachPlanner.accept(option, events: events, data: &data, now: now))
+        XCTAssertEqual(data.moves.map { $0.source.id }, [lunch.id, gym.id])
+        XCTAssertEqual(data.coachState.pendingCalendarChanges.map { $0.move.source.id }, [lunch.id, gym.id])
+        XCTAssertTrue(data.moves.allSatisfy { !$0.syncedToCalendar })
+    }
+    func testCompletedActivityCannotBecomeARecoveryPlan() throws {
+        let events = [lunch, gym]
+        var data = state(events)
+        data.records[lunch.id] = .init(id: lunch.id, snapshot: lunch, status: .completed)
+        let snapshot = try CoachV8Snapshot.make(message: "Pranzo poi palestra", events: events, data: data, now: now)
+        XCTAssertThrowsError(try CoachV8Planner.preview(response(snapshot), snapshot: snapshot, events: events, data: data, now: now))
+        XCTAssertTrue(data.moves.isEmpty)
+    }
 }
