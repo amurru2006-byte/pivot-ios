@@ -25,7 +25,8 @@ enum WorkoutRuntime {
             if action == "next" { finishRest(&session) }
         } else {
             guard let ei = session.exercises.firstIndex(where: { $0.sets.contains { $0.id.uuidString == setID } }),
-                  let si = session.exercises[ei].sets.firstIndex(where: { $0.id.uuidString == setID }), !session.exercises[ei].sets[si].done else { return }
+                  let si = session.exercises[ei].sets.firstIndex(where: { $0.id.uuidString == setID }),
+                  session.exercises[ei].skipped != true, !session.exercises[ei].sets[si].isResolved else { return }
             let exercise = session.exercises[ei].exercise
             var set = session.exercises[ei].sets[si]
             switch action {
@@ -40,12 +41,9 @@ enum WorkoutRuntime {
             case "right+": set.rightSeconds = min(86400, (set.rightSeconds ?? 0) + 1)
             case "right-": set.rightSeconds = max(0, (set.rightSeconds ?? 0) - 1)
             case "done":
-                guard set.canComplete(exercise) else { status = "Inserisci i valori prima di confermare"; await update(session); return }
-                // Without an explicit next-set start, elapsed time also includes
-                // the next set. Do not misreport it as an actual rest duration.
-                set.done = true; set.completedAt = Date()
-                let seconds = set.restSeconds ?? exercise.restSeconds
-                session.rest = seconds > 0 ? .init(exerciseID: exercise.id, setID: set.id, seconds: seconds) : nil
+                let outcome = TrainingCompletion.toggle(in: &session, exerciseIndex: ei, setIndex: si)
+                guard outcome != .invalid else { status = "Inserisci i valori prima di confermare"; await update(session); return }
+                set = session.exercises[ei].sets[si]
                 focusedSet[session.id] = nil
             default: return
             }
@@ -104,7 +102,7 @@ enum WorkoutRuntime {
             await scheduleRest(session); return
         }
         let logs = session.exercises
-        let candidates = logs.flatMap { log in log.sets.filter { !$0.done }.map { (log.exercise, $0) } }
+        let candidates = logs.filter { $0.skipped != true }.flatMap { log in log.sets.filter { !$0.isResolved }.map { (log.exercise, $0) } }
         let fallback = logs.reversed().compactMap { log in log.sets.last.map { (log.exercise, $0) } }.first
         let current = candidates.first { $0.1.id == focusedSet[session.id] } ?? candidates.first ?? fallback
         guard let (exercise, set) = current else {
@@ -114,7 +112,11 @@ enum WorkoutRuntime {
             kg: set.kg, reps: set.reps, seconds: set.durationSeconds, left: set.leftSeconds, right: set.rightSeconds,
             isometric: exercise.usesDuration, weighted: exercise.weightedHold == true, separateSides: exercise.separateSides == true,
             deadline: session.rest?.deadline, pausedSeconds: session.rest?.remainingWhenPaused,
-            status: set.done ? "Serie completate · termina nell'app" : status.isEmpty ? "Compila, poi segna Fatta" : status, isDone: set.done)
+            status: candidates.isEmpty ? "Serie registrate" : status, isDone: candidates.isEmpty,
+            targetSets: exercise.sets, targetReps: exercise.reps,
+            workingNumber: logs.first(where: { $0.id == exercise.id }).map { log in
+                log.sets.prefix { $0.id != set.id }.filter { $0.resolvedKind != .warmup }.count + 1
+            })
         let content = ActivityContent(state: state, staleDate: nil)
         if activities.isEmpty && start {
             guard ActivityAuthorizationInfo().areActivitiesEnabled else { status = "Abilita Attività live nelle impostazioni di iOS"; return }

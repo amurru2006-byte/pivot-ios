@@ -1,0 +1,103 @@
+name: Verifica correzioni Serie 7
+on:
+  push:
+    branches: ['codex/pivot-serie7-workout-fixes']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pivot-serie7-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 55
+    steps:
+      - name: Scarica codice
+        uses: actions/checkout@v4
+      - name: Versioni degli strumenti
+        run: |
+          PIVOT_XCODE=$(find /Applications -maxdepth 1 -name 'Xcode_*.app' | sort -V | tail -n 1)
+          if [ -n "$PIVOT_XCODE" ]; then sudo xcode-select -s "$PIVOT_XCODE/Contents/Developer"; fi
+          xcodebuild -version
+          swift --version
+      - name: Test dati, pagamenti, backup e pianificazione
+        run: PIVOT_TEST_EXPORT_PATH=build/export-validation.xlsx swift test
+      - name: Installa generatore progetto
+        run: brew install xcodegen
+      - name: Genera progetto Xcode
+        run: xcodegen generate
+      - name: Autorizza il componente AI approvato
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          approved = json.loads(Path('Scripts/trusted-macros.json').read_text())
+          assert len(approved) == 1
+          assert approved[0]['targetName'] == 'LLMMacrosImplementation'
+          assert approved[0]['packageIdentity'] == 'llm.swift'
+          assert ('revision: ' + approved[0]['fingerprint']) in Path('project.yml').read_text()
+          security = Path.home() / 'Library/org.swift.swiftpm/security'
+          security.mkdir(parents=True, exist_ok=True)
+          (security / 'macros.json').write_text(json.dumps(approved, indent=2))
+          PY
+      - name: Compila app senza firma
+        run: |
+          set -o pipefail
+          xcodebuild -project Pivot.xcodeproj -scheme Pivot -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tee build/build.log
+      - name: Prepara IPA per AltStore o Sideloadly
+        run: |
+          # An entirely unsigned binary loses its declared capabilities when
+          # AltStore inspects it. Carry HealthKit in an ad-hoc signature; this
+          # is NOT a developer/distribution signature and still requires AltStore.
+          codesign --force --sign - build/DerivedData/Build/Products/Release-iphoneos/Pivot.app/PlugIns/PivotWorkoutWidget.appex
+          codesign --force --sign - --generate-entitlement-der \
+            --entitlements Pivot/Pivot.entitlements \
+            build/DerivedData/Build/Products/Release-iphoneos/Pivot.app
+          codesign --display --entitlements :- \
+            build/DerivedData/Build/Products/Release-iphoneos/Pivot.app \
+            > build/packaged-entitlements.plist 2>/dev/null
+          python3 - <<'PY'
+          import plistlib
+          with open('build/packaged-entitlements.plist', 'rb') as file:
+              entitlements = plistlib.load(file)
+              assert entitlements.get('com.apple.developer.healthkit') is True
+              assert entitlements.get('com.apple.developer.healthkit.background-delivery') is True
+          PY
+          mkdir -p build/Package/Payload
+          cp -R build/DerivedData/Build/Products/Release-iphoneos/Pivot.app build/Package/Payload/
+          cd build/Package
+          zip -qr ../Pivot-Serie7-candidate.ipa Payload
+      - name: Verifica interfaccia su simulatore iPhone
+        run: bash Scripts/preview-ui.sh
+      - name: Carica anteprime iPhone
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pivot-iPhone-previews
+          path: build/Previews/**/*.png
+          retention-days: 14
+          if-no-files-found: ignore
+      - name: Carica app verificata scaricabile
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pivot-Serie7-candidate
+          path: build/Pivot-Serie7-candidate.ipa
+          retention-days: 14
+          if-no-files-found: error
+      - name: Conserva log di compilazione
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pivot-build-log
+          path: |
+            build/build.log
+            build/preview-build.log
+            build/interaction-tests.log
+            build/export-validation.xlsx
+            build/packaged-entitlements.plist
+                        build/Pivot-QA-report.pdf
+          if-no-files-found: ignore

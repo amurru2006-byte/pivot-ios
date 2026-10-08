@@ -82,9 +82,7 @@ struct TrainingView: View {
                     }
                 }
                 ForEach(TrainingDayOrder.corrected(plan.payload.days)) { day in
-                    NavigationLink {
-                        TrainingSessionView(plan: plan, day: day, library: library, event: event)
-                    } label: {
+                    NavigationLink(value: WorkoutRoute.day(planID: plan.id, dayID: day.id)) {
                         PivotCard {
                             ActionRow(title: day.name, subtitle: "\(day.exercises.count) esercizi · apri il diario", icon: "dumbbell.fill")
                             Text(day.exercises.map(\.name).joined(separator: " · ")).font(.caption).foregroundStyle(PivotTheme.muted).lineLimit(3)
@@ -99,6 +97,12 @@ struct TrainingView: View {
             Button { importing = true } label: { Label(busy ? "Leggo la scheda…" : "Importa nuova scheda PDF", systemImage: "square.and.arrow.down") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked || busy || library.plans.count >= 6)
             Text("Solo PDF preparati per Pivot. L'importazione mostra un riepilogo da confermare e non cancella gli allenamenti precedenti.").font(.caption).foregroundStyle(PivotTheme.muted)
             #if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.arguments.contains("--serie7-test") {
+                Button("Prepara Serie 7 TEST") {
+                    do { try Serie7Fixture.install(); message = "Serie 7 pronta" }
+                    catch { message = error.localizedDescription }
+                }.accessibilityIdentifier("serie7-fixture")
+            }
             if ProcessInfo.processInfo.arguments.contains("--workout-controls-test") {
                 Button("Verifica controlli allenamento") {
                     Task {
@@ -138,15 +142,26 @@ struct TrainingView: View {
                 }
                 SectionHeading(title: "Ultimi allenamenti")
                 ForEach(library.sessions.sorted { $0.start > $1.start }.prefix(20)) { session in
-                    NavigationLink {
-                        TrainingSessionView(session: session, tips: library.tips, event: nil)
-                    } label: {
+                    NavigationLink(value: WorkoutRoute.session(.init(id: session.id, setID: nil))) {
                         PivotCard { ActionRow(title: session.dayName, subtitle: "\(PivotDate.shortDate(session.start)) · \(session.end == nil ? "in corso" : "terminato")", icon: "clock.arrow.circlepath") }
                     }.buttonStyle(.plain)
                 }
             }
             if let message { Text(message).font(.subheadline).foregroundStyle(PivotTheme.amber).accessibilityIdentifier("training-message") }
         }.navigationTitle("Palestra")
+            .navigationDestination(for: WorkoutRoute.self) { route in
+                switch route {
+                case .session(let link):
+                    if let recorded = library.sessions.first(where: { $0.id == link.id }) {
+                        TrainingSessionView(session: recorded, tips: library.tips, event: event, focusSetID: link.setID)
+                    }
+                case .day(let planID, let dayID):
+                    if let plan = library.plans.first(where: { $0.id == planID }),
+                       let day = plan.payload.days.first(where: { $0.id == dayID }) {
+                        TrainingSessionView(plan: plan, day: day, library: library, event: event)
+                    }
+                }
+            }
             .sheet(isPresented: $showingReport) { if let reportURL { TrainingReportPreview(url: reportURL) } }
             .sheet(item: $editingPlan) { TrainingPlanEditor(plan: $0) }
             .sheet(isPresented: $newPlan) { TrainingPlanEditor() }
@@ -232,6 +247,8 @@ struct TrainingSessionView: View {
     @State private var applyToPlan = false
     @State private var revealedSetID: UUID?
     @State private var setOptions: WorkoutSetOptionsTarget?
+    @State private var skippingExercise: Int?
+    @State private var skipReason = ""
     var focusSetID: UUID? = nil
     let event: CalendarItem?
     init(plan: TrainingPlan, day: TrainingDay, library: TrainingLibrary, event: CalendarItem?) {
@@ -311,7 +328,19 @@ struct TrainingSessionView: View {
             .onChange(of: store.data.updatedAt) { _, _ in
                 if let latest = store.data.training?.sessions.first(where: { $0.id == session.id }), latest.updatedAt > session.updatedAt { session = Self.markingSetOrigins(latest) }
             }
-            .task {
+            .alert("Segna non svolto", isPresented: Binding(get: { skippingExercise != nil }, set: { if !$0 { skippingExercise = nil } })) {
+                TextField("Motivo (facoltativo)", text: $skipReason)
+                Button("Segna non svolto") {
+                    if let index = skippingExercise {
+                        TrainingCompletion.skipExercise(in: &session, at: index, reason: skipReason)
+                        WorkoutRuntime.focusedSet[session.id] = nil
+                        save()
+                    }
+                    skippingExercise = nil
+                }
+                Button("Annulla", role: .cancel) { skippingExercise = nil }
+            } message: { Text("Le serie già svolte restano registrate. Puoi riprendere l'esercizio quando vuoi.") }
+            .task(id: focusSetID) {
                 if let focusSetID {
                     try? await Task.sleep(nanoseconds: 200_000_000)
                     proxy.scrollTo(focusSetID, anchor: .center); WorkoutRuntime.focusedSet[session.id] = focusSetID
@@ -340,6 +369,15 @@ struct TrainingSessionView: View {
                 .accessibilityIdentifier("workout-exercise-statistics-\(exercise.id)")
                 Spacer(minLength: 4)
                 Menu {
+                    if session.exercises[index].skipped == true || session.exercises[index].sets.contains(where: { $0.skipped == true }) {
+                        Button("Riprendi esercizio", systemImage: "arrow.uturn.backward") {
+                            TrainingCompletion.resumeExercise(in: &session, at: index); save()
+                        }.disabled(!hasStarted || store.locked)
+                    } else {
+                        Button(hasCompletedSets ? "Salta serie rimanenti" : "Esercizio non svolto", systemImage: "forward.end") {
+                            skipReason = ""; skippingExercise = index
+                        }.disabled(!hasStarted || store.locked)
+                    }
                     Button("Cambia esercizio", systemImage: "arrow.triangle.2.circlepath") {
                         replacementID = exercise.id
                         selectingExercise = true
@@ -352,6 +390,7 @@ struct TrainingSessionView: View {
                         .background(PivotTheme.raised, in: Circle())
                 }
                 .accessibilityLabel("Opzioni esercizio")
+                .accessibilityIdentifier("exercise-options-\(exercise.id)")
             }
             if hasCompletedSets {
                 Text("Hai già registrato delle serie: per conservare ciò che hai fatto, aggiungi il nuovo esercizio come extra.")
@@ -378,7 +417,12 @@ struct TrainingSessionView: View {
                 .font(.caption.weight(.semibold))
             }
             if exercise.usesDuration {
-                Text("Inserisci la durata effettiva; i secondi non diventano kg né ripetizioni.").font(.caption).foregroundStyle(PivotTheme.muted)
+                Text("Inserisci la durata effettiva. 0 secondi = serie non svolta; per due lati, 0 su entrambi. I secondi non diventano kg né Reps.").font(.caption).foregroundStyle(PivotTheme.muted)
+            }
+            if session.exercises[index].skipped == true || session.exercises[index].sets.contains(where: { $0.skipped == true }) {
+                Label(session.exercises[index].skipped == true ? "Esercizio non svolto" : "Serie non svolte", systemImage: "forward.end.fill")
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.amber)
+                if let reason = session.exercises[index].skipReason { Text(reason).font(.caption).foregroundStyle(PivotTheme.muted) }
             }
             workoutSetColumnHeadings(exercise)
             VStack(spacing: 6) {
@@ -388,6 +432,7 @@ struct TrainingSessionView: View {
                     }
                 }
             }
+            .disabled(session.exercises[index].skipped == true)
             Menu {
                 Button("W · Warm-up") { addWarmup(exerciseIndex: index) }
                     .accessibilityIdentifier("add-warmup-\(exercise.id)")
@@ -399,7 +444,7 @@ struct TrainingSessionView: View {
                     .background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 10))
             }
             .accessibilityIdentifier("add-set-\(exercise.id)")
-            .disabled(!hasStarted || store.locked || session.exercises[index].sets.count >= 60)
+            .disabled(!hasStarted || store.locked || session.exercises[index].skipped == true || session.exercises[index].sets.count >= 60)
             if let tip = tips[exercise.id], !tip.isEmpty {
                 Label(tip, systemImage: "pin.fill").font(.caption).foregroundStyle(PivotTheme.blue)
             }
@@ -472,7 +517,7 @@ struct TrainingSessionView: View {
                 Button {
                     toggleSetCompletion(exerciseIndex: exerciseIndex, setIndex: setIndex, exercise: exercise)
                 } label: {
-                    Image(systemName: "checkmark")
+                    Image(systemName: set.skipped == true ? "forward.end.fill" : "checkmark")
                         .font(.body.weight(.bold))
                         .foregroundStyle(set.done ? Color.white : PivotTheme.muted)
                         .frame(width: 44, height: 48)
@@ -480,8 +525,8 @@ struct TrainingSessionView: View {
                                     in: RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(.plain).disabled(!hasStarted || store.locked)
-                .accessibilityLabel(set.done ? "Serie \(setIndex + 1) fatta" : "Segna serie \(setIndex + 1) fatta")
-                .accessibilityValue(set.done ? "Fatta" : "Da fare")
+                .accessibilityLabel(set.skipped == true ? "Riapri serie \(setIndex + 1) non svolta" : set.done ? "Serie \(setIndex + 1) fatta" : "Conferma serie \(setIndex + 1)")
+                .accessibilityValue(set.skipped == true ? "Non svolta" : set.done ? "Fatta" : "Da fare")
                 .accessibilityIdentifier("set-done-\(exercise.id)-\(setIndex)")
                 Button { setOptions = WorkoutSetOptionsTarget(id: set.id) } label: {
                     Image(systemName: "ellipsis").font(.subheadline.bold())
@@ -507,23 +552,15 @@ struct TrainingSessionView: View {
         .accessibilityIdentifier("set-row-\(exercise.id)-\(setIndex)")
     }
     private func toggleSetCompletion(exerciseIndex: Int, setIndex: Int, exercise: TrainingExercise) {
-        let current = session.exercises[exerciseIndex].sets[setIndex]
-        let done = !current.done
-        if done && !current.canComplete(exercise) {
+        let outcome = TrainingCompletion.toggle(in: &session, exerciseIndex: exerciseIndex, setIndex: setIndex)
+        if outcome == .invalid {
             message = exercise.usesDuration ? "Inserisci durata e, se selezionata, zavorra prima di segnare Fatta." : "Inserisci carico e Reps prima di segnare Fatta."
             return
         }
-        if done {
-            session.exercises[exerciseIndex].sets[setIndex].completedAt = Date()
-            let seconds = current.restSeconds ?? exercise.restSeconds
-            session.rest = seconds > 0 ? .init(exerciseID: exercise.id, setID: current.id, seconds: seconds) : nil
+        if outcome == .performed || outcome == .skipped {
             WorkoutRuntime.focusedSet[session.id] = nil
-        } else {
-            session.exercises[exerciseIndex].sets[setIndex].completedAt = nil
-            if session.rest?.setID == current.id { session.rest = nil }
         }
         revealedSetID = nil
-        session.exercises[exerciseIndex].sets[setIndex].done = done
         save()
     }
     private func setLocation(_ id: UUID) -> (exercise: Int, set: Int)? {
@@ -574,7 +611,7 @@ struct TrainingSessionView: View {
                         Task { await WorkoutRuntime.update(session, start: true) }
                         setOptions = nil
                     }
-                    .disabled(!hasStarted || session.end != nil || set.done)
+                    .disabled(!hasStarted || session.end != nil || set.isResolved || session.exercises[exerciseIndex].skipped == true)
                 }
                 Section {
                     Text(set.isAdditional == true ? "Serie aggiunta: puoi eliminarla con uno swipe a sinistra finché non è fatta." : "Serie prevista dalla scheda: resta obbligatoria e non può essere eliminata.")
