@@ -1,6 +1,27 @@
 import XCTest
 
 final class PivotInteractionTests: XCTestCase {
+    func testSerie7PRCelebrationCanBeClosedAndDoesNotRepeatOnReopen() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--serie7-test"]; app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 15)); app.tabBars.buttons["Palestra"].tap()
+        let fixture = app.buttons["serie7-fixture"]
+        for _ in 0..<15 { if fixture.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(fixture.isHittable); fixture.tap()
+        let url = URL(string: "pivot://workout/11111111-1111-4111-8111-111111111111?set=22222222-2222-4222-8222-222222222222")!
+        app.open(url)
+        let done = app.buttons["set-done-s7-bench-0"]
+        XCTAssertTrue(done.waitForExistence(timeout: 8)); done.tap()
+        let close = app.buttons["close-workout-achievement"]
+        XCTAssertTrue(close.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Nuovo massimale stimato!"].exists)
+        let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-pr-celebration"; image.lifetime = .keepAlways; add(image)
+        close.tap(); XCTAssertTrue(close.waitForNonExistence(timeout: 3))
+        XCTAssertEqual(done.value as? String, "Fatta")
+        app.terminate(); app.open(url)
+        XCTAssertTrue(app.navigationBars["Allenamento"].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.buttons["close-workout-achievement"].exists)
+    }
     func testSerie7DeepLinkReplacesWorkoutPageAndZeroHoldIsSkipped() {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--serie7-test"]; app.launch()

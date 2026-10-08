@@ -84,7 +84,9 @@ struct RootView: View {
                 }
             } else if PreviewMode.enabled && ["friends", "partner", "allday", "birthday"].contains(PreviewMode.screen), let event = Planner.effectiveEvents(calendar.events, data: store.data).first(where: { $0.id == PreviewMode.screen }) {
                 NavigationStack { EventDetailView(event: event, initial: store.record(for: event), rule: store.rule(for: event)) }
-            } else { tabs }
+            } else if PreviewMode.enabled && PreviewMode.screen == "workout-widget" { WorkoutWidgetPreview() }
+            else if PreviewMode.enabled && PreviewMode.screen == "strength-ranks" { NavigationStack { StrengthRanksView() } }
+            else { tabs }
         }
         .task {
             if PreviewMode.enabled {
@@ -144,7 +146,8 @@ struct RootView: View {
                 openPendingWorkout()
             }
         }
-        .onChange(of: store.isRestoring) { _, restoring in if !restoring { requestRefresh(); rebuildAgenda() } }
+        .onChange(of: store.isRestoring) { _, restoring in if !restoring { requestRefresh(); rebuildAgenda(); openPendingWorkout() } }
+        .onChange(of: store.locked) { _, locked in if !locked { openPendingWorkout() } }
         .onChange(of: store.data.updatedAt) { _, _ in rebuildAgenda(); openPendingWorkout() }
         .onChange(of: store.data.settings) { old, new in
             if old.excludedCalendarIDs != new.excludedCalendarIDs || old.excludedCalendarTitles != new.excludedCalendarTitles || old.excludeHolidays != new.excludeHolidays { requestRefresh(force: true) }

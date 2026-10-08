@@ -12,7 +12,10 @@ enum Serie7Fixture {
         var session = TrainingLibrary().makeSession(plan: plan, day: day, eventID: nil)
         session.id = sessionID; session.exercises[0].sets[0].id = setID
         session.exercises[0].sets[0].kg = 50; session.exercises[0].sets[0].reps = 6
-        guard WorkoutRuntime.store.change({ $0.training = .init(plans: [plan], activePlanID: plan.id, sessions: [session]) }) else { throw TrainingError.invalidPlan }
+        var earlier = session; earlier.id = UUID(); earlier.start = session.start.addingTimeInterval(-86400)
+        earlier.end = earlier.start.addingTimeInterval(100)
+        earlier.exercises = [.init(exercise: bench, sets: [.init(number: 1, kg: 40, reps: 6, done: true)])]
+        guard WorkoutRuntime.store.change({ $0.strengthProfile = nil; $0.training = .init(plans: [plan], activePlanID: plan.id, sessions: [earlier,session]) }) else { throw TrainingError.invalidPlan }
     }
 }
 #endif

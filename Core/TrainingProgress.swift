@@ -33,7 +33,7 @@ struct ExerciseProgress {
             let usesDuration = log.exercise.usesDuration
             let volume: Double = usesDuration ? 0 : sets.reduce(0.0) { $0 + ($1.kg ?? 0) * Double($1.reps ?? 0) }
             let load: Double = sets.compactMap(\.kg).max() ?? 0
-            let maximum: Double? = usesDuration ? nil : sets.compactMap { estimatedMax($0) }.max()
+            let maximum: Double? = usesDuration ? nil : sets.compactMap { TrainingRecords.maximum($0, exercise: log.exercise) }.max()
             let bestHold: Int = sets.map { max($0.durationSeconds ?? 0, max($0.leftSeconds ?? 0, $0.rightSeconds ?? 0)) }.max() ?? 0
             let totalHold: Int = sets.reduce(0) { $0 + $1.holdTotal }
             let performance = ExercisePerformance(id: session.id, date: session.start, sets: sets, volume: volume, bestLoad: load,

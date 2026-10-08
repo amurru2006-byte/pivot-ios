@@ -213,6 +213,46 @@ final class HealthService: ObservableObject {
         sleepByDay[PivotDate.key(day)]
     }
 
+    /// Separate opt-in: do not add profile types to launch/background requests.
+    /// A successful request does not establish read access; missing fields stay nil.
+    func readStrengthProfile() async throws -> StrengthProfile {
+        guard HKHealthStore.isHealthDataAvailable() else {
+            throw NSError(domain: "PivotHealth", code: 1, userInfo: [NSLocalizedDescriptionKey: "Salute non disponibile. Puoi compilare il profilo manualmente."])
+        }
+        var types = Set<HKObjectType>()
+        if let date = HKObjectType.characteristicType(forIdentifier: .dateOfBirth) { types.insert(date) }
+        let identifiers: [HKQuantityTypeIdentifier] = [.bodyMass, .height]
+        for identifier in identifiers {
+            if let type = HKObjectType.quantityType(forIdentifier: identifier) { types.insert(type) }
+        }
+        try await healthStore.requestAuthorization(toShare: [], read: types)
+        var profile = StrengthProfile()
+        if let components = try? healthStore.dateOfBirthComponents() {
+            var gregorian = Calendar(identifier: .gregorian); gregorian.timeZone = PivotDate.calendar.timeZone
+            profile.birthDate = gregorian.date(from: components)
+        }
+        if let mass = try await latestQuantity(.bodyMass) {
+            profile.bodyMassKG = mass.quantity.doubleValue(for: .gramUnit(with: .kilo))
+            profile.measuredAt = mass.endDate
+        }
+        if let height = try await latestQuantity(.height) {
+            profile.heightCM = height.quantity.doubleValue(for: .meter()) * 100
+        }
+        try profile.validate()
+        return profile
+    }
+    private func latestQuantity(_ identifier: HKQuantityTypeIdentifier) async throws -> HKQuantitySample? {
+        guard let type = HKObjectType.quantityType(forIdentifier: identifier) else { return nil }
+        return try await withCheckedThrowingContinuation { continuation in
+            let query = HKSampleQuery(sampleType: type, predicate: HKQuery.predicateForSamples(withStart: nil, end: Date()), limit: 1,
+                                      sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)]) { _, samples, error in
+                if let error { continuation.resume(throwing: error) }
+                else { continuation.resume(returning: samples?.first as? HKQuantitySample) }
+            }
+            healthStore.execute(query)
+        }
+    }
+
     private func samples(type: HKSampleType, predicate: NSPredicate) async throws -> [HKSample] {
         try await withCheckedThrowingContinuation { continuation in
             let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, error in

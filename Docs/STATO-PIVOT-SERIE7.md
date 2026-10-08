@@ -8,4 +8,8 @@ Decisioni confermate: massimale stimato per PR; classificazione solo con norme d
 
 Blocco 1 implementato, verifiche da eseguire: stato opzionale skip compatibile con backup, zero isometrico distinto da dato assente e da serie fatta, annullamento skip senza cancellare valori; routing nella pagina Palestra con sostituzione del percorso; layout Live Activity condiviso con anteprima, target e metriche leggibili. I test Core aggiunti verificano persistenza, lavoro reale e compatibilità.
 
-Da completare: prove CI Core/iOS/UI, PDF con tabelle e paginazione, celebrazioni e profilo Salute, ranking documentato; trovare stemmi. Screenshot/PDF personali consultati fuori dal repository e mai inclusi nei test. Nessuna nuova release stabile pubblicata.
+Blocco successivo implementato e da verificare: PDF A4 con tabelle, paginazione e note integrali; PR/rank persistenti condivisi fra UI e widget, popup centrale 4,5 s con X; profilo facoltativo manuale/Salute in sola lettura ed esplicita; norme 2024 panca/squat/stacco (dettagli in RANK-SERIE7.md). Candidato 0.7.6 (20), baseline invariata.
+
+Aggiornamento diretto: 7 rank totali. Email 8 ottobre 17:00:50 letta interamente, quattro grafiche originali recuperate e viste: 1 Schiavo della gravità, 2 Patto col ferro. Conservati stemma e scritta di entrambi; nomi/immagini 3–7 riservati, da ricevere. Non inventare i cinque mancanti.
+
+CI 37797210284 sul solo primo codice f0922919: conclusa con successo, 198 test Core senza fallimenti, build Release e script completo di test UI passati. Nessuna verifica ancora conclusa sulle modifiche successive. Da completare: test Core e UI nuovi, build completa, PDF realmente generato e controllo visivo, prova widget/lock screen. Screenshot/PDF personali consultati fuori dal repository e mai inclusi nei test. Nessuna nuova release stabile pubblicata.

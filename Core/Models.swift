@@ -324,6 +324,7 @@ struct AppData: Codable {
     var activityDrafts: [String: ActivityDraft]? = nil
     var workoutReviews: [WorkoutReview]? = nil
     var actualWorkoutDraft: ActualWorkoutDraft? = nil
+    var strengthProfile: StrengthProfile? = nil
 }
 
 struct ActivityDraft: Codable {
