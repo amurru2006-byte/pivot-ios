@@ -25,6 +25,15 @@ final class TrainingSessionToolsTests: XCTestCase {
         set.rightSeconds = 25; ex.weightedHold = true; XCTAssertFalse(set.canComplete(ex))
         set.kg = 0; XCTAssertTrue(set.canComplete(ex))
     }
+    func testResetOnlyRestartsCountdownAndKeepsRealElapsedRest() {
+        var rest = TrainingRest(exerciseID: "exercise", setID: UUID(), seconds: 120, now: date)
+        rest.togglePause(now: date.addingTimeInterval(30))
+        rest.resetCountdown(now: date.addingTimeInterval(90))
+        XCTAssertNil(rest.remainingWhenPaused)
+        XCTAssertEqual(rest.remaining(at: date.addingTimeInterval(100)), 110)
+        XCTAssertEqual(rest.elapsed(at: date.addingTimeInterval(100)), 100)
+        XCTAssertEqual(rest.startedAt, date)
+    }
     func testLegacyCopenhagenUsesPersonalTipAndPreservesOriginal() throws {
         let ex = exercise("Copenhagen Plank")
         let log = TrainingExerciseLog(exercise: ex, sets: [.init(number: 1, kg: 25, reps: 2, done: true)])

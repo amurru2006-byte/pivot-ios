@@ -373,7 +373,7 @@ struct TrainingSessionView: View {
                 Button(session.rest?.deadline == nil ? "Riprendi" : "Pausa") { session.rest?.togglePause(); save() }
                 Spacer()
                 Button("Reset") {
-                    if let rest = session.rest { session.rest = .init(exerciseID: rest.exerciseID, setID: rest.setID, seconds: rest.plannedSeconds); save() }
+                    session.rest?.resetCountdown(); save()
                 }
             }
             Button("Inizia prossima serie") { WorkoutRuntime.finishRest(&session); save() }.buttonStyle(PivotSecondaryButton())
