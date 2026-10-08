@@ -8,12 +8,13 @@ final class PivotInteractionTests: XCTestCase {
         let fixture = app.buttons["serie7-rank-fixture"]
         for _ in 0..<15 { if fixture.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(fixture.isHittable); fixture.tap()
+        XCTAssertTrue(app.staticTexts["Rank Serie 7 pronto"].waitForExistence(timeout: 5))
         let url = URL(string: "pivot://workout/11111111-1111-4111-8111-111111111111?set=22222222-2222-4222-8222-222222222222")!
         app.open(url)
         let done = app.buttons["set-done-s7-bench-0"]
         XCTAssertTrue(done.waitForExistence(timeout: 8)); done.tap()
         let close = app.buttons["close-workout-achievement"]
-        XCTAssertTrue(close.waitForExistence(timeout: 3)); close.tap() // PR first, then rank.
+        XCTAssertTrue(close.waitForExistence(timeout: 3), app.debugDescription); close.tap() // PR first, then rank.
         XCTAssertTrue(app.staticTexts["Nuovo rank!"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["Patto col ferro"].exists)
         let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-rank-patto-col-ferro"; image.lifetime = .keepAlways; add(image)
@@ -29,6 +30,7 @@ final class PivotInteractionTests: XCTestCase {
         let fixture = app.buttons["serie7-fixture"]
         for _ in 0..<15 { if fixture.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(fixture.isHittable); fixture.tap()
+        XCTAssertTrue(app.staticTexts["Serie 7 pronta"].waitForExistence(timeout: 5))
         let ranks = app.buttons["strength-ranks"]
         for _ in 0..<15 { if ranks.isHittable { break }; app.swipeDown() }
         XCTAssertTrue(ranks.isHittable); ranks.tap()
@@ -58,12 +60,13 @@ final class PivotInteractionTests: XCTestCase {
         let fixture = app.buttons["serie7-fixture"]
         for _ in 0..<15 { if fixture.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(fixture.isHittable); fixture.tap()
+        XCTAssertTrue(app.staticTexts["Serie 7 pronta"].waitForExistence(timeout: 5))
         let url = URL(string: "pivot://workout/11111111-1111-4111-8111-111111111111?set=22222222-2222-4222-8222-222222222222")!
         app.open(url)
         let done = app.buttons["set-done-s7-bench-0"]
         XCTAssertTrue(done.waitForExistence(timeout: 8)); done.tap()
         let close = app.buttons["close-workout-achievement"]
-        XCTAssertTrue(close.waitForExistence(timeout: 3))
+        XCTAssertTrue(close.waitForExistence(timeout: 3), app.debugDescription)
         XCTAssertTrue(app.staticTexts["Nuovo massimale stimato!"].exists)
         let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-pr-celebration"; image.lifetime = .keepAlways; add(image)
         close.tap(); XCTAssertTrue(close.waitForNonExistence(timeout: 3))
@@ -79,6 +82,7 @@ final class PivotInteractionTests: XCTestCase {
         let fixture = app.buttons["serie7-fixture"]
         for _ in 0..<15 { if fixture.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(fixture.isHittable); fixture.tap()
+        XCTAssertTrue(app.staticTexts["Serie 7 pronta"].waitForExistence(timeout: 5))
         let day = app.buttons["workout-day-s7-day"]
         for _ in 0..<15 { if day.isHittable { break }; app.swipeDown() }
         day.tap(); XCTAssertTrue(app.navigationBars["Allenamento"].waitForExistence(timeout: 5))
