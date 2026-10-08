@@ -6,6 +6,7 @@ struct WorkoutCelebrationOverlay: View {
     var enabled: Bool
     let sessionID: UUID
     @State private var presenting: TrainingAchievement?
+    @State private var dismissing = false
     private var canPresent: Bool { enabled && scene == .active && !store.isLoading && !store.isRestoring && !store.locked }
     var body: some View {
         ZStack {
@@ -14,7 +15,7 @@ struct WorkoutCelebrationOverlay: View {
                 VStack(spacing: 12) {
                     HStack {
                         Spacer()
-                        Button { dismissAchievement() } label: {
+                        Button { Task { await dismissAchievement() } } label: {
                             Image(systemName: "xmark").font(.headline).frame(width: 44, height: 44)
                         }.accessibilityLabel("Chiudi traguardo").accessibilityIdentifier("close-workout-achievement")
                     }
@@ -45,7 +46,7 @@ struct WorkoutCelebrationOverlay: View {
             guard canPresent, let id = presenting?.id else { return }
             do { try await Task.sleep(nanoseconds: 4_500_000_000) }
             catch { return }
-            if presenting?.id == id && canPresent { dismissAchievement() }
+            if presenting?.id == id && canPresent { await dismissAchievement() }
         }
     }
     private func refresh() {
@@ -54,12 +55,18 @@ struct WorkoutCelebrationOverlay: View {
         if let presenting, TrainingRecords.isCurrent(presenting, library: library) { return }
         presenting = (library.achievements ?? []).first { $0.sessionID == sessionID && $0.presentedAt == nil && TrainingRecords.isCurrent($0, library: library) }
     }
-    private func dismissAchievement() {
-        guard let id = presenting?.id, canPresent else { return }
+    private func dismissAchievement() async {
+        guard let id = presenting?.id, canPresent, !dismissing else { return }
+        dismissing = true; defer { dismissing = false }
         let saved = store.change { data in
             guard let i = data.training?.achievements?.firstIndex(where: { $0.id == id }) else { return }
             data.training?.achievements?[i].presentedAt = Date()
         }
-        if saved { presenting = nil; refresh() }
+        if saved {
+            // Persist acknowledgement before removing the card: terminating
+            // immediately after dismissal must not show the same popup again.
+            _ = await store.flushWorkoutChanges()
+            if presenting?.id == id { presenting = nil; refresh() }
+        }
     }
 }

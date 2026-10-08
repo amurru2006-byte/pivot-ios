@@ -1,6 +1,56 @@
 import XCTest
 
 final class PivotInteractionTests: XCTestCase {
+    func testSerie7RankPopupUsesTheReceivedSecondCrestAndDoesNotRepeat() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--serie7-test"]; app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 15)); app.tabBars.buttons["Palestra"].tap()
+        let fixture = app.buttons["serie7-rank-fixture"]
+        for _ in 0..<15 { if fixture.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(fixture.isHittable); fixture.tap()
+        let url = URL(string: "pivot://workout/11111111-1111-4111-8111-111111111111?set=22222222-2222-4222-8222-222222222222")!
+        app.open(url)
+        let done = app.buttons["set-done-s7-bench-0"]
+        XCTAssertTrue(done.waitForExistence(timeout: 8)); done.tap()
+        let close = app.buttons["close-workout-achievement"]
+        XCTAssertTrue(close.waitForExistence(timeout: 3)); close.tap() // PR first, then rank.
+        XCTAssertTrue(app.staticTexts["Nuovo rank!"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Patto col ferro"].exists)
+        let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-rank-patto-col-ferro"; image.lifetime = .keepAlways; add(image)
+        XCTAssertTrue(close.waitForNonExistence(timeout: 8)) // Real automatic dismissal.
+        app.terminate(); app.open(url)
+        XCTAssertTrue(app.navigationBars["Allenamento"].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.buttons["close-workout-achievement"].exists)
+    }
+    func testSerie7SevenRankSlotsAndManualProfilePersistWithoutInventedBirthDate() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--serie7-test"]; app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 15)); app.tabBars.buttons["Palestra"].tap()
+        let fixture = app.buttons["serie7-fixture"]
+        for _ in 0..<15 { if fixture.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(fixture.isHittable); fixture.tap()
+        let ranks = app.buttons["strength-ranks"]
+        for _ in 0..<15 { if ranks.isHittable { break }; app.swipeDown() }
+        XCTAssertTrue(ranks.isHittable); ranks.tap()
+        for name in ["Schiavo della gravità", "Patto col ferro", "Rank 3", "Rank 4", "Rank 5", "Rank 6", "Rank 7"] {
+            let label = app.staticTexts[name].firstMatch
+            for _ in 0..<15 { if label.isHittable { break }; app.swipeUp() }
+            XCTAssertTrue(label.isHittable, name)
+        }
+        let profile = app.buttons["strength-profile"]
+        for _ in 0..<15 { if profile.isHittable { break }; app.swipeDown() }
+        XCTAssertTrue(profile.isHittable); profile.tap()
+        XCTAssertTrue(app.navigationBars["Profilo forza"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.datePickers["strength-birth-date"].exists)
+        let weight = app.textFields["strength-weight"], height = app.textFields["strength-height"]
+        weight.tap(); weight.typeText("75"); height.tap(); height.typeText("180")
+        app.navigationBars["Profilo forza"].buttons["Salva"].tap()
+        XCTAssertTrue(app.navigationBars["Rank"].waitForExistence(timeout: 5)); profile.tap()
+        XCTAssertTrue(app.navigationBars["Profilo forza"].waitForExistence(timeout: 5))
+        XCTAssertEqual(weight.value as? String, "75,0"); XCTAssertEqual(height.value as? String, "180,0")
+        XCTAssertFalse(app.datePickers["strength-birth-date"].exists)
+        app.navigationBars["Profilo forza"].buttons["Annulla"].tap()
+    }
     func testSerie7PRCelebrationCanBeClosedAndDoesNotRepeatOnReopen() {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--serie7-test"]; app.launch()

@@ -102,6 +102,7 @@ struct StrengthProfileEditor: View {
     @State private var message: String?
     @State private var initialized = false
     @State private var wantsBirthDate = false
+    @State private var importedBodyMass: Double?
     var body: some View {
         NavigationStack {
             Form {
@@ -144,7 +145,7 @@ struct StrengthProfileEditor: View {
         do {
             let imported = try await health.readStrengthProfile()
             if let date = imported.birthDate { profile.birthDate = date; wantsBirthDate = true }
-            if let mass = imported.bodyMassKG { profile.bodyMassKG = mass; profile.measuredAt = imported.measuredAt }
+            if let mass = imported.bodyMassKG { profile.bodyMassKG = mass; importedBodyMass = mass; profile.measuredAt = imported.measuredAt }
             if let height = imported.heightCM { profile.heightCM = height }
             message = "Controlla i dati importati e la data del peso. I campi non disponibili restano da compilare: Salute può avere dati mancanti o non leggibili."
         } catch { message = error.localizedDescription }
@@ -153,8 +154,11 @@ struct StrengthProfileEditor: View {
         if wantsBirthDate && profile.birthDate == nil { message = "Scegli la tua data di nascita prima di salvare."; return }
         do {
             try profile.validate()
-            if profile.bodyMassKG != store.data.strengthProfile?.bodyMassKG && profile.measuredAt == store.data.strengthProfile?.measuredAt {
-                profile.measuredAt = profile.bodyMassKG == nil ? nil : Date()
+            if profile.bodyMassKG == nil { profile.measuredAt = nil }
+            else if importedBodyMass.map({ $0 != profile.bodyMassKG }) ?? (profile.bodyMassKG != store.data.strengthProfile?.bodyMassKG) {
+                // A manual correction after import is a new declaration, not
+                // the old Health measurement associated with a different mass.
+                profile.measuredAt = Date()
             }
             if store.change({ $0.strengthProfile = profile }) { dismiss() }
         } catch { message = "Controlla data di nascita, peso (20–350 kg) e altezza (80–250 cm). I dati precedenti sono conservati." }

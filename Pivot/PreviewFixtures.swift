@@ -50,6 +50,12 @@ enum PreviewMode {
         calendar.loadPreview(events)
         store.change { data in
             data = AppData()
+            if screen == "strength-ranks" {
+                // Only the simulator Debug path reaches this fixture.
+                data.strengthProfile = .init(birthDate: ISO8601DateFormatter().date(from: "2006-01-01T12:00:00Z"), bodyMassKG: 75, heightCM: 175, referenceSex: .male)
+                let ex = TrainingExercise(id: "rank-preview-bench", name: "Bench Press", sets: 1, reps: "6", restSeconds: 0, coachNotes: "Dati sintetici")
+                data.training = .init(sessions: [.init(planID: UUID(), dayName: "Esempio sintetico", calendarEventID: nil, start: now.addingTimeInterval(-3600), end: now.addingTimeInterval(-1800), exercises: [.init(exercise: ex, sets: [.init(number: 1, kg: 50, reps: 6, done: true)])])])
+            }
             data.ledger = AnnualLedger()
             if ["income-warning", "income-red"].contains(screen) {
                 data.ledger?.openingCents[String(PivotDate.calendar.component(.year, from: now))] = screen == "income-warning" ? 470_000 : 510_000

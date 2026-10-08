@@ -105,6 +105,10 @@ struct TrainingView: View {
                     do { try Serie7Fixture.install(); message = "Serie 7 pronta" }
                     catch { message = error.localizedDescription }
                 }.accessibilityIdentifier("serie7-fixture")
+                Button("Prepara rank Serie 7 TEST") {
+                    do { try Serie7Fixture.install(withRank: true); message = "Rank Serie 7 pronto" }
+                    catch { message = error.localizedDescription }
+                }.accessibilityIdentifier("serie7-rank-fixture")
             }
             if ProcessInfo.processInfo.arguments.contains("--workout-controls-test") {
                 Button("Verifica controlli allenamento") {
