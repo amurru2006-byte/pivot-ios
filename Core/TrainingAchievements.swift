@@ -93,8 +93,10 @@ enum TrainingRecords {
     }
     static func retainingHistory(_ achievements: [TrainingAchievement]) -> [TrainingAchievement] {
         let ranks = achievements.filter { $0.kind == .rank }
-        return (ranks + achievements.filter { $0.kind == .personalRecord }.suffix(max(0, 500 - ranks.count)))
-            .sorted { $0.createdAt < $1.createdAt }
+        let retainedPRs = Set(achievements.filter { $0.kind == .personalRecord }.suffix(max(0, 500 - ranks.count)).map(\.id))
+        // Preserve insertion order, including equal timestamps: a completed
+        // set can earn both a PR and a rank in one atomic save.
+        return achievements.filter { $0.kind == .rank || retainedPRs.contains($0.id) }
     }
     static func isCurrent(_ achievement: TrainingAchievement, library: TrainingLibrary) -> Bool {
         guard let log = library.sessions.first(where: { $0.id == achievement.sessionID })?.exercises
