@@ -109,4 +109,13 @@ final class StrengthProgressionTests: XCTestCase {
         let saved = TrainingRecords.retainingHistory([rank] + records)
         XCTAssertEqual(saved.count, 500); XCTAssertTrue(saved.contains(rank)); XCTAssertEqual(saved.last?.id, "pr:549")
     }
+    func testSimultaneousPRAndRankRetainTheirDisplayOrder() {
+        var history = session([.init(number: 1, kg: 40, reps: 6, done: true)], start: now.addingTimeInterval(-86400))
+        history.end = history.start.addingTimeInterval(100)
+        let previous = session([.init(number: 1, kg: 75, reps: 6)])
+        var current = previous; current.exercises[0].sets[0].done = true
+        let earned = TrainingRecords.newAchievements(session: current, previous: previous, library: .init(sessions: [history,previous]), profile: profile(), now: now)
+        XCTAssertEqual(earned.map(\.kind), [.personalRecord, .rank])
+        XCTAssertEqual(TrainingRecords.retainingHistory(earned).map(\.kind), [.personalRecord, .rank])
+    }
 }
