@@ -49,6 +49,7 @@ struct RootView: View {
     @State private var refreshGate = RefreshGate()
     @State private var notificationGate = RefreshGate()
     @State private var workoutLink: WorkoutDeepLink?
+    @State private var workoutPath: [WorkoutRoute] = []
     // EventKit normally pushes changes immediately. This short safety refresh
     // also catches delayed iCloud deletions/moves without blocking the UI.
     private let refreshClock = Timer.publish(every: 20, on: .main, in: .common).autoconnect()
@@ -110,19 +111,7 @@ struct RootView: View {
         }
         .onReceive(refreshClock) { _ in if scene == .active { requestRefresh(); rebuildAgenda() } }
         .onOpenURL { url in
-            if url.scheme == "pivot", url.host == "workout",
-               let id = UUID(uuidString: url.lastPathComponent) {
-                let value = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "set" }?.value
-                let set = value.flatMap { UUID(uuidString: $0) }
-                workoutLink = WorkoutDeepLink(id: id, setID: set)
-            }
-        }
-        .sheet(item: $workoutLink) { link in
-            NavigationStack {
-                if let session = store.data.training?.sessions.first(where: { $0.id == link.id }) {
-                    TrainingSessionView(session: session, tips: store.data.training?.tips ?? [:], event: nil, focusSetID: link.setID)
-                } else { Text("Attendi il caricamento dello storico oppure apri Palestra.").padding() }
-            }
+            if let link = WorkoutDeepLink.parse(url) { workoutLink = link; openPendingWorkout() }
         }
         .onChange(of: scene) { _, value in
             if value == .active { requestRefresh(force: true) }
@@ -152,10 +141,11 @@ struct RootView: View {
                     Task { await health.resumeBackgroundUpdates() }
                 }
                 requestRefresh(); rebuildAgenda()
+                openPendingWorkout()
             }
         }
         .onChange(of: store.isRestoring) { _, restoring in if !restoring { requestRefresh(); rebuildAgenda() } }
-        .onChange(of: store.data.updatedAt) { _, _ in rebuildAgenda() }
+        .onChange(of: store.data.updatedAt) { _, _ in rebuildAgenda(); openPendingWorkout() }
         .onChange(of: store.data.settings) { old, new in
             if old.excludedCalendarIDs != new.excludedCalendarIDs || old.excludedCalendarTitles != new.excludedCalendarTitles || old.excludeHolidays != new.excludeHolidays { requestRefresh(force: true) }
             if old.healthEnabled != new.healthEnabled {
@@ -204,11 +194,22 @@ struct RootView: View {
             TodayView().tag(0).tabItem { Label("Oggi", systemImage: "calendar") }
             DiaryView().tag(1).tabItem { Label("Diario", systemImage: "book.closed.fill") }
             IncomeView().tag(2).tabItem { Label("Entrate", systemImage: "eurosign.circle.fill") }
-            NavigationStack { TrainingView() }.tag(4).tabItem { Label("Palestra", systemImage: "dumbbell.fill") }
+            NavigationStack(path: $workoutPath) {
+                TrainingView()
+            }.tag(4).tabItem { Label("Palestra", systemImage: "dumbbell.fill") }
             SettingsView().tag(3).tabItem { Label("Impostazioni", systemImage: "gearshape.fill") }
         }
         .toolbarBackground(PivotTheme.surface, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
+    }
+    private func openPendingWorkout() {
+        guard let link = workoutLink, !store.isLoading, !store.isRestoring, !store.locked else { return }
+        selectedTab = 4
+        if store.data.training?.sessions.contains(where: { $0.id == link.id }) == true {
+            // Replace rather than append: repeated taps cannot stack copies.
+            if workoutPath != [.session(link)] { workoutPath = [.session(link)] }
+        }
+        workoutLink = nil
     }
     private func rebuildAgenda() {
         agenda.rebuild(events: calendar.events, hasAccess: calendar.hasAccess, store: store, diagnostics: store.diagnostics)

@@ -21,6 +21,9 @@ struct WorkoutAttributes: ActivityAttributes {
         var pausedSeconds: Int?
         var status: String
         var isDone: Bool
+        var targetSets: Int? = nil
+        var targetReps: String? = nil
+        var workingNumber: Int? = nil
     }
 }
 

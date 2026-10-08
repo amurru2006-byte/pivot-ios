@@ -115,9 +115,18 @@ struct TrainingSet: Codable, Identifiable, Equatable {
     var isAdditional: Bool? = nil
     var legacyKG: Double? = nil
     var legacyReps: Int? = nil
+    var skipped: Bool? = nil
+    var isResolved: Bool { done || skipped == true }
+    func explicitlySkippedHold(_ exercise: TrainingExercise) -> Bool {
+        guard exercise.usesDuration else { return false }
+        return exercise.separateSides == true ? leftSeconds == 0 && rightSeconds == 0 : durationSeconds == 0
+    }
     func canComplete(_ exercise: TrainingExercise) -> Bool {
+        guard skipped != true else { return false }
         if exercise.usesDuration {
-            let valid = exercise.separateSides == true ? (leftSeconds ?? 0) > 0 && (rightSeconds ?? 0) > 0 : (durationSeconds ?? 0) > 0
+            let valid = exercise.separateSides == true
+                ? leftSeconds.map { $0 >= 0 } == true && rightSeconds.map { $0 >= 0 } == true && ((leftSeconds ?? 0) + (rightSeconds ?? 0)) > 0
+                : (durationSeconds ?? 0) > 0
             return valid && (exercise.weightedHold != true || (kg.map { $0.isFinite && $0 >= 0 } ?? false))
         }
         return kg.map { $0.isFinite && $0 >= 0 } == true && (reps ?? 0) > 0
@@ -207,6 +216,8 @@ struct TrainingExerciseLog: Codable, Identifiable, Equatable {
     var exercise: TrainingExercise
     var sets: [TrainingSet]
     var notes: String = ""
+    var skipped: Bool? = nil
+    var skipReason: String? = nil
 }
 
 struct TrainingSession: Codable, Identifiable, Equatable {
@@ -263,6 +274,8 @@ struct TrainingLibrary: Codable {
             }
             for log in session.exercises {
                 guard log.exercise.isValid, (1...60).contains(log.sets.count), Set(log.sets.map(\.number)).count == log.sets.count,
+                      !(log.skipped == true && log.sets.contains(where: \.done)),
+                      (log.skipReason?.count ?? 0) <= 2000,
                       Set(log.sets.map(\.id)).count == log.sets.count,
                       log.sets.allSatisfy({ set in (1...60).contains(set.number)
                           && (set.kg.map { $0.isFinite && (0...2000).contains($0) } ?? true)
@@ -272,6 +285,7 @@ struct TrainingLibrary: Codable {
                           && ([set.durationSeconds, set.leftSeconds, set.rightSeconds].allSatisfy { $0.map { (0...86400).contains($0) } ?? true })
                           && (set.restSeconds.map { (0...3600).contains($0) } ?? true)
                           && (set.actualRestSeconds.map { $0 >= 0 } ?? true)
+                          && !(set.done && set.skipped == true)
                           && (!set.done || set.canComplete(log.exercise) || (set.holdTotal == 0 && set.kg != nil && set.reps != nil)) }) else { throw TrainingError.invalidPlan }
             }
         }

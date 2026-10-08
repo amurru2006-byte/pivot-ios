@@ -1,6 +1,36 @@
 import XCTest
 
 final class PivotInteractionTests: XCTestCase {
+    func testSerie7DeepLinkReplacesWorkoutPageAndZeroHoldIsSkipped() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--serie7-test"]; app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 15)); app.tabBars.buttons["Palestra"].tap()
+        let fixture = app.buttons["serie7-fixture"]
+        for _ in 0..<15 { if fixture.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(fixture.isHittable); fixture.tap()
+        let day = app.buttons["workout-day-s7-day"]
+        for _ in 0..<15 { if day.isHittable { break }; app.swipeDown() }
+        day.tap(); XCTAssertTrue(app.navigationBars["Allenamento"].waitForExistence(timeout: 5))
+        let url = URL(string: "pivot://workout/11111111-1111-4111-8111-111111111111?set=22222222-2222-4222-8222-222222222222")!
+        app.open(url); app.open(url)
+        XCTAssertTrue(app.buttons["set-done-s7-bench-0"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.buttons["Chiudi"].exists)
+        app.navigationBars.buttons["Palestra"].tap()
+        XCTAssertTrue(app.navigationBars["Palestra"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.navigationBars["Allenamento"].exists)
+        app.terminate(); app.open(url)
+        XCTAssertTrue(app.navigationBars["Allenamento"].waitForExistence(timeout: 15))
+        let seconds = app.textFields["seconds-s7-plank-0"]
+        for _ in 0..<15 { if seconds.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(seconds.isHittable); seconds.tap(); seconds.typeText("0"); app.buttons["Fine"].tap()
+        let done = app.buttons["set-done-s7-plank-0"]; done.tap()
+        XCTAssertEqual(done.value as? String, "Non svolta")
+        let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-zero-hold-skipped"; image.lifetime = .keepAlways; add(image)
+        app.terminate(); app.open(url)
+        XCTAssertTrue(app.navigationBars["Allenamento"].waitForExistence(timeout: 15))
+        for _ in 0..<15 { if done.isHittable { break }; app.swipeUp() }
+        XCTAssertEqual(done.value as? String, "Non svolta")
+    }
     func testCompactTrainingRowsProtectPlanAndDeleteExtraSets() {
         continueAfterFailure = false
         let app = XCUIApplication()
