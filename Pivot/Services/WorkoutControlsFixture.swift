@@ -11,10 +11,18 @@ enum WorkoutControlsFixture {
         let plan = TrainingPlan(payload: .init(formatVersion: 1, name: "TEST controlli", days: [.init(id: "controls-day", name: "TEST", exercises: [bench, hold])]))
         var session = TrainingLibrary().makeSession(plan: plan, day: plan.payload.days[0], eventID: nil)
         session.exercises[0].sets[0].kg = 70; session.exercises[0].sets[0].reps = 5
+        session.exercises[0].sets.append(TrainingSet(number: 3, kg: 35, reps: 8, kind: .warmup, loadFraction: 0.5))
         guard store.change({ $0.training = TrainingLibrary(plans: [plan], activePlanID: plan.id, sessions: [session]) }) else { throw TrainingError.invalidPlan }
         let id = session.id.uuidString, set = session.exercises[0].sets[0].id.uuidString
         try await WorkoutRuntime.perform(sessionID: id, setID: set, action: "kg+")
         try await WorkoutRuntime.perform(sessionID: id, setID: set, action: "reps+")
+        let warmup = session.exercises[0].sets[2].id.uuidString
+        try await WorkoutRuntime.perform(sessionID: id, setID: warmup, action: "kg+")
+        guard store.data.training?.sessions[0].exercises[0].sets[2].kg == 40 else { throw TrainingError.invalidPlan }
+        try await WorkoutRuntime.perform(sessionID: id, setID: set, action: "kg+")
+        guard store.data.training?.sessions[0].exercises[0].sets[2].kg == 42.5 else { throw TrainingError.invalidPlan }
+        try await WorkoutRuntime.perform(sessionID: id, setID: set, action: "kg-")
+        guard store.data.training?.sessions[0].exercises[0].sets[2].kg == 40 else { throw TrainingError.invalidPlan }
         try await WorkoutRuntime.perform(sessionID: id, setID: set, action: "done")
         try await WorkoutRuntime.perform(sessionID: id, setID: set, action: "done") // idempotent
         guard let current = store.data.training?.sessions.first(where: { $0.id == session.id }),
