@@ -1,6 +1,61 @@
 import XCTest
 
 final class PivotInteractionTests: XCTestCase {
+    func testCompactTrainingRowsProtectPlanAndDeleteExtraSets() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--interaction-test", "--training-test", "--training-layout-test"]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 15))
+        app.tabBars.buttons["Palestra"].tap()
+        let importer = app.buttons["import-training-fixture"]
+        for _ in 0..<12 { if importer.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(importer.isHittable); importer.tap()
+        XCTAssertTrue(app.buttons["Usa questa scheda"].waitForExistence(timeout: 8)); app.buttons["Usa questa scheda"].tap()
+        let gallery = app.buttons["exercise-statistics-test-squat"]
+        for _ in 0..<10 { if gallery.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(gallery.waitForExistence(timeout: 5))
+        let photos = XCTAttachment(screenshot: app.screenshot())
+        photos.name = "training-restored-073-photos"; photos.lifetime = .keepAlways; add(photos)
+        let day = app.buttons["workout-day-test-a"]
+        for _ in 0..<12 { if day.isHittable { break }; app.swipeDown() }
+        XCTAssertTrue(day.isHittable); day.tap()
+        XCTAssertTrue(app.buttons["Inizia allenamento"].waitForExistence(timeout: 5)); app.buttons["Inizia allenamento"].tap()
+        let addSet = app.buttons["add-set-test-exercise"]
+        for _ in 0..<10 { if addSet.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(addSet.isHittable)
+        let firstType = app.buttons["set-type-0-0"]
+        firstType.tap()
+        let types = XCTAttachment(screenshot: app.screenshot())
+        types.name = "training-single-type-menu"; types.lifetime = .keepAlways; add(types)
+        app.buttons["W · Warm-up"].tap()
+        // Changing the appearance of a prescribed set must never make it removable.
+        app.descendants(matching: .any)["set-row-test-exercise-0"].firstMatch.swipeLeft()
+        XCTAssertFalse(app.buttons["delete-set-test-exercise-0"].exists)
+        firstType.tap(); app.buttons["1 · Working"].tap()
+        addSet.tap(); app.buttons["W · Warm-up"].tap()
+        XCTAssertTrue(app.textFields["weight-test-exercise-4"].waitForExistence(timeout: 5))
+        let compact = XCTAttachment(screenshot: app.screenshot())
+        compact.name = "training-compact-set-table"; compact.lifetime = .keepAlways; add(compact)
+        let extra = app.descendants(matching: .any)["set-row-test-exercise-0"].firstMatch
+        extra.swipeLeft()
+        let delete = app.buttons["delete-set-test-exercise-0"]
+        XCTAssertTrue(delete.waitForExistence(timeout: 5)); XCTAssertTrue(delete.isHittable)
+        let swipe = XCTAttachment(screenshot: app.screenshot())
+        swipe.name = "training-extra-set-swipe-delete"; swipe.lifetime = .keepAlways; add(swipe)
+        delete.tap()
+        XCTAssertFalse(app.textFields["weight-test-exercise-4"].exists)
+        XCTAssertTrue(app.textFields["weight-test-exercise-3"].exists)
+        let prescribed = app.descendants(matching: .any)["set-row-test-exercise-0"].firstMatch
+        prescribed.swipeLeft()
+        XCTAssertFalse(app.buttons["delete-set-test-exercise-0"].exists)
+        app.buttons["set-options-test-exercise-0"].tap()
+        XCTAssertTrue(app.navigationBars["Serie 1"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["rest-test-exercise-0"].exists)
+        let options = XCTAttachment(screenshot: app.screenshot())
+        options.name = "training-set-options"; options.lifetime = .keepAlways; add(options)
+        app.navigationBars.buttons["Fine"].tap()
+    }
     func testWorkoutIntentActionsPersistBothSidesAndRestState() {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--workout-controls-test"]; app.launch()
@@ -28,7 +83,14 @@ final class PivotInteractionTests: XCTestCase {
         let app = XCUIApplication(); app.launchArguments = ["--preview", "--screen=income"]; app.launch()
         XCTAssertTrue(app.tabBars.buttons["Entrate"].waitForExistence(timeout: 10)); app.tabBars.buttons["Entrate"].tap()
         let carousel = app.scrollViews["income-carousel"]
-        XCTAssertTrue(carousel.waitForExistence(timeout: 8)); carousel.swipeLeft()
+        XCTAssertTrue(carousel.waitForExistence(timeout: 8))
+        let summary = app.descendants(matching: .any)["income-summary"].firstMatch
+        XCTAssertTrue(summary.waitForExistence(timeout: 5)); XCTAssertTrue(summary.isHittable)
+        XCTAssertLessThanOrEqual(summary.frame.height, 330, "Il riepilogo deve restare compatto, senza lo spazio vuoto richiesto dal grafico")
+        let summaryScreenshot = XCTAttachment(screenshot: app.screenshot())
+        summaryScreenshot.name = "income-compact-centered-summary"; summaryScreenshot.lifetime = .keepAlways
+        add(summaryScreenshot)
+        carousel.swipeLeft()
         let afterSwipe = XCTAttachment(screenshot: app.screenshot())
         afterSwipe.name = "income-immediately-after-swipe"; afterSwipe.lifetime = .keepAlways
         add(afterSwipe)
@@ -298,7 +360,7 @@ final class PivotInteractionTests: XCTestCase {
         app.buttons["Fine"].tap()
         let reps = app.textFields["reps-test-exercise-0"]
         reps.tap(); reps.typeText("8"); app.buttons["Fine"].tap()
-        let done = app.switches["set-done-test-exercise-0"]
+        let done = app.buttons["set-done-test-exercise-0"]
         XCTAssertTrue(done.exists); done.tap()
         let permission = app.alerts.firstMatch
         if permission.waitForExistence(timeout: 3) {

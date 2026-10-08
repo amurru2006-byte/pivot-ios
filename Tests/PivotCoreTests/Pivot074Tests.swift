@@ -18,6 +18,40 @@ final class Pivot074Tests: XCTestCase {
         XCTAssertEqual(decoded.resolvedKind, .working)
         XCTAssertFalse(decoded.reachesFailure)
         XCTAssertNil(decoded.loadFraction)
+        XCTAssertNil(decoded.isAdditional)
+    }
+
+    func testOnlyAddedUnfinishedSetsCanBeRemoved() {
+        let prescribed = [
+            TrainingSet(number: 1, kind: .working),
+            TrainingSet(number: 2, kind: .working),
+            TrainingSet(number: 3, kind: .working, isAdditional: true)
+        ]
+        XCTAssertFalse(TrainingSetTemplate.canRemove(prescribed, at: 0, prescribedWorkingSets: 2))
+        XCTAssertFalse(TrainingSetTemplate.canRemove(prescribed, at: 1, prescribedWorkingSets: 2))
+        XCTAssertTrue(TrainingSetTemplate.canRemove(prescribed, at: 2, prescribedWorkingSets: 2))
+        var completed = prescribed
+        completed[2].done = true
+        XCTAssertFalse(TrainingSetTemplate.canRemove(completed, at: 2, prescribedWorkingSets: 2))
+
+        let legacy = [
+            TrainingSet(number: 1, kind: .warmup),
+            TrainingSet(number: 2, kind: .working),
+            TrainingSet(number: 3, kind: .working),
+            TrainingSet(number: 4, kind: .backoff)
+        ]
+        XCTAssertTrue(TrainingSetTemplate.canRemove(legacy, at: 0, prescribedWorkingSets: 2))
+        XCTAssertFalse(TrainingSetTemplate.canRemove(legacy, at: 1, prescribedWorkingSets: 2))
+        XCTAssertFalse(TrainingSetTemplate.canRemove(legacy, at: 2, prescribedWorkingSets: 2))
+        XCTAssertTrue(TrainingSetTemplate.canRemove(legacy, at: 3, prescribedWorkingSets: 2))
+        var marked = TrainingSetTemplate.markingOrigins(legacy, prescribedWorkingSets: 2)
+        marked[1].kind = .warmup
+        marked[0].kind = .working
+        XCTAssertFalse(TrainingSetTemplate.canRemove(marked, at: 1, prescribedWorkingSets: 2))
+        XCTAssertTrue(TrainingSetTemplate.canRemove(marked, at: 0, prescribedWorkingSets: 2))
+        let log = TrainingExerciseLog(exercise: exercise(), sets: marked)
+        let next = TrainingSetTemplate.next(previous: log, prescribedWorkingSets: 2)
+        XCTAssertEqual(next.map(\.isAdditional), marked.map(\.isAdditional))
     }
 
     func testWarmupsAndAdvancedSetTypesPersistAndScaleWithWorkingLoad() {

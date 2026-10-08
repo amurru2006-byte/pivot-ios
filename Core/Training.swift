@@ -82,8 +82,8 @@ enum TrainingSetKind: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .warmup: return "Riscaldamento"
-        case .working: return "Allenante"
+        case .warmup: return "Warm-up"
+        case .working: return "Working"
         case .backoff: return "Back-off"
         case .superset: return "Superset"
         case .dropSet: return "Drop set"
@@ -110,6 +110,9 @@ struct TrainingSet: Codable, Identifiable, Equatable {
     var restSeconds: Int? = nil
     var actualRestSeconds: Int? = nil
     var completedAt: Date? = nil
+    // nil identifies backups and sessions created before 0.7.5. New sets added
+    // during a workout are marked so only they can be removed with a swipe.
+    var isAdditional: Bool? = nil
     var legacyKG: Double? = nil
     var legacyReps: Int? = nil
     func canComplete(_ exercise: TrainingExercise) -> Bool {
@@ -125,34 +128,54 @@ struct TrainingSet: Codable, Identifiable, Equatable {
 }
 
 enum TrainingSetTemplate {
+    static func markingOrigins(_ sets: [TrainingSet], prescribedWorkingSets: Int) -> [TrainingSet] {
+        var nonWarmupCount = 0
+        return sets.map { original in
+            var set = original
+            if set.resolvedKind != .warmup { nonWarmupCount += 1 }
+            if set.isAdditional == nil {
+                set.isAdditional = set.resolvedKind == .warmup || nonWarmupCount > prescribedWorkingSets
+            }
+            return set
+        }
+    }
+    static func canRemove(_ sets: [TrainingSet], at index: Int, prescribedWorkingSets: Int) -> Bool {
+        guard sets.indices.contains(index), !sets[index].done else { return false }
+        if let isAdditional = sets[index].isAdditional { return isAdditional }
+        // Compatibility for sessions created before 0.7.5.
+        if sets[index].resolvedKind == .warmup { return true }
+        let nonWarmupsBefore = sets[..<index].filter { $0.resolvedKind != .warmup }.count
+        return nonWarmupsBefore >= prescribedWorkingSets
+    }
     static func workingLoad(_ sets: [TrainingSet]) -> Double? {
         sets.filter { [.working, .superset].contains($0.resolvedKind) }
             .compactMap(\.kg).filter { $0.isFinite && $0 > 0 }.max()
     }
     static func next(previous: TrainingExerciseLog?, prescribedWorkingSets: Int) -> [TrainingSet] {
         guard let previous else {
-            return (1...prescribedWorkingSets).map { TrainingSet(number: $0, kind: .working) }
+            return (1...prescribedWorkingSets).map { TrainingSet(number: $0, kind: .working, isAdditional: false) }
         }
         // Only work actually performed becomes the next session's suggested
         // load.  We still preserve the manually arranged set types, but an
         // abandoned or half-filled set must not silently become history.
         let oldTarget = workingLoad(previous.sets.filter(\.done))
-        var result = previous.sets.enumerated().map { offset, old -> TrainingSet in
+        var result = markingOrigins(previous.sets, prescribedWorkingSets: prescribedWorkingSets).enumerated().map { offset, old -> TrainingSet in
             var fraction = old.done ? old.loadFraction : nil
             if old.done, old.resolvedKind == .warmup, fraction == nil, let kg = old.kg, let oldTarget, oldTarget > 0 {
                 fraction = kg / oldTarget
             }
             var next = TrainingSet(number: offset + 1, kg: old.done ? old.kg : nil, reps: old.done ? old.reps : nil, kind: old.resolvedKind,
-                               toFailure: old.toFailure, supersetGroup: old.supersetGroup, loadFraction: fraction)
+                               toFailure: old.toFailure, supersetGroup: old.supersetGroup, loadFraction: fraction,
+                               isAdditional: old.isAdditional)
             next.durationSeconds = old.done ? old.durationSeconds : nil
             next.leftSeconds = old.done ? old.leftSeconds : nil; next.rightSeconds = old.done ? old.rightSeconds : nil
             next.restSeconds = old.restSeconds
             return next
         }
-        let currentWorkingCount = result.filter { $0.resolvedKind != .warmup }.count
+        let currentWorkingCount = result.filter { $0.isAdditional == false }.count
         if currentWorkingCount < prescribedWorkingSets {
             for _ in currentWorkingCount..<prescribedWorkingSets {
-                result.append(TrainingSet(number: result.count + 1, kind: .working))
+                result.append(TrainingSet(number: result.count + 1, kind: .working, isAdditional: false))
             }
         }
         rescaleWarmups(in: &result, workingLoad: oldTarget)
