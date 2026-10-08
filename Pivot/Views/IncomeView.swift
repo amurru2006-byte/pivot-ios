@@ -161,8 +161,10 @@ struct IncomeView: View {
             GeometryReader { geometry in
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 0) {
-                        balance.frame(width: geometry.size.width).id(0)
-                        incomeChart.frame(width: geometry.size.width).id(1)
+                        balance.frame(width: geometry.size.width)
+                            .frame(height: carouselHeight, alignment: .center).id(0)
+                        incomeChart.frame(width: geometry.size.width)
+                            .frame(height: carouselHeight, alignment: .top).id(1)
                     }.scrollTargetLayout()
                 }
                 .scrollIndicators(.hidden)
@@ -199,7 +201,7 @@ struct IncomeView: View {
             .background(GeometryReader { geometry in
                 Color.clear.preference(key: IncomePageHeight.self, value: [page: geometry.size.height])
             })
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: page == 0 ? .leading : .topLeading)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
     private var balance: some View {
         measuredIncomePage(0) {
