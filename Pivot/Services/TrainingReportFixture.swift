@@ -32,6 +32,21 @@ enum TrainingReportFixture {
               text.contains("2 allenamenti svolti"), text.contains("Sx 25 s"), text.contains("Recupero previsto"),
               text.contains("NON SVOLTA"), text.contains("Mancanza di tempo"), text.contains("cedimento"), text.contains("sedile 4"),
               !text.contains("Ale Murru") else { throw TrainingError.invalidPlan }
+        // Vary note lengths to move a tall first row across page boundaries.
+        // Headers must never be stranded alone, even with multiline intensity.
+        let stress = (0..<40).map { length -> TrainingSession in
+            let ex = TrainingExercise(id: "stress", name: "Panca · controllo paginazione", sets: 1, reps: "6", restSeconds: 60,
+                                      coachNotes: String(repeating: "Nota sintetica per spostare la tabella e controllare le pagine. ", count: length))
+            return .init(planID: UUID(), dayName: "Stress \(length)", calendarEventID: nil, start: date, end: date.addingTimeInterval(100),
+                         exercises: [.init(exercise: ex, sets: [.init(number: 1, kg: 70, reps: 6, done: true, kind: .superset, toFailure: true,
+                                                                     supersetGroup: String(repeating: "W", count: 20), isAdditional: true)])])
+        }
+        let stressPDF = TrainingReportPDF.render(sessions: stress, library: .init(), title: "Controllo sintetico")
+        guard let stressDocument = PDFDocument(data: stressPDF) else { throw TrainingError.invalidPlan }
+        for index in 0..<stressDocument.pageCount {
+            let text = stressDocument.page(at: index)?.string ?? ""
+            if text.contains("TIPO / INTENSITÀ") && !text.contains("FATTA") { throw TrainingError.invalidPlan }
+        }
         let folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         try data.write(to: folder.appendingPathComponent("Pivot-QA-report.pdf"), options: .atomic)
         return document.pageCount
