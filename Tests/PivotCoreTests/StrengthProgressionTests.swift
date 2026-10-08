@@ -30,7 +30,7 @@ final class StrengthProgressionTests: XCTestCase {
                 }
             }
         }
-        // Table 4 is authoritative here; the abstract rounds this to 1.95.
+        // Table 4 is authoritative here; the abstract reports 1.95 instead.
         XCTAssertEqual(StrengthNorms2024.deciles(sex: .male, benchmark: .bench, ageGroup: 1).last, 1.96)
         let boundary = try XCTUnwrap(StrengthRanking.result(benchmark: .bench, maximum: 1.96 * 75, profile: profile(), at: now))
         XCTAssertEqual(boundary.level, 6); XCTAssertEqual(boundary.percentileFloor, 90)
