@@ -26,7 +26,7 @@ private struct IncomeChartPoint: Identifiable {
 private struct IncomePageHeight: PreferenceKey {
     static var defaultValue: [Int: CGFloat] = [:]
     static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
-        for (page, height) in nextValue() { value[page] = max(value[page] ?? 0, height) }
+        value.merge(nextValue()) { _, current in current }
     }
 }
 
@@ -175,7 +175,13 @@ struct IncomeView: View {
             }
             .frame(height: carouselHeight)
             .animation(.easeInOut(duration: 0.22), value: carouselHeight)
-            .onPreferenceChange(IncomePageHeight.self) { heights in carouselHeights.merge(heights) { max($0, $1) } }
+            .onPreferenceChange(IncomePageHeight.self) { heights in
+                // Initial unconstrained layouts can briefly report a taller page.
+                // Retaining that maximum forever leaves an empty, oversized carousel.
+                for (page, height) in heights where height > 0 {
+                    if abs((carouselHeights[page] ?? 0) - height) > 1 { carouselHeights[page] = height }
+                }
+            }
 
             // Navigation lives outside the cards: it cannot cover chart labels
             // or the explanation, even with larger accessibility text.

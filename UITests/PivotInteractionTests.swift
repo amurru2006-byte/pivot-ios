@@ -100,6 +100,7 @@ final class PivotInteractionTests: XCTestCase {
         let summary = app.descendants(matching: .any)["income-summary"].firstMatch
         XCTAssertTrue(summary.waitForExistence(timeout: 5)); XCTAssertTrue(summary.isHittable)
         XCTAssertLessThanOrEqual(summary.frame.height, 330, "Il riepilogo deve restare compatto, senza lo spazio vuoto richiesto dal grafico")
+        XCTAssertLessThanOrEqual(carousel.frame.height, 330, "Anche il carosello deve restringersi, non solo la scheda al suo interno")
         let summaryScreenshot = XCTAttachment(screenshot: app.screenshot())
         summaryScreenshot.name = "income-compact-centered-summary"; summaryScreenshot.lifetime = .keepAlways
         add(summaryScreenshot)
@@ -121,12 +122,21 @@ final class PivotInteractionTests: XCTestCase {
         XCTAssertLessThanOrEqual(explanation.frame.maxY, carousel.frame.maxY, "La spiegazione deve rientrare nella pagina, senza tagli")
         XCTAssertGreaterThan(explanation.frame.height, 25, "La spiegazione deve andare a capo, non essere troncata in una riga")
         app.buttons["income-page-0"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["income-summary-title"].firstMatch.waitForExistence(timeout: 5))
+        let returnedSummary = app.descendants(matching: .any)["income-summary-title"].firstMatch
+        XCTAssertTrue(waitUntilHittable(returnedSummary))
+        XCTAssertTrue(app.buttons["income-page-0"].isSelected)
+        XCTAssertLessThanOrEqual(carousel.frame.height, 330)
         pageButton.tap()
-        XCTAssertTrue(chart.isHittable)
+        let returnedToChart = waitUntilHittable(chart)
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "income-chart-no-overlap"; screenshot.lifetime = .keepAlways
         add(screenshot)
+        XCTAssertTrue(returnedToChart)
+        XCTAssertTrue(pageButton.isSelected)
+    }
+    private func waitUntilHittable(_ element: XCUIElement) -> Bool {
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND hittable == true"), object: element)
+        return XCTWaiter.wait(for: [ready], timeout: 5) == .completed
     }
     func testAutofilledActivityRetainsManualCorrectionAfterRelaunch() {
         continueAfterFailure = false
