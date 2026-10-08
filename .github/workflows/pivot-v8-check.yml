@@ -25,6 +25,12 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      - name: Seleziona gli strumenti come nella baseline
+        run: |
+          PIVOT_XCODE=$(find /Applications -maxdepth 1 -name 'Xcode_*.app' | sort -V | tail -n 1)
+          if [ -n "$PIVOT_XCODE" ]; then sudo xcode-select -s "$PIVOT_XCODE/Contents/Developer"; fi
+          xcodebuild -version
+          swift --version
       - name: Test Core esistenti e V8
         run: swift test
       - name: Genera progetto
@@ -51,7 +57,7 @@ jobs:
           xcodebuild -project Pivot.xcodeproj -scheme Pivot -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' \
             -derivedDataPath build/DerivedData \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build > build-ios.log 2>&1
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tee build-ios.log
       - name: Conserva log per diagnosi
         if: always()
         uses: actions/upload-artifact@v4
