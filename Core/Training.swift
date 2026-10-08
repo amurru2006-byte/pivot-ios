@@ -239,6 +239,7 @@ struct TrainingLibrary: Codable {
     var activePlanID: UUID?
     var sessions: [TrainingSession] = []
     var tips: [String: String] = [:]
+    var achievements: [TrainingAchievement]? = nil
     var activePlan: TrainingPlan? { plans.first { $0.id == activePlanID } }
     func previous(exerciseID: String, before: Date, excluding sessionID: UUID? = nil) -> TrainingExerciseLog? {
         sessions.filter { $0.id != sessionID && $0.end != nil && $0.start <= before }
@@ -263,6 +264,13 @@ struct TrainingLibrary: Codable {
         for plan in plans {
             try plan.payload.validate()
             for revision in plan.revisions ?? [] { try revision.payload.validate() }
+        }
+        if let achievements {
+            guard achievements.count <= 500, Set(achievements.map(\.id)).count == achievements.count,
+                  achievements.allSatisfy({ $0.value.isFinite && $0.value > 0 && $0.value <= 10000
+                    && ($0.previousValue.map { $0.isFinite && $0 >= 0 } ?? true)
+                    && ($0.rankLevel.map { (0...6).contains($0) } ?? true)
+                    && ($0.kind != .rank || ($0.rankLevel != nil && $0.benchmark != nil)) }) else { throw TrainingError.invalidPlan }
         }
         for session in sessions {
             guard session.end.map({ $0 >= session.start }) ?? true,

@@ -325,6 +325,8 @@ final class PivotStore: ObservableObject {
             TrainingSetTemplate.rememberWarmupFractions(in: &session.exercises[index].sets)
         }
         let previous = library.sessions.first { $0.id == session.id }
+        let earned = TrainingRecords.newAchievements(session: session, previous: previous, library: library, profile: data.strengthProfile)
+        if !earned.isEmpty { library.achievements = TrainingRecords.retainingHistory((library.achievements ?? []) + earned) }
         if let index = library.sessions.firstIndex(where: { $0.id == session.id }) { library.sessions[index] = session }
         else { library.sessions.append(session) }
         for (key, value) in tips { library.tips[key] = value }

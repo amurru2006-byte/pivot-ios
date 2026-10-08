@@ -69,6 +69,9 @@ struct TrainingView: View {
     var body: some View {
         PivotScreen {
             PivotHeader(title: "Il tuo allenamento", subtitle: "La scheda del personal, i tuoi carichi, i tuoi progressi.")
+            NavigationLink { StrengthRanksView() } label: {
+                Label("Rank e profilo forza", systemImage: "medal.fill")
+            }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("strength-ranks")
             if let event { Label(event.title, systemImage: "calendar").font(.subheadline) }
             if let plan = library.activePlan {
                 PivotCard(tint: PivotTheme.accent) {
@@ -309,6 +312,7 @@ struct TrainingSessionView: View {
             }.buttonStyle(PivotSecondaryButton()).disabled(store.locked || !hasStarted)
             if let message { Text(message).font(.caption).foregroundStyle(PivotTheme.amber) }
         }.navigationTitle("Allenamento")
+            .overlay { WorkoutCelebrationOverlay(enabled: !sharing && !selectingExercise && setOptions == nil && skippingExercise == nil, sessionID: session.id) }
             .sheet(isPresented: $selectingExercise) {
                 ExercisePickerView { exercise in changeExercise(exercise); selectingExercise = false }
             }

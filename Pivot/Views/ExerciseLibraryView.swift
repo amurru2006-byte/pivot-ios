@@ -323,7 +323,7 @@ struct ExerciseStatisticsView: View {
                     }.frame(height: 180)
                     Text("Migliore serie di ogni allenamento · fino agli ultimi 30").font(.caption).foregroundStyle(PivotTheme.muted)
                 }
-                Text("Stima Epley: kg × (1 + ripetizioni/30), solo serie da 1 a 10 ripetizioni; a 1 ripetizione mostro il carico fatto. È un riferimento teorico, soprattutto se non eri vicino al cedimento: non è un carico da provare. Volume = somma di kg × ripetizioni, secondo il carico che inserisci (per manubri usa sempre la stessa convenzione).").font(.caption).foregroundStyle(PivotTheme.muted)
+                Text("Stima Epley: kg × (1 + ripetizioni/30), solo serie da 1 a 10 ripetizioni; a 1 ripetizione mostro il carico fatto. Riscaldamenti, serie non svolte e carichi di assistenza sono esclusi dai massimali e dai PR. È un riferimento teorico, soprattutto se non eri vicino al cedimento: non è un carico da provare. Volume = somma di kg × ripetizioni, secondo il carico che inserisci (per manubri usa sempre la stessa convenzione).").font(.caption).foregroundStyle(PivotTheme.muted)
                 }
                 SectionHeading(title: "Cronologia recente")
                 ForEach(Array(progress.performances.reversed().prefix(12))) { point in

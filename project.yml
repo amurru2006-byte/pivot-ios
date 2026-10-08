@@ -8,8 +8,8 @@ settings:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "1,2"
     CODE_SIGNING_ALLOWED: NO
-    MARKETING_VERSION: "0.7.5"
-    CURRENT_PROJECT_VERSION: "19"
+    MARKETING_VERSION: "0.7.6"
+    CURRENT_PROJECT_VERSION: "20"
 packages:
   LLM:
     url: https://github.com/eastriverlee/LLM.swift.git
@@ -45,7 +45,7 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         NSCalendarsFullAccessUsageDescription: Pivot legge i calendari e modifica solo gli eventi che approvi esplicitamente.
-        NSHealthShareUsageDescription: Pivot legge sonno e allenamenti per collegarli ai tuoi eventi. I dati restano sul dispositivo e sono esclusi dalle esportazioni salvo tua scelta.
+        NSHealthShareUsageDescription: Pivot legge sonno e allenamenti per collegarli ai tuoi eventi. Su tua richiesta legge anche data di nascita, peso e altezza per il profilo forza. I dati restano sul dispositivo e sono esclusi dalle esportazioni salvo tua scelta.
         NSMicrophoneUsageDescription: Pivot usa il microfono solo quando premi Dettatura, per scrivere il messaggio che potrai controllare prima di inviare.
         NSSpeechRecognitionUsageDescription: Pivot trascrive in italiano sul dispositivo quando disponibile. L’audio non viene salvato né inviato dal Coach.
         LSSupportsOpeningDocumentsInPlace: YES

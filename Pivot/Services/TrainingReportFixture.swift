@@ -18,8 +18,10 @@ enum TrainingReportFixture {
             TrainingExerciseLog(exercise: plank, sets: [
                 .init(number: 1, done: true, leftSeconds: 25, rightSeconds: 25, restSeconds: 40, actualRestSeconds: 43, legacyKG: 25, legacyReps: 2),
                 .init(number: 2, done: true, leftSeconds: 30, rightSeconds: 28),
-                .init(number: 3, done: false)
-            ])
+                .init(number: 3, done: false, leftSeconds: 0, rightSeconds: 0, skipped: true)
+            ]),
+            TrainingExerciseLog(exercise: .init(id: "fixture-skipped", name: "Esercizio non svolto", sets: 2, reps: "8", restSeconds: 90, coachNotes: ""),
+                                sets: [.init(number: 1), .init(number: 2)], skipped: true, skipReason: "Mancanza di tempo")
         ]
         var session = TrainingSession(planID: UUID(), dayName: "Squat / esempio sintetico", calendarEventID: nil, start: date, end: date.addingTimeInterval(4200), exercises: logs, notes: "Esempio di controllo qualità: non contiene dati personali.")
         let first = session
@@ -28,6 +30,7 @@ enum TrainingReportFixture {
         let data = TrainingReportPDF.render(sessions: [first, session], library: library, title: "Riepilogo settimanale", interval: TrainingReports.week(containing: date))
         guard let document = PDFDocument(data: data), document.pageCount >= 2, let text = document.string,
               text.contains("2 allenamenti svolti"), text.contains("Sx 25 s"), text.contains("Recupero previsto"),
+              text.contains("NON SVOLTA"), text.contains("Mancanza di tempo"), text.contains("cedimento"), text.contains("sedile 4"),
               !text.contains("Ale Murru") else { throw TrainingError.invalidPlan }
         let folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         try data.write(to: folder.appendingPathComponent("Pivot-QA-report.pdf"), options: .atomic)
