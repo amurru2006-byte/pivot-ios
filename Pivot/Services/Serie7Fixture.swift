@@ -4,7 +4,7 @@ import Foundation
 enum Serie7Fixture {
     static let sessionID = UUID(uuidString: "11111111-1111-4111-8111-111111111111")!
     static let setID = UUID(uuidString: "22222222-2222-4222-8222-222222222222")!
-    static func install(withRank: Bool = false) throws {
+    static func install(withRank: Bool = false) async throws {
         let bench = TrainingExercise(id: "s7-bench", name: "Bench Press", sets: 2, reps: "4–6", restSeconds: 0, coachNotes: "Dati sintetici per test")
         let plank = TrainingExercise(id: "s7-plank", name: "Plank", sets: 1, reps: "30 s", restSeconds: 0, coachNotes: "")
         let day = TrainingDay(id: "s7-day", name: "Serie 7 TEST", exercises: [bench, plank])
@@ -19,6 +19,9 @@ enum Serie7Fixture {
             $0.strengthProfile = withRank ? .init(birthDate: ISO8601DateFormatter().date(from: "2006-01-01T12:00:00Z"), bodyMassKG: 75, heightCM: 175, referenceSex: .male) : nil
             $0.training = .init(plans: [plan], activePlanID: plan.id, sessions: [earlier,session])
         }) else { throw TrainingError.invalidPlan }
+        // XCUIApplication.open can cold-launch the app immediately after this
+        // button is tapped. Only report readiness after the fixture is durable.
+        guard await WorkoutRuntime.store.flushWorkoutChanges() else { throw TrainingError.invalidPlan }
     }
 }
 #endif

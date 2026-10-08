@@ -36,7 +36,8 @@ struct WorkoutCelebrationOverlay: View {
                     Text("Un nuovo traguardo, serie dopo serie.").font(.caption).foregroundStyle(PivotTheme.muted)
                 }.padding(.horizontal, 22).padding(.bottom, 28)
                     .frame(maxWidth: 320).background(PivotTheme.surface, in: RoundedRectangle(cornerRadius: 24))
-                    .padding(24).accessibilityIdentifier("workout-achievement")
+                    .padding(24)
+                    .accessibilityElement(children: .contain)
             }
         }
         .onChange(of: store.data.updatedAt) { _, _ in refresh() }

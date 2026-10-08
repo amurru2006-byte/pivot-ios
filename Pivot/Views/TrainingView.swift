@@ -102,12 +102,16 @@ struct TrainingView: View {
             #if DEBUG && targetEnvironment(simulator)
             if ProcessInfo.processInfo.arguments.contains("--serie7-test") {
                 Button("Prepara Serie 7 TEST") {
-                    do { try Serie7Fixture.install(); message = "Serie 7 pronta" }
-                    catch { message = error.localizedDescription }
+                    Task {
+                        do { try await Serie7Fixture.install(); message = "Serie 7 pronta" }
+                        catch { message = error.localizedDescription }
+                    }
                 }.accessibilityIdentifier("serie7-fixture")
                 Button("Prepara rank Serie 7 TEST") {
-                    do { try Serie7Fixture.install(withRank: true); message = "Rank Serie 7 pronto" }
-                    catch { message = error.localizedDescription }
+                    Task {
+                        do { try await Serie7Fixture.install(withRank: true); message = "Rank Serie 7 pronto" }
+                        catch { message = error.localizedDescription }
+                    }
                 }.accessibilityIdentifier("serie7-rank-fixture")
             }
             if ProcessInfo.processInfo.arguments.contains("--workout-controls-test") {
