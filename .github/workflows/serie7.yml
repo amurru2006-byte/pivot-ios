@@ -99,5 +99,5 @@ jobs:
             build/interaction-tests.log
             build/export-validation.xlsx
             build/packaged-entitlements.plist
-                        build/Pivot-QA-report.pdf
+            build/Pivot-QA-report.pdf
           if-no-files-found: ignore
