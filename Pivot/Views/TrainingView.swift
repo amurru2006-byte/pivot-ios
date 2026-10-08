@@ -442,7 +442,8 @@ struct TrainingSessionView: View {
                     Image(systemName: "trash.fill").foregroundStyle(.white)
                         .frame(width: 72).frame(maxHeight: .infinity)
                 }
-                .background(Color.red).accessibilityLabel("Elimina serie aggiunta")
+                .buttonStyle(.plain).contentShape(Rectangle())
+                .background(Color.red).zIndex(1).accessibilityLabel("Elimina serie aggiunta")
                 .accessibilityIdentifier("delete-set-\(exercise.id)-\(setIndex)")
             }
             HStack(spacing: 6) {
@@ -491,7 +492,6 @@ struct TrainingSessionView: View {
             }
             .padding(.horizontal, 6).padding(.vertical, 4)
             .background(set.done ? Color.green.opacity(0.07) : PivotTheme.raised)
-            .offset(x: isRevealed ? -72 : 0)
             .contentShape(Rectangle())
             .simultaneousGesture(DragGesture(minimumDistance: 22).onEnded { value in
                 guard canRemove, abs(value.translation.width) > abs(value.translation.height) else { return }
@@ -499,6 +499,8 @@ struct TrainingSessionView: View {
                     revealedSetID = value.translation.width < -35 ? set.id : nil
                 }
             })
+            // Move the hit region together with the row, leaving Delete tappable.
+            .offset(x: isRevealed ? -72 : 0)
         }
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .id(set.id).accessibilityElement(children: .contain)
