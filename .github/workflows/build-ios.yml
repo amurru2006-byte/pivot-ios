@@ -70,7 +70,7 @@ jobs:
           mkdir -p build/Package/Payload
           cp -R build/DerivedData/Build/Products/Release-iphoneos/Pivot.app build/Package/Payload/
           cd build/Package
-          zip -qr ../Pivot-0.7.4.ipa Payload
+          zip -qr ../Pivot-0.7.5.ipa Payload
       - name: Verifica interfaccia su simulatore iPhone
         run: bash Scripts/preview-ui.sh
       - name: Prepara sorgente AltStore con integrità verificabile
@@ -78,7 +78,7 @@ jobs:
           python3 - <<'PY'
           import hashlib, json
           from pathlib import Path
-          ipa = Path('build/Pivot-0.7.4.ipa')
+          ipa = Path('build/Pivot-0.7.5.ipa')
           template = Path('Distribution/altstore-source.template.json').read_text()
           source = template.replace('__IPA_SIZE__', str(ipa.stat().st_size))
           source = source.replace('__IPA_SHA256__', hashlib.sha256(ipa.read_bytes()).hexdigest())
@@ -88,13 +88,13 @@ jobs:
           assert 'com.apple.developer.healthkit.background-delivery' in permissions
           Path('build/altstore-source.json').write_text(source)
           PY
-      - name: Pubblica la 0.7.4 per la sorgente AltStore
+      - name: Pubblica la 0.7.5 per la sorgente AltStore
         if: github.ref == 'refs/heads/codex/pivot-0.7.4'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view v0.7.4 >/dev/null 2>&1 || gh release create v0.7.4 --target "$GITHUB_SHA" --prerelease --title "Pivot 0.7.4" --notes "Salute automatica per sonno e cardio programmato, calendario aggiornato più rapidamente, serie avanzate con riscaldamento proporzionale e catalogo 876 + 302 illustrazioni tecniche. Installare sopra la versione attuale senza disinstallare."
-          gh release upload v0.7.4 build/Pivot-0.7.4.ipa#Pivot-0.7.4.ipa build/altstore-source.json#altstore-source.json --clobber
+          gh release view v0.7.5 >/dev/null 2>&1 || gh release create v0.7.5 --target "$GITHUB_SHA" --prerelease --title "Pivot 0.7.5" --notes "Allenamento con righe compatte, sigle colorate e opzioni raccolte; swipe per eliminare soltanto le serie aggiunte. Riepilogo Entrate compatto e centrato, foto ripristinate dalla 0.7.3. Installare sopra la versione attuale senza disinstallare."
+          gh release upload v0.7.5 build/Pivot-0.7.5.ipa#Pivot-0.7.5.ipa build/altstore-source.json#altstore-source.json --clobber
       - name: Carica anteprime iPhone
         if: always()
         uses: actions/upload-artifact@v4
@@ -107,7 +107,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Pivot-iPhone-unsigned
-          path: build/Pivot-0.7.4.ipa
+          path: build/Pivot-0.7.5.ipa
           retention-days: 14
           if-no-files-found: error
       - name: Conserva log di compilazione

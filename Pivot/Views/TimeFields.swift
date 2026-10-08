@@ -75,14 +75,15 @@ struct DecimalField: View {
     let unit: String
     @Binding var value: Double?
     var identifier: String = ""
+    var compact = false
     @State private var input = ""
     @FocusState private var focused: Bool
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.caption).lineLimit(1)
+            if !compact { Text(title).font(.caption).lineLimit(1) }
             HStack {
-                TextField("—", text: $input).keyboardType(.decimalPad).focused($focused).multilineTextAlignment(.trailing).accessibilityIdentifier(identifier)
-                Text(unit).font(.caption).foregroundStyle(PivotTheme.muted)
+                TextField("—", text: $input).keyboardType(.decimalPad).focused($focused).multilineTextAlignment(.trailing).accessibilityIdentifier(identifier).accessibilityLabel(title + " " + unit)
+                if !compact { Text(unit).font(.caption).foregroundStyle(PivotTheme.muted) }
             }.padding(12).frame(minHeight: 48).background(PivotTheme.background, in: RoundedRectangle(cornerRadius: 10))
         }
         .onAppear { input = value.map { String($0).replacingOccurrences(of: ".", with: ",") } ?? "" }
@@ -100,12 +101,14 @@ struct IntegerField: View {
     let title: String
     @Binding var value: Int?
     var identifier: String = ""
+    var compact = false
     @State private var input = ""
     @FocusState private var focused: Bool
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.caption).lineLimit(1)
+            if !compact { Text(title).font(.caption).lineLimit(1) }
             TextField("—", text: $input).keyboardType(.numberPad).focused($focused).multilineTextAlignment(.trailing).accessibilityIdentifier(identifier)
+                .accessibilityLabel(title)
                 .padding(12).frame(minHeight: 48).background(PivotTheme.background, in: RoundedRectangle(cornerRadius: 10))
         }.onAppear { input = value.map(String.init) ?? "" }
             .onChange(of: input) { _, text in value = text.isEmpty ? nil : Int(text) ?? -1 }

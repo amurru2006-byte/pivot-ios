@@ -24,9 +24,9 @@ private struct IncomeChartPoint: Identifiable {
 }
 
 private struct IncomePageHeight: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
+    static var defaultValue: [Int: CGFloat] = [:]
+    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+        for (page, height) in nextValue() { value[page] = max(value[page] ?? 0, height) }
     }
 }
 
@@ -40,7 +40,7 @@ struct IncomeView: View {
     @State private var exporting = false
     @State private var editingOpening = false
     @State private var balancePage = 0
-    @State private var carouselHeight: CGFloat = 480
+    @State private var carouselHeights: [Int: CGFloat] = [:]
     @State private var chartRange: IncomeChartRange = .year
     @State private var chartStyle: IncomeChartStyle = .bars
     var currentYear: Int { PivotDate.calendar.component(.year, from: Date()) }
@@ -56,6 +56,10 @@ struct IncomeView: View {
         return store.data.payments.filter { PivotDate.calendar.component(.year, from: $0.date) == year }.sorted { $0.date > $1.date }
     }
     var outstanding: [IncomeEntry] { store.data.income.filter { $0.outstandingCents > 0 }.sorted { $0.date < $1.date } }
+    private var carouselHeight: CGFloat {
+        let minimum: CGFloat = balancePage == 0 ? 300 : 480
+        return max(minimum, carouselHeights[balancePage] ?? minimum)
+    }
     var body: some View {
         NavigationStack {
             PivotScreen {
@@ -168,11 +172,8 @@ struct IncomeView: View {
                 .accessibilityIdentifier("income-carousel")
             }
             .frame(height: carouselHeight)
-            .onPreferenceChange(IncomePageHeight.self) { height in
-                if height > 0, abs(carouselHeight - max(480, height)) > 1 {
-                    carouselHeight = max(480, height)
-                }
-            }
+            .animation(.easeInOut(duration: 0.22), value: carouselHeight)
+            .onPreferenceChange(IncomePageHeight.self) { heights in carouselHeights.merge(heights) { max($0, $1) } }
 
             // Navigation lives outside the cards: it cannot cover chart labels
             // or the explanation, even with larger accessibility text.
@@ -193,15 +194,15 @@ struct IncomeView: View {
             .accessibilityAddTraits(balancePage == page ? .isSelected : [])
             .accessibilityIdentifier("income-page-\(page)")
     }
-    private func measuredIncomePage<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+    private func measuredIncomePage<Content: View>(_ page: Int, @ViewBuilder content: () -> Content) -> some View {
         content().fixedSize(horizontal: false, vertical: true)
             .background(GeometryReader { geometry in
-                Color.clear.preference(key: IncomePageHeight.self, value: geometry.size.height)
+                Color.clear.preference(key: IncomePageHeight.self, value: [page: geometry.size.height])
             })
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: page == 0 ? .leading : .topLeading)
     }
     private var balance: some View {
-        measuredIncomePage {
+        measuredIncomePage(0) {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
                 Label {
@@ -224,9 +225,11 @@ struct IncomeView: View {
         }
             .background(LinearGradient(colors: [Color(pivotHex: "22493F"), Color(pivotHex: "1C2C41"), PivotTheme.surface], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 26))
             .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(PivotTheme.accent.opacity(0.18)))
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("income-summary")
     }
     private var incomeChart: some View {
-        measuredIncomePage {
+        measuredIncomePage(1) {
         VStack(alignment: .leading, spacing: 12) {
             Label {
                 Text("Andamento incassi").accessibilityIdentifier("income-chart-title")

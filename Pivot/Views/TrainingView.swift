@@ -3,6 +3,55 @@ import UniformTypeIdentifiers
 import UIKit
 import UserNotifications
 
+private enum WorkoutSetAppearance: String, CaseIterable, Identifiable {
+    case warmup, working, backoff, superset, dropSet, failure
+    var id: String { rawValue }
+    init(_ set: TrainingSet) {
+        if set.reachesFailure { self = .failure; return }
+        switch set.resolvedKind {
+        case .warmup: self = .warmup
+        case .working: self = .working
+        case .backoff: self = .backoff
+        case .superset: self = .superset
+        case .dropSet: self = .dropSet
+        }
+    }
+    var badge: String {
+        switch self {
+        case .warmup: return "W"
+        case .working: return "1"
+        case .backoff: return "B"
+        case .superset: return "S"
+        case .dropSet: return "D"
+        case .failure: return "F"
+        }
+    }
+    var name: String {
+        switch self {
+        case .warmup: return "Warm-up"
+        case .working: return "Working"
+        case .backoff: return "Back-off"
+        case .superset: return "Superset"
+        case .dropSet: return "Drop set"
+        case .failure: return "Failure"
+        }
+    }
+    var color: Color {
+        switch self {
+        case .warmup: return Color(red: 0.93, green: 0.66, blue: 0.08)
+        case .working: return .gray
+        case .backoff: return .purple
+        case .superset: return .teal
+        case .dropSet: return Color(red: 0.15, green: 0.62, blue: 0.92)
+        case .failure: return .red
+        }
+    }
+}
+
+private struct WorkoutSetOptionsTarget: Identifiable {
+    let id: UUID
+}
+
 struct TrainingView: View {
     @EnvironmentObject var store: PivotStore
     var event: CalendarItem? = nil
@@ -138,7 +187,14 @@ struct TrainingView: View {
     #if DEBUG && targetEnvironment(simulator)
     private func importTestPDF() async {
         do {
-            let payload = TrainingPlanPayload(formatVersion: 1, name: "Scheda TEST", days: [TrainingDay(id: "test-a", name: "Giorno test", exercises: [TrainingExercise(id: "test-exercise", name: "Esercizio test", sets: 1, reps: "8", restSeconds: 60, coachNotes: "Nota test")])])
+            let layoutTest = ProcessInfo.processInfo.arguments.contains("--training-layout-test")
+            var exercises = [TrainingExercise(id: "test-exercise", name: layoutTest ? "Bench Press" : "Esercizio test",
+                                              sets: layoutTest ? 4 : 1, reps: "8", restSeconds: 60, coachNotes: "Nota test")]
+            if layoutTest {
+                exercises.append(TrainingExercise(id: "test-squat", name: "Barbell Squat", sets: 4, reps: "6", restSeconds: 120,
+                                                  coachNotes: "Dati di prova", catalogID: "Barbell_Squat"))
+            }
+            let payload = TrainingPlanPayload(formatVersion: 1, name: "Scheda TEST", days: [TrainingDay(id: "test-a", name: "Giorno test", exercises: exercises)])
             let block = try TrainingPDFFormat.encodedBlock(payload)
             let lines = block.components(separatedBy: "\n")
             let encoded = lines[1]
@@ -174,18 +230,20 @@ struct TrainingSessionView: View {
     @State private var selectingExercise = false
     @State private var replacementID: String?
     @State private var applyToPlan = false
+    @State private var revealedSetID: UUID?
+    @State private var setOptions: WorkoutSetOptionsTarget?
     var focusSetID: UUID? = nil
     let event: CalendarItem?
     init(plan: TrainingPlan, day: TrainingDay, library: TrainingLibrary, event: CalendarItem?) {
         self.event = event
         let existing = library.sessions.first { $0.calendarEventID == event?.id && event != nil && $0.planID == plan.id }
             ?? library.sessions.filter { $0.end == nil && $0.planID == plan.id && $0.dayName == day.name && $0.calendarEventID == nil && event == nil }.sorted { $0.start > $1.start }.first
-        _session = State(initialValue: existing ?? library.makeSession(plan: plan, day: day, eventID: event?.id))
+        _session = State(initialValue: Self.markingSetOrigins(existing ?? library.makeSession(plan: plan, day: day, eventID: event?.id)))
         _tips = State(initialValue: library.tips)
         _hasStarted = State(initialValue: existing != nil)
     }
     init(session: TrainingSession, tips: [String: String], event: CalendarItem?, focusSetID: UUID? = nil) {
-        _session = State(initialValue: session); _tips = State(initialValue: tips); self.event = event
+        _session = State(initialValue: Self.markingSetOrigins(session)); _tips = State(initialValue: tips); self.event = event
         _hasStarted = State(initialValue: true)
         self.focusSetID = focusSetID
     }
@@ -240,13 +298,18 @@ struct TrainingSessionView: View {
             .onDisappear { save() }
             .onChange(of: scenePhase) { _, phase in if phase != .active { save() } }
             .sheet(isPresented: $sharing) { if let export { TrainingReportPreview(url: export) } }
+            .sheet(item: $setOptions) { target in
+                if let location = setLocation(target.id) {
+                    setOptionsSheet(exerciseIndex: location.exercise, setIndex: location.set)
+                }
+            }
             .onChange(of: session.exercises) { _, _ in if hasStarted { save() } }
             .onChange(of: session.notes) { _, _ in if hasStarted { save() } }
             .onChange(of: session.start) { _, _ in if hasStarted { save() } }
             .onChange(of: session.end) { _, _ in if hasStarted { save() } }
             .onChange(of: tips) { _, _ in save() }
             .onChange(of: store.data.updatedAt) { _, _ in
-                if let latest = store.data.training?.sessions.first(where: { $0.id == session.id }), latest.updatedAt > session.updatedAt { session = latest }
+                if let latest = store.data.training?.sessions.first(where: { $0.id == session.id }), latest.updatedAt > session.updatedAt { session = Self.markingSetOrigins(latest) }
             }
             .task {
                 if let focusSetID {
@@ -259,107 +322,309 @@ struct TrainingSessionView: View {
     private func exerciseCard(_ index: Int) -> some View {
         let exercise = session.exercises[index].exercise
         let previous = (store.data.training ?? TrainingLibrary()).previous(exerciseID: exercise.id, before: session.start, excluding: session.id)
+        let hasCompletedSets = session.exercises[index].sets.contains(where: \.done)
         return PivotCard {
-            NavigationLink { ExerciseStatisticsView(exercise: exercise, current: hasStarted ? session : nil) } label: {
-                HStack {
-                    ExerciseThumbnail(exercise: exercise).frame(width: 74, height: 74)
+            HStack(alignment: .top, spacing: 12) {
+                NavigationLink { ExerciseStatisticsView(exercise: exercise, current: hasStarted ? session : nil) } label: {
+                    HStack(spacing: 12) {
+                    ExerciseThumbnail(exercise: exercise).frame(width: 64, height: 64)
                     VStack(alignment: .leading, spacing: 6) {
                         Text("\(index + 1). \(exercise.name)").font(.headline)
-                        Text("Apri cronologia e progressi").font(.caption).foregroundStyle(PivotTheme.blue)
+                        Text("\(exercise.sets) serie × \(exercise.reps) · recupero \(ActivityTiming.duration(exercise.restSeconds))")
+                            .font(.caption).foregroundStyle(PivotTheme.muted)
+                        Text("Cronologia e progressi").font(.caption.weight(.semibold)).foregroundStyle(PivotTheme.blue)
                     }
-                    Spacer(); Image(systemName: "chevron.right")
+                    }
                 }
-            }.buttonStyle(.plain).accessibilityIdentifier("workout-exercise-statistics-\(exercise.id)")
-            Button("Cambia esercizio") { replacementID = exercise.id; selectingExercise = true }
-                .disabled(!hasStarted || session.exercises[index].sets.contains(where: \.done) || store.locked)
-            if session.exercises[index].sets.contains(where: \.done) { Text("Hai già registrato delle serie: per conservare ciò che hai fatto, aggiungi il nuovo esercizio come extra.").font(.caption).foregroundStyle(PivotTheme.muted) }
-            Text("\(exercise.sets) serie × \(exercise.reps) · recupero \(ActivityTiming.duration(exercise.restSeconds))").font(.subheadline).foregroundStyle(PivotTheme.accent)
-            if !exercise.coachNotes.isEmpty { Text(exercise.coachNotes).font(.caption).foregroundStyle(PivotTheme.muted) }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("workout-exercise-statistics-\(exercise.id)")
+                Spacer(minLength: 4)
+                Menu {
+                    Button("Cambia esercizio", systemImage: "arrow.triangle.2.circlepath") {
+                        replacementID = exercise.id
+                        selectingExercise = true
+                    }
+                    .disabled(!hasStarted || hasCompletedSets || store.locked)
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.headline)
+                        .frame(width: 40, height: 40)
+                        .background(PivotTheme.raised, in: Circle())
+                }
+                .accessibilityLabel("Opzioni esercizio")
+            }
+            if hasCompletedSets {
+                Text("Hai già registrato delle serie: per conservare ciò che hai fatto, aggiungi il nuovo esercizio come extra.")
+                    .font(.caption).foregroundStyle(PivotTheme.muted)
+            }
+            if !exercise.coachNotes.isEmpty {
+                Label(exercise.coachNotes, systemImage: "quote.bubble.fill")
+                    .font(.caption).foregroundStyle(PivotTheme.accent)
+                    .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(PivotTheme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+            }
             if let previous {
-                Text("Ultima volta: " + previous.sets.filter(\.done).map { TrainingReports.performance($0, exercise: previous.exercise) }.joined(separator: " · ")).font(.caption).foregroundStyle(PivotTheme.blue)
+                Text("Ultima volta · " + previous.sets.filter(\.done).map { TrainingReports.performance($0, exercise: previous.exercise) }.joined(separator: " · "))
+                    .font(.caption).foregroundStyle(PivotTheme.blue)
             } else { Text("Prima registrazione: nessun carico preimpostato.").font(.caption).foregroundStyle(PivotTheme.muted) }
-            if !session.exercises[index].sets.contains(where: \.done) {
-                Toggle("Isometria · registra secondi", isOn: Binding(get: { session.exercises[index].exercise.usesDuration }, set: { session.exercises[index].exercise.isometric = $0 }))
+            if !hasCompletedSets {
+                DisclosureGroup("Impostazioni esercizio") {
+                    Toggle("Isometria · registra secondi", isOn: Binding(get: { session.exercises[index].exercise.usesDuration }, set: { session.exercises[index].exercise.isometric = $0 }))
+                    if session.exercises[index].exercise.usesDuration {
+                        Toggle("Durata separata per lato", isOn: Binding(get: { session.exercises[index].exercise.separateSides == true }, set: { session.exercises[index].exercise.separateSides = $0 }))
+                        Toggle("Zavorra", isOn: Binding(get: { session.exercises[index].exercise.weightedHold == true }, set: { session.exercises[index].exercise.weightedHold = $0 }))
+                    }
+                }
+                .font(.caption.weight(.semibold))
             }
             if exercise.usesDuration {
-                if !session.exercises[index].sets.contains(where: \.done) {
-                    Toggle("Durata separata per lato", isOn: Binding(get: { session.exercises[index].exercise.separateSides == true }, set: { session.exercises[index].exercise.separateSides = $0 }))
-                    Toggle("Zavorra", isOn: Binding(get: { session.exercises[index].exercise.weightedHold == true }, set: { session.exercises[index].exercise.weightedHold = $0 }))
-                }
                 Text("Inserisci la durata effettiva; i secondi non diventano kg né ripetizioni.").font(.caption).foregroundStyle(PivotTheme.muted)
             }
-            ForEach(session.exercises[index].sets.indices, id: \.self) { setIndex in
-                VStack(spacing: 8) {
-                    HStack {
-                        Text("Serie \(setIndex + 1)").font(.subheadline.weight(.semibold))
-                        Picker("Tipo", selection: setKindBinding(exerciseIndex: index, setIndex: setIndex)) {
-                            ForEach(TrainingSetKind.allCases) { kind in Text(kind.label).tag(kind) }
-                        }.pickerStyle(.menu).labelsHidden()
-                        Spacer()
-                        Toggle("Fatta", isOn: Binding(get: { session.exercises[index].sets[setIndex].done }, set: { done in
-                            let set = session.exercises[index].sets[setIndex]
-                            if done && !set.canComplete(exercise) { message = exercise.usesDuration ? "Inserisci durata e, se selezionata, zavorra prima di segnare Fatta." : "Inserisci carico e Reps prima di segnare Fatta."; return }
-                            if done && !set.done {
-                                session.exercises[index].sets[setIndex].completedAt = Date()
-                                let seconds = set.restSeconds ?? exercise.restSeconds
-                                session.rest = seconds > 0 ? .init(exerciseID: exercise.id, setID: set.id, seconds: seconds) : nil
-                                WorkoutRuntime.focusedSet[session.id] = nil
-                            } else if !done {
-                                session.exercises[index].sets[setIndex].completedAt = nil
-                                if session.rest?.setID == set.id { session.rest = nil }
-                            }
-                            session.exercises[index].sets[setIndex].done = done; save()
-                        })).fixedSize().disabled(!hasStarted).accessibilityIdentifier("set-done-\(exercise.id)-\(setIndex)")
+            workoutSetColumnHeadings(exercise)
+            VStack(spacing: 6) {
+                ForEach(session.exercises[index].sets) { set in
+                    if let setIndex = session.exercises[index].sets.firstIndex(where: { $0.id == set.id }) {
+                        workoutSetRow(exerciseIndex: index, setIndex: setIndex, exercise: exercise)
                     }
-                    HStack(spacing: 12) {
-                        if !exercise.usesDuration || exercise.weightedHold == true {
-                            DecimalField(title: exercise.usesDuration ? "Zavorra" : "Carico", unit: "kg", value: weightBinding(exerciseIndex: index, setIndex: setIndex), identifier: "weight-\(exercise.id)-\(setIndex)")
-                        }
-                        if exercise.usesDuration {
-                            if exercise.separateSides == true {
-                                IntegerField(title: "Sinistra · s", value: $session.exercises[index].sets[setIndex].leftSeconds, identifier: "left-\(exercise.id)-\(setIndex)")
-                                IntegerField(title: "Destra · s", value: $session.exercises[index].sets[setIndex].rightSeconds, identifier: "right-\(exercise.id)-\(setIndex)")
-                            } else { IntegerField(title: "Durata · s", value: $session.exercises[index].sets[setIndex].durationSeconds, identifier: "seconds-\(exercise.id)-\(setIndex)") }
-                        } else { IntegerField(title: "Reps", value: $session.exercises[index].sets[setIndex].reps, identifier: "reps-\(exercise.id)-\(setIndex)") }
+                }
+            }
+            Menu {
+                Button("W · Warm-up") { addWarmup(exerciseIndex: index) }
+                    .accessibilityIdentifier("add-warmup-\(exercise.id)")
+                Button("Working") { addWorkingSet(exerciseIndex: index) }
+                    .accessibilityIdentifier("add-working-\(exercise.id)")
+            } label: {
+                Label("Aggiungi serie", systemImage: "plus").font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity).padding(.vertical, 12)
+                    .background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 10))
+            }
+            .accessibilityIdentifier("add-set-\(exercise.id)")
+            .disabled(!hasStarted || store.locked || session.exercises[index].sets.count >= 60)
+            if let tip = tips[exercise.id], !tip.isEmpty {
+                Label(tip, systemImage: "pin.fill").font(.caption).foregroundStyle(PivotTheme.blue)
+            }
+            DisclosureGroup("Note e promemoria") {
+                TextField("Note di questa sessione…", text: $session.exercises[index].notes, axis: .vertical).lineLimit(2...5)
+                TextField("Promemoria per le prossime volte…", text: Binding(get: { tips[exercise.id] ?? "" }, set: { tips[exercise.id] = $0 }), axis: .vertical).lineLimit(2...5)
+                    .padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
+                Text("Le note descrivono questa sessione. I promemoria restano salvati per i prossimi allenamenti.").font(.caption).foregroundStyle(PivotTheme.muted)
+            }.font(.caption.weight(.semibold))
+        }
+    }
+    private func workoutSetColumnHeadings(_ exercise: TrainingExercise) -> some View {
+        HStack(spacing: 6) {
+            Text("SET").frame(width: 40)
+            if !exercise.usesDuration || exercise.weightedHold == true {
+                Text("KG").frame(maxWidth: .infinity)
+            }
+            if exercise.usesDuration && exercise.separateSides == true {
+                Text("SX · S").frame(maxWidth: .infinity)
+                Text("DX · S").frame(maxWidth: .infinity)
+            } else {
+                Text(exercise.usesDuration ? "SECONDI" : "REPS").frame(maxWidth: .infinity)
+            }
+            Image(systemName: "checkmark").frame(width: 44)
+            Color.clear.frame(width: 28, height: 1)
+        }
+        .font(.caption2.weight(.semibold)).foregroundStyle(PivotTheme.muted)
+        .padding(.horizontal, 6).accessibilityHidden(true)
+    }
+    private func workoutSetRow(exerciseIndex: Int, setIndex: Int, exercise: TrainingExercise) -> some View {
+        let set = session.exercises[exerciseIndex].sets[setIndex]
+        let canRemove = canRemoveSet(exerciseIndex: exerciseIndex, setIndex: setIndex)
+        let isRevealed = revealedSetID == set.id
+        return ZStack(alignment: .trailing) {
+            if canRemove && isRevealed {
+                Button(role: .destructive) {
+                    withAnimation(.easeOut(duration: 0.18)) { revealedSetID = nil }
+                    removeSet(exerciseIndex: exerciseIndex, setIndex: setIndex)
+                } label: {
+                    Image(systemName: "trash.fill").foregroundStyle(.white)
+                        .frame(width: 72).frame(maxHeight: .infinity)
+                }
+                .background(Color.red).accessibilityLabel("Elimina serie aggiunta")
+                .accessibilityIdentifier("delete-set-\(exercise.id)-\(setIndex)")
+            }
+            HStack(spacing: 6) {
+                setTypeMenu(exerciseIndex: exerciseIndex, setIndex: setIndex)
+                    .frame(width: 40)
+                if !exercise.usesDuration || exercise.weightedHold == true {
+                    DecimalField(title: exercise.usesDuration ? "Zavorra" : "Carico", unit: "kg",
+                                 value: weightBinding(exerciseIndex: exerciseIndex, setIndex: setIndex),
+                                 identifier: "weight-\(exercise.id)-\(setIndex)", compact: true)
+                        .frame(maxWidth: .infinity)
+                }
+                if exercise.usesDuration {
+                    if exercise.separateSides == true {
+                        IntegerField(title: "Sinistra · s", value: $session.exercises[exerciseIndex].sets[setIndex].leftSeconds,
+                                     identifier: "left-\(exercise.id)-\(setIndex)", compact: true).frame(maxWidth: .infinity)
+                        IntegerField(title: "Destra · s", value: $session.exercises[exerciseIndex].sets[setIndex].rightSeconds,
+                                     identifier: "right-\(exercise.id)-\(setIndex)", compact: true).frame(maxWidth: .infinity)
+                    } else {
+                        IntegerField(title: "Durata · s", value: $session.exercises[exerciseIndex].sets[setIndex].durationSeconds,
+                                     identifier: "seconds-\(exercise.id)-\(setIndex)", compact: true).frame(maxWidth: .infinity)
                     }
-                    DisclosureGroup("Recupero · \(session.exercises[index].sets[setIndex].restSeconds ?? exercise.restSeconds) s") {
-                        IntegerField(title: "Recupero dopo questa serie · s (0 = nessuna pausa)", value: $session.exercises[index].sets[setIndex].restSeconds, identifier: "rest-\(exercise.id)-\(setIndex)")
-                        Button("Usa il recupero della scheda") { session.exercises[index].sets[setIndex].restSeconds = nil }
-                        Text("Vale anche per riscaldamento, back-off, superset e drop set. Il valore scelto resta per la prossima volta.").font(.caption).foregroundStyle(PivotTheme.muted)
-                    }.font(.caption)
-                    Button("Usa questa serie sulla schermata di blocco") {
-                        guard save() else { return }
-                        WorkoutRuntime.focusedSet[session.id] = session.exercises[index].sets[setIndex].id
-                        Task { await WorkoutRuntime.update(session, start: true) }
-                    }.font(.caption).disabled(!hasStarted || session.end != nil || session.exercises[index].sets[setIndex].done)
-                    if session.exercises[index].sets[setIndex].resolvedKind == .superset {
-                        TextField("Gruppo superset (es. A)", text: supersetBinding(exerciseIndex: index, setIndex: setIndex))
+                } else {
+                    IntegerField(title: "Reps", value: $session.exercises[exerciseIndex].sets[setIndex].reps,
+                                 identifier: "reps-\(exercise.id)-\(setIndex)", compact: true).frame(maxWidth: .infinity)
+                }
+                Button {
+                    toggleSetCompletion(exerciseIndex: exerciseIndex, setIndex: setIndex, exercise: exercise)
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.body.weight(.bold))
+                        .foregroundStyle(set.done ? Color.white : PivotTheme.muted)
+                        .frame(width: 44, height: 48)
+                        .background(set.done ? Color.green.opacity(0.75) : PivotTheme.background,
+                                    in: RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain).disabled(!hasStarted || store.locked)
+                .accessibilityLabel(set.done ? "Serie \(setIndex + 1) fatta" : "Segna serie \(setIndex + 1) fatta")
+                .accessibilityValue(set.done ? "Fatta" : "Da fare")
+                .accessibilityIdentifier("set-done-\(exercise.id)-\(setIndex)")
+                Button { setOptions = WorkoutSetOptionsTarget(id: set.id) } label: {
+                    Image(systemName: "ellipsis").font(.subheadline.bold())
+                        .frame(width: 28, height: 48).foregroundStyle(PivotTheme.muted)
+                }
+                .buttonStyle(.plain).accessibilityLabel("Opzioni serie \(setIndex + 1)")
+                .accessibilityIdentifier("set-options-\(exercise.id)-\(setIndex)")
+            }
+            .padding(.horizontal, 6).padding(.vertical, 4)
+            .background(set.done ? Color.green.opacity(0.07) : PivotTheme.raised)
+            .offset(x: isRevealed ? -72 : 0)
+            .contentShape(Rectangle())
+            .simultaneousGesture(DragGesture(minimumDistance: 22).onEnded { value in
+                guard canRemove, abs(value.translation.width) > abs(value.translation.height) else { return }
+                withAnimation(.easeOut(duration: 0.18)) {
+                    revealedSetID = value.translation.width < -35 ? set.id : nil
+                }
+            })
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .id(set.id).accessibilityElement(children: .contain)
+        .accessibilityIdentifier("set-row-\(exercise.id)-\(setIndex)")
+    }
+    private func toggleSetCompletion(exerciseIndex: Int, setIndex: Int, exercise: TrainingExercise) {
+        let current = session.exercises[exerciseIndex].sets[setIndex]
+        let done = !current.done
+        if done && !current.canComplete(exercise) {
+            message = exercise.usesDuration ? "Inserisci durata e, se selezionata, zavorra prima di segnare Fatta." : "Inserisci carico e Reps prima di segnare Fatta."
+            return
+        }
+        if done {
+            session.exercises[exerciseIndex].sets[setIndex].completedAt = Date()
+            let seconds = current.restSeconds ?? exercise.restSeconds
+            session.rest = seconds > 0 ? .init(exerciseID: exercise.id, setID: current.id, seconds: seconds) : nil
+            WorkoutRuntime.focusedSet[session.id] = nil
+        } else {
+            session.exercises[exerciseIndex].sets[setIndex].completedAt = nil
+            if session.rest?.setID == current.id { session.rest = nil }
+        }
+        revealedSetID = nil
+        session.exercises[exerciseIndex].sets[setIndex].done = done
+        save()
+    }
+    private func setLocation(_ id: UUID) -> (exercise: Int, set: Int)? {
+        for exerciseIndex in session.exercises.indices {
+            if let setIndex = session.exercises[exerciseIndex].sets.firstIndex(where: { $0.id == id }) {
+                return (exerciseIndex, setIndex)
+            }
+        }
+        return nil
+    }
+    private static func markingSetOrigins(_ original: TrainingSession) -> TrainingSession {
+        var result = original
+        for index in result.exercises.indices {
+            result.exercises[index].sets = TrainingSetTemplate.markingOrigins(result.exercises[index].sets,
+                                                                            prescribedWorkingSets: result.exercises[index].exercise.sets)
+        }
+        return result
+    }
+    private func setOptionsSheet(exerciseIndex: Int, setIndex: Int) -> some View {
+        let exercise = session.exercises[exerciseIndex].exercise
+        let set = session.exercises[exerciseIndex].sets[setIndex]
+        return NavigationStack {
+            Form {
+                Section("Tipo e intensità") {
+                    setTypeMenu(exerciseIndex: exerciseIndex, setIndex: setIndex, expanded: true)
+                    Toggle("Failure · cedimento", isOn: Binding(get: {
+                        session.exercises[exerciseIndex].sets[setIndex].reachesFailure
+                    }, set: { session.exercises[exerciseIndex].sets[setIndex].toFailure = $0 }))
+                    if session.exercises[exerciseIndex].sets[setIndex].resolvedKind == .superset {
+                        TextField("Gruppo Superset (es. A)", text: supersetBinding(exerciseIndex: exerciseIndex, setIndex: setIndex))
                             .textInputAutocapitalization(.characters)
                     }
-                    HStack {
-                        Toggle("A cedimento", isOn: failureBinding(exerciseIndex: index, setIndex: setIndex)).font(.caption)
-                        Spacer()
-                        if session.exercises[index].sets.count > 1 && !session.exercises[index].sets[setIndex].done {
-                            Button(role: .destructive) { removeSet(exerciseIndex: index, setIndex: setIndex) } label: {
-                                Label("Rimuovi", systemImage: "trash")
-                            }.font(.caption)
-                        }
+                }
+                Section("Recupero · \(set.restSeconds ?? exercise.restSeconds) s") {
+                    IntegerField(title: "Secondi · 0 = nessuna pausa",
+                                 value: $session.exercises[exerciseIndex].sets[setIndex].restSeconds,
+                                 identifier: "rest-\(exercise.id)-\(setIndex)")
+                    Button("Usa il recupero della scheda") {
+                        session.exercises[exerciseIndex].sets[setIndex].restSeconds = nil
                     }
-                    Divider()
-                }.id(session.exercises[index].sets[setIndex].id)
+                    Text("Il timer parte quando segni la serie fatta. Questo valore resta salvato per la prossima volta.")
+                        .font(.caption).foregroundStyle(PivotTheme.muted)
+                }
+                Section("Schermata di blocco") {
+                    Button("Usa questa serie nei controlli") {
+                        guard save() else { return }
+                        WorkoutRuntime.focusedSet[session.id] = set.id
+                        Task { await WorkoutRuntime.update(session, start: true) }
+                        setOptions = nil
+                    }
+                    .disabled(!hasStarted || session.end != nil || set.done)
+                }
+                Section {
+                    Text(set.isAdditional == true ? "Serie aggiunta: puoi eliminarla con uno swipe a sinistra finché non è fatta." : "Serie prevista dalla scheda: resta obbligatoria e non può essere eliminata.")
+                        .font(.caption).foregroundStyle(PivotTheme.muted)
+                }
             }
-            HStack {
-                Button { addWarmup(exerciseIndex: index) } label: { Label("Riscaldamento", systemImage: "plus") }
-                Spacer()
-                Button { addWorkingSet(exerciseIndex: index) } label: { Label("Serie", systemImage: "plus") }
-            }.font(.subheadline.weight(.semibold)).disabled(!hasStarted || store.locked || session.exercises[index].sets.count >= 60)
-            Text("Tipi, cedimento e gruppi superset restano salvati per il prossimo allenamento. I carichi di riscaldamento seguono la stessa proporzione quando cambi il carico allenante.")
-                .font(.caption).foregroundStyle(PivotTheme.muted)
-            TextField("Note di questa sessione…", text: $session.exercises[index].notes, axis: .vertical).lineLimit(2...5)
-            Label("Promemoria tecnici · restano salvati", systemImage: "pin.fill").font(.subheadline.weight(.semibold))
-            TextField("Panca livello 5, posizione, gomiti…", text: Binding(get: { tips[exercise.id] ?? "" }, set: { tips[exercise.id] = $0 }), axis: .vertical).lineLimit(3...8)
-                .padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
+            .navigationTitle("Serie \(setIndex + 1)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Fine") { setOptions = nil; save() } } }
+            .pivotForm()
         }
+        .presentationDetents([.medium, .large])
+    }
+    private func setTypeMenu(exerciseIndex: Int, setIndex: Int, expanded: Bool = false) -> some View {
+        let set = session.exercises[exerciseIndex].sets[setIndex]
+        let current = WorkoutSetAppearance(set)
+        let workingNumber = session.exercises[exerciseIndex].sets[..<setIndex].filter { $0.resolvedKind == .working }.count + 1
+        let badge = current == .working ? String(workingNumber) : current.badge
+        return Menu {
+            ForEach(WorkoutSetAppearance.allCases.filter { $0 != .failure }) { appearance in
+                Button {
+                    applySetAppearance(appearance, exerciseIndex: exerciseIndex, setIndex: setIndex)
+                } label: {
+                    HStack {
+                        Text("\(appearance.badge) · \(appearance.name)")
+                        if appearance == current { Image(systemName: "checkmark") }
+                    }
+                }
+            }
+            Divider()
+            Button {
+                applySetAppearance(.failure, exerciseIndex: exerciseIndex, setIndex: setIndex)
+            } label: {
+                if set.reachesFailure { Label("F · Failure", systemImage: "checkmark") }
+                else { Text("F · Failure") }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Text(badge)
+                    .font(.subheadline.bold().monospacedDigit())
+                    .foregroundStyle(current.color)
+                    .frame(width: 40, height: 48)
+                    .background(current.color.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                if expanded {
+                    Text(set.resolvedKind.label + (set.reachesFailure ? " · Failure" : ""))
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                    Image(systemName: "chevron.down").font(.caption2.bold()).foregroundStyle(PivotTheme.muted)
+                }
+            }
+        }
+        .accessibilityLabel("Serie \(setIndex + 1), \(set.resolvedKind.label)\(set.reachesFailure ? ", Failure" : ""), cambia tipo")
+        .accessibilityIdentifier("set-type-\(exerciseIndex)-\(setIndex)")
     }
     private var restCard: some View {
         PivotCard(tint: PivotTheme.blue) {
@@ -403,19 +668,28 @@ struct TrainingSessionView: View {
             message = applyToPlan ? "Esercizio e scheda aggiornati. Storico conservato." : "Esercizio aggiornato solo in questo allenamento."
         } catch { message = "Cambio non applicato: l'esercizio potrebbe essere già presente o avere serie fatte. Nessun dato precedente è stato eliminato." }
     }
-    private func setKindBinding(exerciseIndex: Int, setIndex: Int) -> Binding<TrainingSetKind> {
-        Binding(get: { session.exercises[exerciseIndex].sets[setIndex].resolvedKind }, set: { kind in
+    private func applySetAppearance(_ appearance: WorkoutSetAppearance, exerciseIndex: Int, setIndex: Int) {
+        guard session.exercises.indices.contains(exerciseIndex),
+              session.exercises[exerciseIndex].sets.indices.contains(setIndex) else { return }
+        if appearance == .failure {
+            session.exercises[exerciseIndex].sets[setIndex].toFailure = !session.exercises[exerciseIndex].sets[setIndex].reachesFailure
+        } else {
+            let kind: TrainingSetKind
+            switch appearance {
+            case .warmup: kind = .warmup
+            case .working: kind = .working
+            case .backoff: kind = .backoff
+            case .superset: kind = .superset
+            case .dropSet: kind = .dropSet
+            case .failure: return
+            }
             session.exercises[exerciseIndex].sets[setIndex].kind = kind
+            if kind == .working { session.exercises[exerciseIndex].sets[setIndex].toFailure = false }
             if kind != .superset { session.exercises[exerciseIndex].sets[setIndex].supersetGroup = nil }
             if kind != .warmup { session.exercises[exerciseIndex].sets[setIndex].loadFraction = nil }
             else { TrainingSetTemplate.rememberWarmupFractions(in: &session.exercises[exerciseIndex].sets) }
-            save()
-        })
-    }
-    private func failureBinding(exerciseIndex: Int, setIndex: Int) -> Binding<Bool> {
-        Binding(get: { session.exercises[exerciseIndex].sets[setIndex].reachesFailure }, set: {
-            session.exercises[exerciseIndex].sets[setIndex].toFailure = $0
-        })
+        }
+        save()
     }
     private func supersetBinding(exerciseIndex: Int, setIndex: Int) -> Binding<String> {
         Binding(get: { session.exercises[exerciseIndex].sets[setIndex].supersetGroup ?? "" }, set: {
@@ -440,7 +714,7 @@ struct TrainingSessionView: View {
         var sets = session.exercises[exerciseIndex].sets
         let warmupCount = sets.filter { $0.resolvedKind == .warmup }.count
         let fractions = [0.5, 0.7, 0.85]
-        var set = TrainingSet(number: 1, kind: .warmup, loadFraction: fractions[min(warmupCount, fractions.count - 1)])
+        var set = TrainingSet(number: 1, kind: .warmup, loadFraction: fractions[min(warmupCount, fractions.count - 1)], isAdditional: true)
         var candidate = [set]
         TrainingSetTemplate.rescaleWarmups(in: &candidate, workingLoad: TrainingSetTemplate.workingLoad(sets))
         set.kg = candidate[0].kg
@@ -454,15 +728,22 @@ struct TrainingSessionView: View {
         let previous = sets.last { $0.resolvedKind != .warmup }
         sets.append(TrainingSet(number: sets.count + 1, kg: previous?.kg, reps: previous?.reps, kind: .working,
                                 durationSeconds: previous?.durationSeconds, leftSeconds: previous?.leftSeconds,
-                                rightSeconds: previous?.rightSeconds, restSeconds: previous?.restSeconds))
+                                rightSeconds: previous?.rightSeconds, restSeconds: previous?.restSeconds,
+                                isAdditional: true))
         session.exercises[exerciseIndex].sets = TrainingSetTemplate.renumbered(sets)
         save()
     }
     private func removeSet(exerciseIndex: Int, setIndex: Int) {
-        guard session.exercises[exerciseIndex].sets.indices.contains(setIndex), !session.exercises[exerciseIndex].sets[setIndex].done else { return }
+        guard canRemoveSet(exerciseIndex: exerciseIndex, setIndex: setIndex) else { return }
         session.exercises[exerciseIndex].sets.remove(at: setIndex)
         session.exercises[exerciseIndex].sets = TrainingSetTemplate.renumbered(session.exercises[exerciseIndex].sets)
         save()
+    }
+    private func canRemoveSet(exerciseIndex: Int, setIndex: Int) -> Bool {
+        guard session.exercises.indices.contains(exerciseIndex),
+              session.exercises[exerciseIndex].sets.indices.contains(setIndex) else { return false }
+        let log = session.exercises[exerciseIndex]
+        return TrainingSetTemplate.canRemove(log.sets, at: setIndex, prescribedWorkingSets: log.exercise.sets)
     }
     @discardableResult private func save() -> Bool {
         guard !store.locked else { return false }

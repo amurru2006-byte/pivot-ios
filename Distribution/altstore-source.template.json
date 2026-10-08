@@ -11,17 +11,17 @@
       "bundleIdentifier": "app.pivot.personal",
       "developerName": "Alessandro Murru",
       "subtitle": "Agenda, abitudini, palestra e resoconti",
-      "localizedDescription": "Pivot 0.7.4 importa automaticamente sonno e cardio programmato da Salute, aggiorna più rapidamente il calendario e amplia il diario palestra con serie avanzate e illustrazioni tecniche.",
+      "localizedDescription": "Pivot 0.7.5 rende le serie di allenamento più intuitive con righe compatte, sigle colorate e un solo menu per il tipo. Corregge il riepilogo Entrate e ripristina le fotografie degli esercizi della 0.7.3.",
       "iconURL": "https://raw.githubusercontent.com/amurru2006-byte/pivot-ios/main/Pivot/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
       "tintColor": "#71E0CC",
       "category": "utilities",
       "versions": [
         {
-          "version": "0.7.4",
-          "buildVersion": "18",
-          "date": "2026-10-07",
-          "localizedDescription": "Sonno e cardio programmato automatici da Salute; calendario più reattivo; riscaldamento proporzionale, serie allenanti, back-off, superset, drop set e cedimento; catalogo 876 + 302 illustrazioni.",
-          "downloadURL": "https://github.com/amurru2006-byte/pivot-ios/releases/download/v0.7.4/Pivot-0.7.4.ipa",
+          "version": "0.7.5",
+          "buildVersion": "19",
+          "date": "2026-10-08",
+          "localizedDescription": "Serie compatte con W / numero / B / S / D / F, opzioni raccolte e swipe per eliminare solo le serie aggiunte. Riepilogo Entrate più compatto e centrato; foto degli esercizi ripristinate dalla 0.7.3. Conserva Salute, calendario, report e dati esistenti.",
+          "downloadURL": "https://github.com/amurru2006-byte/pivot-ios/releases/download/v0.7.5/Pivot-0.7.5.ipa",
           "size": __IPA_SIZE__,
           "sha256": "__IPA_SHA256__",
           "minOSVersion": "17.0"
