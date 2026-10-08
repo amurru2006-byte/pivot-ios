@@ -51,7 +51,16 @@ enum WorkoutRuntime {
             }
             session.exercises[ei].sets[si] = set
             if ["kg+", "kg-"].contains(action) {
-                TrainingSetTemplate.rescaleWarmups(in: &session.exercises[ei].sets, workingLoad: TrainingSetTemplate.workingLoad(session.exercises[ei].sets))
+                let target = TrainingSetTemplate.workingLoad(session.exercises[ei].sets)
+                if set.resolvedKind == .warmup {
+                    // A manual warm-up edit sets the new ratio; do not overwrite
+                    // that edit by immediately applying its previous ratio.
+                    if let target, target > 0, let kg = set.kg, kg > 0 {
+                        session.exercises[ei].sets[si].loadFraction = kg / target
+                    } else { session.exercises[ei].sets[si].loadFraction = nil }
+                } else if [.working, .superset].contains(set.resolvedKind) {
+                    TrainingSetTemplate.rescaleWarmups(in: &session.exercises[ei].sets, workingLoad: target)
+                }
             }
         }
         session.updatedAt = Date()
