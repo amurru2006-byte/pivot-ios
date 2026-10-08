@@ -24,6 +24,7 @@ final class PivotInteractionTests: XCTestCase {
         let addSet = app.buttons["add-set-test-exercise"]
         for _ in 0..<10 { if addSet.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(addSet.isHittable)
+        fullyRevealRow(app.descendants(matching: .any)["set-row-test-exercise-0"].firstMatch, in: app)
         let firstType = app.buttons["set-type-0-0"]
         firstType.tap()
         let types = XCTAttachment(screenshot: app.screenshot())
@@ -38,13 +39,14 @@ final class PivotInteractionTests: XCTestCase {
         let compact = XCTAttachment(screenshot: app.screenshot())
         compact.name = "training-compact-set-table"; compact.lifetime = .keepAlways; add(compact)
         let extra = app.descendants(matching: .any)["set-row-test-exercise-0"].firstMatch
+        fullyRevealRow(extra, in: app)
         extra.swipeLeft()
         let delete = app.buttons["delete-set-test-exercise-0"]
         XCTAssertTrue(delete.waitForExistence(timeout: 5)); XCTAssertTrue(delete.isHittable)
         let swipe = XCTAttachment(screenshot: app.screenshot())
         swipe.name = "training-extra-set-swipe-delete"; swipe.lifetime = .keepAlways; add(swipe)
         delete.tap()
-        XCTAssertFalse(app.textFields["weight-test-exercise-4"].exists)
+        XCTAssertTrue(app.textFields["weight-test-exercise-4"].waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.textFields["weight-test-exercise-3"].exists)
         let prescribed = app.descendants(matching: .any)["set-row-test-exercise-0"].firstMatch
         prescribed.swipeLeft()
@@ -55,6 +57,17 @@ final class PivotInteractionTests: XCTestCase {
         let options = XCTAttachment(screenshot: app.screenshot())
         options.name = "training-set-options"; options.lifetime = .keepAlways; add(options)
         app.navigationBars.buttons["Fine"].tap()
+    }
+    private func fullyRevealRow(_ row: XCUIElement, in app: XCUIApplication) {
+        // isHittable can be true for a row partly hidden behind the navigation bar.
+        // Swipe and tap only after the complete row is within the visible viewport.
+        for _ in 0..<8 {
+            if row.frame.minY <= app.navigationBars.firstMatch.frame.maxY + 8 { app.swipeDown() }
+            else if row.frame.maxY >= app.tabBars.firstMatch.frame.minY - 8 { app.swipeUp() }
+            else { break }
+        }
+        XCTAssertGreaterThan(row.frame.minY, app.navigationBars.firstMatch.frame.maxY)
+        XCTAssertLessThan(row.frame.maxY, app.tabBars.firstMatch.frame.minY)
     }
     func testWorkoutIntentActionsPersistBothSidesAndRestState() {
         continueAfterFailure = false
