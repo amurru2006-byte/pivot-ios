@@ -53,4 +53,17 @@ final class TrainingCompletionTests: XCTestCase {
         s.exercises[0].sets[0].skipped = true
         XCTAssertThrowsError(try TrainingLibrary(sessions: [s]).validate())
     }
+    func testSkippedPlannedLoadCannotCorruptWarmupRatiosOrOverwriteSkippedInputs() {
+        var s = session(bench, sets: [.init(number: 1, kg: 20, reps: 8, done: true, kind: .warmup),
+                                     .init(number: 2, kg: 50, reps: 6, done: true),
+                                     .init(number: 3, kg: 500)])
+        TrainingCompletion.skipExercise(in: &s, at: 0)
+        TrainingSetTemplate.rememberWarmupFractions(in: &s.exercises[0].sets)
+        XCTAssertEqual(s.exercises[0].sets[0].loadFraction!, 0.4, accuracy: 0.001)
+        let next = TrainingSetTemplate.next(previous: s.exercises[0], prescribedWorkingSets: 2)
+        XCTAssertEqual(next[0].kg, 20)
+        var skippedWarmup = [TrainingSet(number: 1, kg: 10, kind: .warmup, loadFraction: 0.5, skipped: true)]
+        TrainingSetTemplate.rescaleWarmups(in: &skippedWarmup, workingLoad: 80)
+        XCTAssertEqual(skippedWarmup[0].kg, 10)
+    }
 }

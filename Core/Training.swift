@@ -157,7 +157,7 @@ enum TrainingSetTemplate {
         return nonWarmupsBefore >= prescribedWorkingSets
     }
     static func workingLoad(_ sets: [TrainingSet]) -> Double? {
-        sets.filter { [.working, .superset].contains($0.resolvedKind) }
+        sets.filter { $0.skipped != true && [.working, .superset].contains($0.resolvedKind) }
             .compactMap(\.kg).filter { $0.isFinite && $0 > 0 }.max()
     }
     static func next(previous: TrainingExerciseLog?, prescribedWorkingSets: Int) -> [TrainingSet] {
@@ -192,13 +192,13 @@ enum TrainingSetTemplate {
     }
     static func rememberWarmupFractions(in sets: inout [TrainingSet]) {
         guard let target = workingLoad(sets), target > 0 else { return }
-        for index in sets.indices where sets[index].resolvedKind == .warmup {
+        for index in sets.indices where sets[index].resolvedKind == .warmup && sets[index].skipped != true {
             if let kg = sets[index].kg, kg > 0 { sets[index].loadFraction = kg / target }
         }
     }
     static func rescaleWarmups(in sets: inout [TrainingSet], workingLoad: Double?) {
         guard let workingLoad, workingLoad > 0 else { return }
-        for index in sets.indices where sets[index].resolvedKind == .warmup && !sets[index].done {
+        for index in sets.indices where sets[index].resolvedKind == .warmup && !sets[index].done && sets[index].skipped != true {
             guard let fraction = sets[index].loadFraction, fraction.isFinite, fraction > 0 else { continue }
             sets[index].kg = roundedPlateLoad(workingLoad * fraction)
         }
