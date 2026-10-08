@@ -21,7 +21,7 @@ enum WorkoutRuntime {
         status = ""
         if ["pause", "reset", "next"].contains(action) {
             if action == "pause" { session.rest?.togglePause() }
-            if action == "reset", let rest = session.rest { session.rest = .init(exerciseID: rest.exerciseID, setID: rest.setID, seconds: rest.plannedSeconds) }
+            if action == "reset" { session.rest?.resetCountdown() }
             if action == "next" { finishRest(&session) }
         } else {
             guard let ei = session.exercises.firstIndex(where: { $0.sets.contains { $0.id.uuidString == setID } }),

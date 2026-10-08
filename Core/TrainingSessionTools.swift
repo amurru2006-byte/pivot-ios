@@ -13,6 +13,11 @@ struct TrainingRest: Codable, Equatable {
     }
     func remaining(at now: Date) -> Int { max(0, deadline.map { Int(ceil($0.timeIntervalSince(now))) } ?? remainingWhenPaused ?? 0) }
     func elapsed(at now: Date) -> Int { max(0, Int(now.timeIntervalSince(startedAt))) }
+    mutating func resetCountdown(now: Date = Date()) {
+        // Reset the countdown, not the original start of the actual rest.
+        deadline = now.addingTimeInterval(Double(plannedSeconds))
+        remainingWhenPaused = nil
+    }
     mutating func togglePause(now: Date = Date()) {
         if deadline != nil {
             remainingWhenPaused = remaining(at: now); deadline = nil
