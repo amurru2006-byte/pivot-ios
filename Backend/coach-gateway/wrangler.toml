@@ -1,0 +1,18 @@
+name = "pivot-coach"
+main = "worker.mjs"
+compatibility_date = "2026-10-08"
+workers_dev = true
+
+[observability]
+enabled = false
+
+[[ratelimits]]
+name = "PIVOT_RATE_LIMITER"
+namespace_id = "1001"
+  [ratelimits.simple]
+  limit = 3
+  period = 60
+
+# Secrets must be configured outside git: GROQ_API_KEY, PIVOT_CLIENT_TOKEN_SHA256.
+# PRIVACY_READY must be set to zdr-confirmed only after checking provider ZDR.
+# No storage, paid plan, model downloads or automatic deployment is configured here.

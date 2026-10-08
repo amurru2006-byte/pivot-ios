@@ -1,0 +1,62 @@
+name: Verifica fondazione AI Pivot V8
+on:
+  push:
+    branches: ['codex/pivot-v8-ai-foundation']
+    paths: ['Core/**', 'Tests/**', 'Pivot/**', 'Backend/**', 'Package.swift', 'project.yml', '.github/workflows/pivot-v8-check.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pivot-v8-check-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  gateway:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test gateway senza rete o credenziali
+        run: node --test Backend/coach-gateway/worker.test.mjs
+  core-and-ios:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test Core esistenti e V8
+        run: swift test
+      - name: Genera progetto
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Autorizza soltanto il componente AI della baseline
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          approved = json.loads(Path('Scripts/trusted-macros.json').read_text())
+          assert len(approved) == 1
+          assert approved[0]['targetName'] == 'LLMMacrosImplementation'
+          assert approved[0]['packageIdentity'] == 'llm.swift'
+          assert ('revision: ' + approved[0]['fingerprint']) in Path('project.yml').read_text()
+          security = Path.home() / 'Library/org.swift.swiftpm/security'
+          security.mkdir(parents=True, exist_ok=True)
+          (security / 'macros.json').write_text(json.dumps(approved, indent=2))
+          PY
+      - name: Compila iOS senza pubblicare una release
+        run: |
+          set -o pipefail
+          xcodebuild -project Pivot.xcodeproj -scheme Pivot -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build > build-ios.log 2>&1
+      - name: Conserva log per diagnosi
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pivot-V8-build-log
+          path: build-ios.log
+          if-no-files-found: ignore
+          retention-days: 7
