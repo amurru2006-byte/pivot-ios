@@ -7,6 +7,7 @@ struct DiaryView: View {
     @State private var day = Date()
     @State private var sharing = false
     @State private var items: [CalendarItem] = []
+    @State private var removedCalendarIDs: Set<String> = []
     @State private var report = ""
     private var refreshKey: String { "\(PivotDate.key(day))|\(agenda.revision)|\(store.data.updatedAt.timeIntervalSince1970)" }
     var check: DayCheckIn? { store.data.checkIns[PivotDate.key(day)] }
@@ -33,6 +34,10 @@ struct DiaryView: View {
                         NavigationLink { EventDetailView(event: item, initial: store.record(for: item), rule: store.rule(for: item)) } label: {
                             VStack(alignment: .leading, spacing: 6) {
                                 EventRow(event: item, record: store.data.records[item.id], day: day)
+                                if removedCalendarIDs.contains(item.id) {
+                                    Label("Rimosso dal Calendario · conservato come storico", systemImage: "calendar.badge.minus")
+                                        .font(.caption).foregroundStyle(PivotTheme.amber).padding(.leading, 59)
+                                }
                                 if let record = store.data.records[item.id] {
                                     if !record.reason.isEmpty { Text(record.reason).font(.caption).foregroundStyle(PivotTheme.amber).padding(.leading, 59) }
                                     if !record.notes.isEmpty { Text(record.notes).font(.caption).foregroundStyle(PivotTheme.muted).lineLimit(3).padding(.leading, 59) }
@@ -60,16 +65,27 @@ struct DiaryView: View {
                 }
             }.navigationTitle("Diario")
                 .task(id: refreshKey) {
-                    let snapshot = store.data, date = day, current = agenda.effective
+                    let snapshot = store.data, date = day, current = agenda.effective, hasCalendarAccess = calendar.hasAccess
                     let result = await Task.detached(priority: .userInitiated) {
-                        var map = Dictionary(snapshot.records.values.map { ($0.id, $0.snapshot) }, uniquingKeysWith: { _, newest in newest })
+                        let historical = snapshot.records.values.filter(CalendarSynchronization.hasMeaningfulHistory)
+                        var map = Dictionary(historical.map { ($0.id, $0.snapshot) }, uniquingKeysWith: { _, newest in newest })
                         for item in current { map[item.id] = item }
                         let history = Array(map.values)
                         let items = Planner.plannedEvents(history.filter { $0.occurs(on: date) }, data: snapshot).sorted { $0.start < $1.start }
-                        return (items, Report.day(date, events: history, data: snapshot))
+                        let calendar = PivotDate.calendar
+                        let from = calendar.date(byAdding: .day, value: -7, to: calendar.startOfDay(for: Date()))!
+                        let to = calendar.date(byAdding: .month, value: 2, to: calendar.startOfDay(for: Date()))!
+                        let removed = Set(historical.filter { record in
+                            hasCalendarAccess
+                                && !snapshot.settings.excludedCalendarIDs.contains(record.snapshot.calendarIdentifier)
+                                && !snapshot.settings.excludedCalendarTitles.contains(record.snapshot.calendarTitle)
+                                && record.snapshot.end > from && record.snapshot.start < to
+                                && !current.contains { $0.id == record.id || EventCoalescer.savedOccurrence(record.snapshot, $0) }
+                        }.map(\.id))
+                        return (items, Report.day(date, events: history, data: snapshot), removed)
                     }.value
                     guard !Task.isCancelled else { return }
-                    items = result.0; report = result.1
+                    items = result.0; report = result.1; removedCalendarIDs = result.2
                 }
                 .sheet(isPresented: $sharing) { ShareSheet(items: [report]) }
         }

@@ -246,6 +246,7 @@ struct TrainingView: View {
 
 struct TrainingSessionView: View {
     @EnvironmentObject var store: PivotStore
+    @EnvironmentObject var calendar: CalendarService
     @Environment(\.scenePhase) private var scenePhase
     @State private var session: TrainingSession
     @State private var tips: [String: String]
@@ -288,7 +289,11 @@ struct TrainingSessionView: View {
                     Button("Inizia allenamento") { session.start = Date(); hasStarted = true; save() }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
                 }
                 if hasStarted && session.end == nil {
-                    Button("Termina allenamento") { WorkoutRuntime.finishRest(&session); session.end = Date(); save() }.buttonStyle(PivotPrimaryButton())
+                    Button("Termina allenamento") {
+                        WorkoutRuntime.finishRest(&session); session.end = Date()
+                        guard save() else { return }
+                        Task { await syncCompletedWorkout() }
+                    }.buttonStyle(PivotPrimaryButton())
                     Button("Attiva controlli sulla schermata di blocco") {
                         guard save() else { return }
                         Task {
@@ -310,7 +315,10 @@ struct TrainingSessionView: View {
                 if !hasStarted { Text("Inizia l'allenamento per aggiungere o sostituire un esercizio; puoi anche modificare la scheda prima di iniziare.").font(.caption).foregroundStyle(PivotTheme.muted) }
             }
             PivotCard { TextField("Note sull'allenamento…", text: $session.notes, axis: .vertical).lineLimit(2...5) }
-            Button("Salva allenamento") { save() }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
+            Button("Salva allenamento") {
+                guard save() else { return }
+                Task { await syncCompletedWorkout() }
+            }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
             Button("Esporta per il personal") {
                 guard save() else { return }
                 Task {
@@ -814,5 +822,25 @@ struct TrainingSessionView: View {
             Task { await WorkoutRuntime.scheduleRest(snapshot); await WorkoutRuntime.update(snapshot) }
         }
         return ok
+    }
+    private func syncCompletedWorkout() async {
+        guard session.end != nil, let event,
+              let record = store.data.records[event.id] else { return }
+        // The snapshot is replaced only after a successful EventKit write. It
+        // therefore also prevents a second Save tap from rewriting stale times.
+        let source = record.snapshot
+        guard let timing = CalendarSynchronization.actualTiming(for: record, event: source),
+              CalendarSynchronization.needsCalendarUpdate(timing, event: source) else { return }
+        do {
+            if let updated = try await calendar.applyActualTimes(for: record, event: source, data: store.data) {
+                store.change { data in
+                    guard var saved = data.records[event.id] else { return }
+                    saved.snapshot = updated; data.records[event.id] = saved
+                }
+            }
+            message = "Allenamento salvato e orari aggiornati nel Calendario."
+        } catch {
+            message = "Allenamento salvato in Pivot, ma il Calendario non è stato modificato: \(error.localizedDescription)"
+        }
     }
 }

@@ -61,6 +61,14 @@ final class CalendarService: ObservableObject {
     }
     func apply(_ move: PlanMove, data: AppData) async throws { try await worker.apply(move, data: data) }
     func applyActualWorkout(_ draft: ActualWorkoutDraft, data: AppData) async throws { try await worker.applyActualWorkout(draft, data: data) }
+    func applyActualTimes(for record: EventRecord, event: CalendarItem, data: AppData) async throws -> CalendarItem? {
+        guard let timing = CalendarSynchronization.actualTiming(for: record, event: event),
+              CalendarSynchronization.needsCalendarUpdate(timing, event: event) else { return nil }
+        let updated = try await worker.applyActualTimes(timing, source: event)
+        invalidateSnapshot()
+        await refresh(settings: data.settings, force: true)
+        return updated
+    }
 }
 
 private struct CalendarFilter: Equatable {
@@ -96,23 +104,36 @@ private actor CalendarWorker {
         let from = PivotDate.calendar.date(byAdding: .day, value: -7, to: PivotDate.calendar.startOfDay(for: Date()))!
         let to = PivotDate.calendar.date(byAdding: .month, value: 2, to: PivotDate.calendar.startOfDay(for: Date()))!
         let predicate = eventStore.predicateForEvents(withStart: from, end: to, calendars: selected)
-        let events = eventStore.events(matching: predicate).map { event in
-            let external = event.calendarItemExternalIdentifier
-            let eventID = event.eventIdentifier ?? event.calendarItemIdentifier
-            // Include the calendar to separate copies imported into distinct calendars.
-            let recurring = event.hasRecurrenceRules
-            let anchor = recurring ? event.occurrenceDate : nil
-            let suffix = recurring ? "|\(Int((anchor ?? event.startDate).timeIntervalSince1970))" : ""
-            let key = "\(event.calendar.calendarIdentifier)|\(external ?? eventID)\(suffix)"
-            return CalendarItem(id: key, eventIdentifier: eventID, externalIdentifier: external,
-                calendarIdentifier: event.calendar.calendarIdentifier, calendarTitle: event.calendar.title,
-                title: event.title ?? "Evento", start: event.startDate, end: event.endDate,
-                location: event.location ?? "", notes: CalendarNoteText.plain(event.notes ?? ""),
-                colorHex: Self.hex(event.calendar.cgColor), isAllDay: event.isAllDay,
-                writable: event.calendar.allowsContentModifications, kind: .classify(title: event.title ?? "", calendar: event.calendar.title),
-                sourceIdentifier: event.calendar.source.sourceIdentifier, sourceTitle: event.calendar.source.title, calendarModifiedAt: event.lastModifiedDate, recurring: recurring, occurrenceAnchor: anchor, calendarRGB: Self.rgb(event.calendar.cgColor), calendarCreatedAt: event.creationDate)
-        }.sorted { $0.start < $1.start }
+        let events = eventStore.events(matching: predicate).map(Self.item).sorted { $0.start < $1.start }
         return CalendarSnapshot(hasAccess: true, choices: choices, events: events)
+    }
+    func applyActualTimes(_ timing: CalendarSynchronization.ActualTiming, source: CalendarItem) throws -> CalendarItem {
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { throw CalendarFailure.noAccess }
+        guard source.writable, !source.isAllDay, timing.end > timing.start else { throw CalendarFailure.notWritable }
+        let padding: TimeInterval = 36 * 3600
+        let predicate = eventStore.predicateForEvents(withStart: source.start.addingTimeInterval(-padding), end: source.end.addingTimeInterval(padding), calendars: nil)
+        let matching = eventStore.events(matching: predicate).first { event in
+            let sameID = event.eventIdentifier == source.eventIdentifier
+                || (source.externalIdentifier != nil && event.calendarItemExternalIdentifier == source.externalIdentifier)
+            let sameOccurrence = source.recurring != true
+                || (source.occurrenceAnchor != nil && event.occurrenceDate == source.occurrenceAnchor)
+                || (abs(event.startDate.timeIntervalSince(source.start)) < 1 && abs(event.endDate.timeIntervalSince(source.end)) < 1)
+            return sameID && sameOccurrence && event.calendar.calendarIdentifier == source.calendarIdentifier
+        }
+        guard let event = matching, event.calendar.allowsContentModifications else { throw CalendarFailure.changed }
+        // The view is a snapshot. Refuse the write if another app changed this
+        // occurrence after Pivot displayed it.
+        guard event.title == source.title,
+              abs(event.startDate.timeIntervalSince(source.start)) < 1,
+              abs(event.endDate.timeIntervalSince(source.end)) < 1,
+              CoachPlanner.modificationDateMatches(source.calendarModifiedAt, event.lastModifiedDate),
+              (event.location ?? "") == source.location,
+              CalendarNoteText.plain(event.notes ?? "") == source.notes,
+              event.isAllDay == source.isAllDay else { throw CalendarFailure.changed }
+        event.startDate = timing.start
+        event.endDate = timing.end
+        try eventStore.save(event, span: .thisEvent, commit: true)
+        return Self.item(event)
     }
     func applyActualWorkout(_ draft: ActualWorkoutDraft, data: AppData) throws {
         guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { throw CalendarFailure.noAccess }
@@ -195,6 +216,23 @@ private actor CalendarWorker {
         let t = title.lowercased()
         return ["festivit", "holiday", "giorni festivi"].contains(where: t.contains)
     }
+    static func item(_ event: EKEvent) -> CalendarItem {
+        let external = event.calendarItemExternalIdentifier
+        let eventID = event.eventIdentifier ?? event.calendarItemIdentifier
+        let recurring = event.hasRecurrenceRules
+        let anchor = recurring ? event.occurrenceDate : nil
+        let suffix = recurring ? "|\(Int((anchor ?? event.startDate).timeIntervalSince1970))" : ""
+        let key = "\(event.calendar.calendarIdentifier)|\(external ?? eventID)\(suffix)"
+        return CalendarItem(id: key, eventIdentifier: eventID, externalIdentifier: external,
+            calendarIdentifier: event.calendar.calendarIdentifier, calendarTitle: event.calendar.title,
+            title: event.title ?? "Evento", start: event.startDate, end: event.endDate,
+            location: event.location ?? "", notes: CalendarNoteText.plain(event.notes ?? ""),
+            colorHex: Self.hex(event.calendar.cgColor), isAllDay: event.isAllDay,
+            writable: event.calendar.allowsContentModifications, kind: .classify(title: event.title ?? "", calendar: event.calendar.title),
+            sourceIdentifier: event.calendar.source.sourceIdentifier, sourceTitle: event.calendar.source.title,
+            calendarModifiedAt: event.lastModifiedDate, recurring: recurring, occurrenceAnchor: anchor,
+            calendarRGB: Self.rgb(event.calendar.cgColor), calendarCreatedAt: event.creationDate)
+    }
     static func hex(_ color: CGColor) -> String {
         let rgb = rgb(color)
         return String(format: "#%02X%02X%02X", Int((rgb.red * 255).rounded()), Int((rgb.green * 255).rounded()), Int((rgb.blue * 255).rounded()))
@@ -208,11 +246,12 @@ private actor CalendarWorker {
     }
 }
 enum CalendarFailure: LocalizedError {
-    case noAccess, changed
+    case noAccess, changed, notWritable
     var errorDescription: String? {
         switch self {
         case .noAccess: return "Consenti l'accesso completo ai calendari nelle impostazioni di iOS."
-        case .changed: return "L'evento è cambiato, non esiste più o non è modificabile. Aggiorna il calendario e prepara una nuova proposta."
+        case .changed: return "L'evento è cambiato, non esiste più o non è modificabile. Aggiorna la giornata e riprova."
+        case .notWritable: return "Questo evento non può essere modificato nel Calendario."
         }
     }
 }
