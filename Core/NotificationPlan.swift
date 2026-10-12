@@ -16,7 +16,10 @@ enum NotificationPlan {
         requestsFromPlanned(events: Planner.plannedEvents(events, data: data), data: data, now: now, capacity: capacity)
     }
     static func requestsFromPlanned(events: [CalendarItem], data: AppData, now: Date, capacity: Int = 60) -> [PlannedNotification] {
-        let horizon = now.addingTimeInterval(7 * 86400)
+        // Event questions are deliberately queued only shortly before they are
+        // useful. If an appointment is later deleted while Pivot is closed, a
+        // week-old queued question can no longer surface days afterward.
+        let horizon = now.addingTimeInterval(36 * 3600)
         let calendar = PivotDate.calendar
         var requests: [PlannedNotification] = []
         func add(_ date: Date, _ id: String, _ title: String, _ body: String, priority: Int = 1, eventID: String? = nil, destination: String = "event", clientID: String? = nil) {
@@ -76,7 +79,7 @@ enum NotificationPlan {
             add(reminder, "payment-" + due.id, "Pagamento di " + due.clientName,
                 text + " " + Money.display(due.amountCents) + " ancora da ricevere. Registra solo i soldi realmente ricevuti.", priority: 0, destination: "payment", clientID: due.clientID.uuidString)
         }
-        for day in 0...6 {
+        for day in 0...1 {
             let date = calendar.date(byAdding: .day, value: day, to: now)!
             let time = calendar.date(bySettingHour: data.settings.eveningHour, minute: data.settings.eveningMinute, second: 0, of: date)!
             let missingCardio = WorkoutContext.missingCardioInPlanned(events: events, data: data, now: time)

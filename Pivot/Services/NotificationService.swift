@@ -104,8 +104,28 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
                 lastLessonPromptIDs.insert(event.id)
             } catch { status = "Avviso luogo non programmato: \(error.localizedDescription)" }
         }
+        // Pending requests are reconciled above. Also remove an already shown
+        // event question when its calendar occurrence no longer exists.
+        let currentEvents = Dictionary(events.map { ($0.id, $0) }, uniquingKeysWith: { _, newest in newest })
+        let now = Date()
+        let delivered = await center.deliveredNotifications()
+        let staleDelivered = delivered.compactMap { notification -> String? in
+            let eventID = notification.request.content.userInfo["eventID"] as? String ?? ""
+            guard !eventID.isEmpty else { return nil }
+            guard let event = currentEvents[eventID] else { return notification.request.identifier }
+            if [.completed, .partial, .skipped].contains(data.records[eventID]?.status ?? .pending) {
+                return notification.request.identifier
+            }
+            // A result question delivered before the occurrence now ends can
+            // only belong to its previous schedule.
+            if notification.request.identifier.hasPrefix("event-") && event.end > now {
+                return notification.request.identifier
+            }
+            return nil
+        }
+        center.removeDeliveredNotifications(withIdentifiers: staleDelivered)
         await incomeWarning(data: data, center: center)
-        status = "\(count) avvisi programmati, entro 7 giorni e nei limiti della coda iOS. Apri Pivot dopo modifiche al calendario. Full immersion può silenziarli."
+        status = "\(count) avvisi programmati per le prossime 36 ore. Le modifiche del Calendario vengono riconciliate quando Pivot si aggiorna. Full immersion può silenziarli."
     }
     private func incomeWarning(data: AppData, center: UNUserNotificationCenter) async {
         let ledger = data.ledger ?? AnnualLedger()

@@ -88,7 +88,7 @@ struct EventDetailView: View {
                 DisclosureGroup { rules.padding(.top, 12) } label: { Label("Regole e tragitto", systemImage: "arrow.triangle.branch").font(.subheadline.weight(.semibold)) }
             }
             if let message { Label(message, systemImage: "info.circle").font(.subheadline).foregroundStyle(PivotTheme.amber) }
-            Button { finishEditing() } label: { Label("Salva attività", systemImage: "checkmark.circle.fill") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
+            Button { Task { await finishEditing() } } label: { Label("Salva attività", systemImage: "checkmark.circle.fill") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
             if rule.flexibility != .fixed && !event.isAllDay {
                 Button { findRecovery() } label: { Label("Trova uno spazio per recuperare", systemImage: "arrow.triangle.2.circlepath") }.buttonStyle(PivotSecondaryButton()).disabled(store.locked)
             }
@@ -103,7 +103,7 @@ struct EventDetailView: View {
             }
         }
         .navigationTitle("Attività")
-        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Salva") { finishEditing() }.accessibilityIdentifier("activity-save").disabled(store.locked) } }
+        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Salva") { Task { await finishEditing() } }.accessibilityIdentifier("activity-save").disabled(store.locked) } }
         .onAppear {
             let firstAppearance = !loadedDraft
             if firstAppearance {
@@ -170,9 +170,14 @@ struct EventDetailView: View {
             Text(event.calendarTitle).font(.caption).foregroundStyle(PivotTheme.muted)
             if !event.location.isEmpty { Label(event.location, systemImage: "mappin.and.ellipse").font(.caption).foregroundStyle(PivotTheme.muted) }
             if !event.isAllDay { DisclosureGroup("Timer facoltativo") { Button {
-                if record.status == .running { record.actualEnd = Date(); record.status = .completed; updateMinutes() }
-                else { record.actualStart = Date(); record.actualEnd = nil; record.status = .running }
-                save()
+                if record.status == .running {
+                    record.actualEnd = Date(); record.status = .completed; updateMinutes()
+                    guard save() else { return }
+                    Task { await syncCalendar(closeWhenDone: false) }
+                } else {
+                    record.actualStart = Date(); record.actualEnd = nil; record.status = .running
+                    save()
+                }
             } label: { Label(record.status == .running ? "Termina attività" : "Inizia attività", systemImage: record.status == .running ? "stop.fill" : "play.fill") }
                 .buttonStyle(PivotPrimaryButton()).disabled(store.locked)
                 Text("Puoi segnare l’esito anche senza avviare il timer.").font(.caption).foregroundStyle(PivotTheme.muted)
@@ -189,7 +194,7 @@ struct EventDetailView: View {
             } label: { Label("Fatto come previsto · autocompila", systemImage: "checkmark.square.fill") }
                 .buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("activity-autofill")
             if record.timingFromCalendar == true {
-                Text("Orari suggeriti dal calendario, non misurati. Puoi correggerli: le tue modifiche resteranno salvate.").font(.caption).foregroundStyle(PivotTheme.blue)
+                Text("Orari suggeriti dal Calendario, non misurati. Se li correggi e salvi un’attività conclusa, Pivot aggiorna soltanto questa occorrenza.").font(.caption).foregroundStyle(PivotTheme.blue)
             }
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 6) { outcomeButtons }
@@ -215,6 +220,8 @@ struct EventDetailView: View {
             DurationField(title: "Tempo attivo (escluse pause)", seconds: Binding(get: { record.activeMinutes == 0 ? nil : record.activeMinutes * 60 }, set: { record.activeMinutes = ($0 ?? 0) / 60 }), maxHours: 48)
             Button("Usa la durata tra inizio e fine") { updateMinutes() }.font(.caption)
             Text("Inizio e fine calcolano la durata. Se hai fatto pause, puoi correggere il tempo attivo in ore e minuti.").font(.caption).foregroundStyle(PivotTheme.muted)
+            Text(event.writable ? "Salvando un’attività conclusa, questi orari diventano anche gli orari della singola occorrenza nel Calendario." : "Questo Calendario è in sola lettura: gli orari restano comunque salvati in Pivot.")
+                .font(.caption).foregroundStyle(event.writable ? PivotTheme.blue : PivotTheme.amber)
                 .onChange(of: record.actualStart) { _, _ in updateMinutes() }
                 .onChange(of: record.actualEnd) { _, _ in updateMinutes() }
             }.font(.subheadline)
@@ -483,9 +490,29 @@ struct EventDetailView: View {
         }
         return ok
     }
-    private func finishEditing() {
+    private func finishEditing() async {
         if record.status == .skipped { skipChoice = true }
-        else if save() { closeAfterSaving() }
+        else if save() { await syncCalendar(closeWhenDone: true) }
+    }
+    private func syncCalendar(closeWhenDone: Bool) async {
+        guard let timing = CalendarSynchronization.actualTiming(for: record, event: event),
+              CalendarSynchronization.needsCalendarUpdate(timing, event: event) else {
+            if closeWhenDone { closeAfterSaving() }
+            return
+        }
+        do {
+            if let updated = try await calendar.applyActualTimes(for: record, event: event, data: store.data) {
+                record.snapshot = updated
+                store.change { data in
+                    guard var saved = data.records[event.id] else { return }
+                    saved.snapshot = updated; data.records[event.id] = saved
+                }
+            }
+            message = "Attività salvata e orari aggiornati nel Calendario."
+            if closeWhenDone { closeAfterSaving() }
+        } catch {
+            message = "Attività salvata in Pivot, ma il Calendario non è stato modificato: \(error.localizedDescription)"
+        }
     }
     private func closeAfterSaving() { onSaved?(); dismiss() }
     private var draft: ActivityDraft {
