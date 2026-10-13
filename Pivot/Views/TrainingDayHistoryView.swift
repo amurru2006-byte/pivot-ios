@@ -32,10 +32,14 @@ struct TrainingDayHistoryView: View {
                             event: session.calendarEventID.flatMap { store.data.records[$0]?.snapshot }, historicalEdit: true)
                     } label: {
                         Label("Apri e modifica", systemImage: "pencil")
-                    }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("history-open-\(session.id.uuidString)")
+                    }.buttonStyle(PivotSecondaryButton())
+                        .accessibilityLabel("Apri e modifica allenamento del \(PivotDate.shortDate(session.start)) alle \(PivotDate.time(session.start))")
+                        .accessibilityIdentifier("history-open-\(session.id.uuidString)")
                     Button("Elimina allenamento", role: .destructive) { deleting = session }
-                        .frame(minHeight: 44).accessibilityIdentifier("history-delete-\(session.id.uuidString)")
-                }.accessibilityIdentifier("history-session-\(session.id.uuidString)")
+                        .frame(minHeight: 44)
+                        .accessibilityLabel("Elimina allenamento del \(PivotDate.shortDate(session.start)) alle \(PivotDate.time(session.start))")
+                        .accessibilityIdentifier("history-delete-\(session.id.uuidString)")
+                }.accessibilityElement(children: .contain)
             }
             }
             if busy { ProgressView("Elimino e salvo…") }

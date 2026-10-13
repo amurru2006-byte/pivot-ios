@@ -169,6 +169,8 @@ Quinto blocco implementato il 13 ottobre, collaudo completo da concludere:
 
 Blocco successivo, dopo la chiusura dei punti precedenti:
 
+Risposta diretta dell'utente il 13 ottobre: il personal non ha dato regole per aumenti o scarico. Nessun protocollo inventato; ogni cambio di carico richiede conferma dell'utente. La lettura dello storico può fornire contesto, non applicare aumenti o riduzioni da sola.
+
 - Consiglio di progressione nella scheda dell'esercizio basato sul rep range e sul lavoro realmente svolto.
 - Valutazione dello storico complessivo, mai dei valori precompilati o delle serie non confermate.
 - Fase della programmazione per scheda/giornata: carico, scarico, recupero/rientro.

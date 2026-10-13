@@ -23,6 +23,8 @@ final class PivotInteractionTests: XCTestCase {
         let history = app.buttons["workout-day-history"]
         XCTAssertTrue(history.waitForExistence(timeout: 5)); history.tap()
         XCTAssertTrue(app.navigationBars["Cronologia"].waitForExistence(timeout: 5))
+        let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-history-list"; image.lifetime = .keepAlways; add(image)
+        let hierarchy = XCTAttachment(string: app.debugDescription); hierarchy.name = "serie7-history-accessibility"; hierarchy.lifetime = .keepAlways; add(hierarchy)
     }
     private func verifyHistory(_ app: XCUIApplication, label: String) {
         app.navigationBars["Cronologia"].buttons.element(boundBy: 0).tap()
@@ -36,7 +38,7 @@ final class PivotInteractionTests: XCTestCase {
         let app = prepareHistory()
         let edit = app.buttons["history-open-" + historyID]
         for _ in 0..<6 { if edit.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(edit.isHittable); edit.tap()
+        XCTAssertTrue(edit.isHittable, app.debugDescription); edit.tap()
         let field = app.textFields["weight-history-squat-0"]
         for _ in 0..<8 { if field.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(field.isHittable); field.tap()
@@ -59,14 +61,15 @@ final class PivotInteractionTests: XCTestCase {
     func testDayHistoryConfirmsDeletionOfRealAndEmptyWorkoutsAndPersists() {
         let app = prepareHistory(deletion: true)
         let empty = app.buttons["history-delete-" + emptyHistoryID]
-        XCTAssertTrue(empty.isHittable); empty.tap()
+        for _ in 0..<5 { if empty.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(empty.isHittable, app.debugDescription); empty.tap()
         XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 3))
         app.alerts.buttons["Annulla"].tap(); XCTAssertTrue(empty.exists)
         empty.tap(); app.alerts.buttons["Elimina definitivamente"].tap()
         XCTAssertTrue(app.staticTexts["history-message"].waitForExistence(timeout: 8)); XCTAssertFalse(empty.exists)
         let real = app.buttons["history-delete-" + historyID]
         for _ in 0..<5 { if real.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(real.isHittable); real.tap()
+        XCTAssertTrue(real.isHittable, app.debugDescription); real.tap()
         let warning = app.alerts.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "1 serie svolte")).firstMatch
         XCTAssertTrue(warning.exists)
         let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-history-delete-confirmation"; image.lifetime = .keepAlways; add(image)
@@ -148,8 +151,10 @@ final class PivotInteractionTests: XCTestCase {
             for _ in 0..<6 { if card.isHittable { break }; app.swipeUp() }
             XCTAssertLessThanOrEqual(card.frame.height, 160, id)
             for button in card.buttons.allElementsBoundByIndex {
-                XCTAssertGreaterThanOrEqual(button.frame.width, 44, button.label)
-                XCTAssertGreaterThanOrEqual(button.frame.height, 44, button.label)
+                // XCTest's converted screen coordinates can report 44 as 43.99999.
+                // Allow only subpixel rounding; the actual layout still requires 44 pt.
+                XCTAssertGreaterThanOrEqual(button.frame.width, 44 - 0.01, button.label)
+                XCTAssertGreaterThanOrEqual(button.frame.height, 44 - 0.01, button.label)
             }
         }
         let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-live-activity-large-controls"; image.lifetime = .keepAlways; add(image)
