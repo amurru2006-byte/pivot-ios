@@ -11,7 +11,10 @@ final class TrainingConcernTests: XCTestCase {
     private func library() -> TrainingLibrary {
         let plan = TrainingPlan(payload: .init(formatVersion: 1, name: "TEST", days: [.init(id: "day", name: "TEST", exercises: [first, second])]))
         var lib = TrainingLibrary(plans: [plan], activePlanID: plan.id)
-        let session = lib.makeSession(plan: plan, day: plan.payload.days[0], eventID: nil, now: now)
+        var session = lib.makeSession(plan: plan, day: plan.payload.days[0], eventID: nil, now: now)
+        // Backup dates intentionally use whole-second ISO 8601 precision.
+        // Keep the fixture deterministic so whole-session equality is meaningful.
+        session.updatedAt = now
         lib.sessions = [session]; return lib
     }
     func testConcernSurvivesBackupWithGuidanceLinksAndOptionalIntensity() throws {
