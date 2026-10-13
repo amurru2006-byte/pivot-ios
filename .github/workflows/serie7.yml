@@ -13,9 +13,10 @@ jobs:
     # Standard Intel runner avoids the ARM capacity failures observed on macos-15.
     # This is not a paid larger runner; keep the complete regression suite.
     runs-on: macos-15-intel
-    # Expanded regression suite plus two iOS builds can exceed 55 minutes on
-    # a cold hosted runner. Keep a bounded limit without skipping UI coverage.
-    timeout-minutes: 70
+    # Intel run 38465236901 passed Core/Release but exhausted 70 minutes during
+    # UI regression: builds/setup consumed ~55 minutes before the first test.
+    # Allow the full suite on the standard runner without skipping any checks.
+    timeout-minutes: 150
     steps:
       - name: Scarica codice
         uses: actions/checkout@v4
