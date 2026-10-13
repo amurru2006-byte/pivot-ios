@@ -10,7 +10,9 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build:
-    runs-on: macos-15
+    # Standard Intel runner avoids the ARM capacity failures observed on macos-15.
+    # This is not a paid larger runner; keep the complete regression suite.
+    runs-on: macos-15-intel
     # Expanded regression suite plus two iOS builds can exceed 55 minutes on
     # a cold hosted runner. Keep a bounded limit without skipping UI coverage.
     timeout-minutes: 70
