@@ -100,6 +100,20 @@ struct TrainingView: View {
             Button { importing = true } label: { Label(busy ? "Leggo la scheda…" : "Importa nuova scheda PDF", systemImage: "square.and.arrow.down") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked || busy || library.plans.count >= 6)
             Text("Solo PDF preparati per Pivot. L'importazione mostra un riepilogo da confermare e non cancella gli allenamenti precedenti.").font(.caption).foregroundStyle(PivotTheme.muted)
             #if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.arguments.contains("--training-history-test") {
+                Button("Prepara cronologia TEST") {
+                    Task {
+                        do { try await TrainingHistoryFixture.install(); message = "Cronologia pronta" }
+                        catch { message = error.localizedDescription }
+                    }
+                }.accessibilityIdentifier("history-fixture")
+                Button("Verifica cronologia TEST") {
+                    Task {
+                        do { message = try await TrainingHistoryFixture.verify(deleted: ProcessInfo.processInfo.arguments.contains("--history-deletion-test")) }
+                        catch { message = "Cronologia non valida: " + error.localizedDescription }
+                    }
+                }.accessibilityIdentifier("history-verify")
+            }
             if ProcessInfo.processInfo.arguments.contains("--recovery-test") {
                 Button("Prepara recupero TEST") {
                     Task {
@@ -172,7 +186,9 @@ struct TrainingView: View {
                 switch route {
                 case .session(let link):
                     if let recorded = library.sessions.first(where: { $0.id == link.id }) {
-                        TrainingSessionView(session: recorded, tips: library.tips, event: event, focusSetID: link.setID)
+                        TrainingSessionView(session: recorded, tips: library.tips,
+                            event: recorded.calendarEventID.flatMap { store.data.records[$0]?.snapshot },
+                            focusSetID: link.setID, historicalEdit: recorded.end != nil)
                     }
                 case .day(let planID, let dayID):
                     if let plan = library.plans.first(where: { $0.id == planID }),
@@ -271,24 +287,35 @@ struct TrainingSessionView: View {
     @State private var skipReason = ""
     @State private var controlsFocusID: UUID?
     @State private var finishing = false
+    @State private var persisted = false
+    @State private var removed = false
     var focusSetID: UUID? = nil
     let event: CalendarItem?
+    let historicalEdit: Bool
     init(plan: TrainingPlan, day: TrainingDay, library: TrainingLibrary, event: CalendarItem?) {
         self.event = event
-        let existing = library.sessions.first { $0.calendarEventID == event?.id && event != nil && $0.planID == plan.id }
-            ?? library.sessions.filter { $0.end == nil && $0.planID == plan.id && $0.dayName == day.name && $0.calendarEventID == nil && event == nil }.sorted { $0.start > $1.start }.first
+        let existing = library.sessions.first { $0.calendarEventID == event?.id && event != nil && TrainingHistory.matches($0, planID: plan.id, dayID: day.id, dayName: day.name, library: library) }
+            ?? TrainingHistory.sessions(planID: plan.id, dayID: day.id, dayName: day.name, library: library).first { $0.end == nil && $0.calendarEventID == nil && event == nil }
+        historicalEdit = existing?.end != nil
         _session = State(initialValue: Self.markingSetOrigins(existing ?? library.makeSession(plan: plan, day: day, eventID: event?.id)))
         _tips = State(initialValue: library.tips)
         _hasStarted = State(initialValue: existing != nil)
+        _persisted = State(initialValue: existing != nil)
     }
-    init(session: TrainingSession, tips: [String: String], event: CalendarItem?, focusSetID: UUID? = nil) {
+    init(session: TrainingSession, tips: [String: String], event: CalendarItem?, focusSetID: UUID? = nil, historicalEdit: Bool = false) {
         _session = State(initialValue: Self.markingSetOrigins(session)); _tips = State(initialValue: tips); self.event = event
+        self.historicalEdit = historicalEdit
         _hasStarted = State(initialValue: true)
+        _persisted = State(initialValue: true)
         self.focusSetID = focusSetID
     }
     var body: some View {
         ScrollViewReader { proxy in
         PivotScreen {
+            if removed {
+                EmptyCard(title: "Allenamento eliminato", message: "Questa sessione non è più nello storico. Torna alla cronologia o alla scheda con la freccia in alto.", icon: "trash")
+                    .accessibilityIdentifier("workout-removed")
+            } else {
             PivotHeader(title: session.dayName, subtitle: "Segna solo quello che fai davvero.")
             sessionHeader
             ForEach(session.exercises.indices, id: \.self) { index in
@@ -319,10 +346,11 @@ struct TrainingSessionView: View {
             }
             #endif
             if let message { Text(message).font(.caption).foregroundStyle(PivotTheme.amber) }
+            }
         }.navigationTitle("Allenamento")
             .disabled(finishing)
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if hasStarted && session.end == nil {
+                if hasStarted && session.end == nil && !removed {
                     let next = TrainingWorkoutContext.next(in: session, focusedSetID: controlsFocusID ?? WorkoutRuntime.focusedSet[session.id])
                     WorkoutRecoveryBar(session: session, next: next,
                         pause: { session.rest?.togglePause(); save() },
@@ -355,7 +383,9 @@ struct TrainingSessionView: View {
             .onChange(of: session.end) { _, _ in if hasStarted { save() } }
             .onChange(of: tips) { _, _ in save() }
             .onChange(of: store.data.updatedAt) { _, _ in
-                if let latest = store.data.training?.sessions.first(where: { $0.id == session.id }), latest.updatedAt > session.updatedAt { session = Self.markingSetOrigins(latest) }
+                if let latest = store.data.training?.sessions.first(where: { $0.id == session.id }) {
+                    if latest.updatedAt > session.updatedAt { session = Self.markingSetOrigins(latest) }
+                } else if persisted { removed = true }
             }
             .alert("Segna non svolto", isPresented: Binding(get: { skippingExercise != nil }, set: { if !$0 { skippingExercise = nil } })) {
                 TextField("Motivo (facoltativo)", text: $skipReason)
@@ -382,6 +412,15 @@ struct TrainingSessionView: View {
     private var sessionHeader: some View {
         PivotCard(tint: PivotTheme.accent) {
             Text(!hasStarted ? "Pronto per iniziare" : session.end == nil ? "Allenamento in corso" : "Allenamento terminato").font(.headline)
+            NavigationLink {
+                TrainingDayHistoryView(planID: session.planID, dayID: session.dayID, dayName: session.dayName)
+            } label: {
+                Label("Cronologia di \(session.dayName)", systemImage: "clock.arrow.circlepath")
+            }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("workout-day-history")
+            if historicalEdit {
+                Text("Stai correggendo un allenamento salvato, non la scheda del personal. Le correzioni sono salvate automaticamente; il PDF si aggiorna premendo Salva modifiche e apri PDF.")
+                    .font(.caption).foregroundStyle(PivotTheme.muted)
+            }
             if hasStarted {
                 ClockField(title: "Inizio", value: Binding(get: { session.start }, set: { if let date = $0 { session.start = date } }), fallback: session.start)
                 ClockField(title: "Fine", value: $session.end, fallback: Date())
@@ -823,7 +862,7 @@ struct TrainingSessionView: View {
         return TrainingSetTemplate.canRemove(log.sets, at: setIndex, prescribedWorkingSets: log.exercise.sets)
     }
     @discardableResult private func save(startLiveActivity: Bool = false) -> Bool {
-        guard !store.locked, !finishing else { return false }
+        guard !store.locked, !finishing, !removed else { return false }
         if !hasStarted {
             return store.change { data in
                 var library = data.training ?? TrainingLibrary()
@@ -833,8 +872,9 @@ struct TrainingSessionView: View {
         }
         if let end = session.end, end < session.start { message = "La fine deve essere successiva all'inizio."; return false }
         session.updatedAt = Date()
-        let ok = store.saveTraining(session, tips: tips, event: event)
+        let ok = store.saveTraining(session, tips: tips, event: event, historicalEdit: historicalEdit)
         if ok {
+            persisted = true
             message = "Allenamento salvato."
             let snapshot = session
             Task {
@@ -855,7 +895,7 @@ struct TrainingSessionView: View {
         catch { message = error.localizedDescription; return }
         finishing = true
         defer { finishing = false }
-        guard store.saveTraining(completed, tips: tips, event: event) else {
+        guard store.saveTraining(completed, tips: tips, event: event, historicalEdit: historicalEdit) else {
             message = store.error ?? "Allenamento non chiuso: controlla i dati e riprova."
             return
         }

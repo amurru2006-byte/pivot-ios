@@ -152,6 +152,19 @@ Esito da finalizzare:
 - Dopo modifica o eliminazione ricalcolare progressi, PR e rank per non lasciare risultati derivati incoerenti.
 - Le revisioni della scheda e le sessioni svolte restano concetti separati.
 
+Quinto blocco implementato il 13 ottobre, collaudo completo da concludere:
+
+- collegamento “Cronologia di …” dentro la giornata; elenco completo, dal più recente, con in corso/terminato e serie effettivamente svolte;
+- appartenenza alla scheda e ID stabile della giornata, non agli esercizi condivisi; per i vecchi backup confronto esatto dei nomi, incluse le revisioni, soltanto se non ambiguo;
+- “Apri e modifica” usa il diario esistente per correggere date/orari, carichi, ripetizioni, durate, serie e note. Le modifiche sono autosalvate; “Salva modifiche e apri PDF” rigenera il report dai dati salvati;
+- nessun nuovo recupero per una sessione terminata, nessuna medaglia retroattiva durante una correzione. Modificare lo storico non aggiorna il programma del PT salvo attivazione separata ed esplicita del controllo già presente;
+- eliminazione con Annulla e conferma rafforzata per serie svolte; rifiuto di conferme obsolete; stop dei controlli live/avvisi e protezione contro la ricomparsa da viste o operazioni ritardate;
+- ricalcolo dei traguardi esistenti dai carichi validi rimasti. Progressi, massimo/rank corrente e suggerimento del carico precedente derivano direttamente dalle sessioni residue;
+- non cancella né ripristina gli orari dell'evento esterno nel Calendario. Nel diario interno rimuove solo gli orari di comprovata provenienza dalla sessione eliminata, conservando note, riflessioni e dati manuali/Salute/cardio; i record legacy senza provenienza sono conservati prudentemente;
+- rimozione della sola copia PDF derivata interna dopo salvataggio; nessuna cancellazione delle copie già condivise. Fallimenti del disco o pulizia PDF comunicati esplicitamente;
+- eliminato il rischio di ereditare un evento Calendario estraneo aprendo un allenamento dallo storico;
+- dodici test Core e due UI aggiunti per appartenenza, revisioni/legacy, storico oltre 20 sessioni, conferme obsolete, diario, PR/rank/carichi, correzione ed eliminazione con riavvio. Fixture UI solo Debug simulatore, archivio isolato.
+
 ## Progressione, fase e problematiche fisiche
 
 Blocco successivo, dopo la chiusura dei punti precedenti:

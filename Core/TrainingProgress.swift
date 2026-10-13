@@ -121,6 +121,7 @@ enum TrainingTiming {
         var updated = record
         updated.actualStart = session.start; updated.actualEnd = session.end
         updated.timingFromCalendar = false
+        updated.trainingSessionID = session.id
         updated.activeMinutes = max(0, Int((session.end ?? now).timeIntervalSince(session.start) / 60))
         updated.status = session.end == nil ? .running : .completed
         updated.updatedAt = now

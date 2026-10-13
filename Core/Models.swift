@@ -134,6 +134,8 @@ struct EventRecord: Codable, Identifiable {
     var fatigue: Int? = nil
     // A suggestion from the calendar, never a measured value. Manual edits persist.
     var timingFromCalendar: Bool? = nil
+    // Optional provenance: deleting a workout must not erase independent diary data.
+    var trainingSessionID: UUID? = nil
     var followedMeal: Bool? = nil
     var reflection: ActivityReflection? = nil
     var study: StudySession? = nil
