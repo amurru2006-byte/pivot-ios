@@ -52,13 +52,22 @@ final class TrainingConcernInteractionTests: XCTestCase {
     }
     private func setResolved(_ toggle: XCUIElement, to value: Bool, in app: XCUIApplication) {
         reveal(toggle, in: app)
+        // A Form row can be hittable while its switch overlaps the home
+        // indicator. The failure recording showed the row at y=800 on an
+        // 852-point screen: bring the whole control inside the safe viewport.
+        for _ in 0..<12 {
+            if toggle.frame.maxY < app.frame.maxY - 65 { break }
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -110)))
+        }
+        XCTAssertLessThan(toggle.frame.maxY, app.frame.maxY - 65, app.debugDescription)
         XCTAssertEqual(toggle.value as? String, value ? "0" : "1", app.debugDescription)
         // SwiftUI exposes the labelled row as a switch; its midpoint is the
         // label, not the native switch at the trailing edge. Tap the control.
-        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.88, dy: 0.5)).tap()
         let selected = NSPredicate(format: "value == %@", value ? "1" : "0")
         expectation(for: selected, evaluatedWith: toggle)
-        waitForExpectations(timeout: 3)
+        waitForExpectations(timeout: 8)
     }
     private func verifyFromRoot(_ app: XCUIApplication, resolved: Bool = false) {
         let verify = app.buttons["concern-verify"]
