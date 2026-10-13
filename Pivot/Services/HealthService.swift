@@ -12,6 +12,7 @@ final class HealthService: ObservableObject {
     @Published private(set) var isConnecting = false
     @Published private(set) var workouts: [HealthWorkoutSummary] = []
     @Published private(set) var lastRefresh: Date?
+    @Published private(set) var lastReport: HealthRefreshReport?
     private let healthStore = HKHealthStore()
     private var sleepByDay: [String: HealthSleepSummary] = [:]
     private var workoutCache: [String: HealthWorkoutSummary] = [:]
@@ -185,15 +186,18 @@ final class HealthService: ObservableObject {
                 guard !store.isRestoring, !store.isLoading, !store.locked, store.data.settings.healthEnabled == true else { return }
                 guard version == store.data.updatedAt else { continue }
                 if let result {
-                    store.change { data in
+                    guard store.change({ data in
                         data.records = result.records; data.checkIns = result.checkIns
                         data.workoutReviews = result.workoutReviews; data.coach = result.coach
-                    }
+                    }) else { status = "I dati sono stati letti, ma il riepilogo locale non è stato salvato."; return }
                 }
+                let readAt = Date()
+                lastReport = HealthRefreshReport.make(workouts: readWorkouts, sleeps: readSleeps,
+                                                      before: snapshot, after: result ?? snapshot, readAt: readAt)
                 applied = true; break
             }
             guard applied else { status = "Aggiornamento rimandato mentre modifichi i dati."; return }
-            lastRefresh = Date()
+            lastRefresh = lastReport?.readAt ?? Date()
             let base = summaries.isEmpty && sleepValues.isEmpty
                 ? "Nessun dato leggibile. Potrebbero mancare dati o permessi: controlla Salute → profilo → App → Pivot."
                 : "Aggiornato alle \(PivotDate.time(Date())) · sola lettura"

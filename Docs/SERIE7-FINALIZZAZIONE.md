@@ -38,12 +38,14 @@ Esito da finalizzare:
 
 Decisione chiusa il 12 ottobre: quando l'utente salva un'attività completata o parziale con inizio e fine reali validi, Pivot aggiorna automaticamente gli orari della sola occorrenza corrispondente nel Calendario. Non cambia titolo, note, calendario, ricorrenza o altri eventi. Un evento eliminato, modificato altrove o non scrivibile resta salvato localmente e produce un messaggio esplicito; nessun tentativo di riorganizzazione viene fatto senza AI. Gli allenamenti collegati applicano la stessa regola alla conclusione o al salvataggio finale.
 
-Primo blocco in lavorazione:
+Primo blocco completato e verificato nella CI 38340745732:
 
 - scrittura deterministica degli orari reali sulla singola occorrenza;
 - notifiche degli eventi limitate alle successive 36 ore e pulizia degli avvisi consegnati per occorrenze eliminate quando Pivot si aggiorna;
 - rimozione dal diario delle fotografie ancora pendenti di eventi cancellati;
 - conservazione dei record con dati reali, etichettati “Rimosso dal Calendario”.
+
+La verifica completa ha superato 216 test Core, compilazione Release, confezionamento IPA e 18 test dell’interfaccia. Il precedente falso errore della tabella serie era causato da swipe di collaudo troppo ampi e alternati; ora il controllo porta la riga nel viewport con spostamenti brevi e deterministici.
 
 ## Salute
 
@@ -65,6 +67,14 @@ Esito da finalizzare:
 - Mostrare per ogni dato la provenienza “da Salute”, l'ora dell'ultima lettura e le modifiche applicate da Pivot.
 - Presentare gli abbinamenti incerti come decisioni semplici, senza chat o AI.
 - Non trasformare Salute in una fonte di prescrizioni mediche e non scrivere dati in HealthKit.
+
+Secondo blocco in lavorazione:
+
+- riepilogo di ogni lettura con quantità di allenamenti e notti lette, modifiche applicate e attività ancora da decidere;
+- provenienza “Da Salute” visibile su sonno e allenamenti, con indicazione esplicita dell'uso fatto da Pivot;
+- scelta dell'evento direttamente nella schermata Salute, senza passare dalla chat o dall'AI;
+- aggiornamento degli orari della singola occorrenza nel Calendario soltanto dopo la conferma esplicita dell'utente; se il Calendario non è scrivibile, i dati Salute restano salvati in Pivot;
+- nessuna scrittura nell'app Salute e nessuna interpretazione medica.
 
 ## Allenamento, recupero e Live Activity
 

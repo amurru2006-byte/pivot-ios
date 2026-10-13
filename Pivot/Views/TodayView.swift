@@ -18,6 +18,7 @@ struct TodayView: View {
     }
     @State private var showDecisions = false
     @State private var showHealth = false
+    @State private var healthMessage: String?
     @State private var quickRecord: EventRecord?
     @State private var lessonToConfirm: CalendarItem?
     private var check: DayCheckIn? { store.data.checkIns[PivotDate.key(day)] }
@@ -71,8 +72,11 @@ struct TodayView: View {
                             .foregroundStyle(decisions.isEmpty ? PivotTheme.muted : PivotTheme.amber)
                     }.accessibilityIdentifier("decision-inbox")
                 }.font(.caption.weight(.semibold)).padding(.vertical, 2)
-                if store.data.actualWorkoutDraft != nil || (store.data.workoutReviews ?? []).contains(where: { !$0.resolved && !$0.dismissed }) {
-                    NavigationLink { CoachView() } label: { Label("Pivot ha una domanda sull’allenamento", systemImage: "bubble.left.and.bubble.right") }.buttonStyle(PivotSecondaryButton())
+                if (store.data.workoutReviews ?? []).contains(where: { !$0.resolved && !$0.dismissed }) {
+                    Button { showHealth = true } label: { Label("Salute ha un’attività da collegare", systemImage: "heart.text.square") }.buttonStyle(PivotSecondaryButton())
+                }
+                if store.data.actualWorkoutDraft != nil {
+                    NavigationLink { CoachView() } label: { Label("Registrazione della giornata da completare", systemImage: "square.and.pencil") }.buttonStyle(PivotSecondaryButton())
                 }
                 let endOfDay = PivotDate.calendar.date(byAdding: .day, value: 1, to: PivotDate.calendar.startOfDay(for: day))!
                 let duePayments = agenda.paymentDues.filter { $0.date.map { $0 < endOfDay } ?? false }
@@ -164,20 +168,121 @@ struct TodayView: View {
                 PivotHeader(title: "Salute", subtitle: "Dati disponibili, senza registrare tutto a mano")
                 Text(health.status).font(.subheadline).foregroundStyle(PivotTheme.muted)
                 Button(store.data.settings.healthEnabled == true ? "Aggiorna dati da Salute" : "Collega app Salute") { Task { await health.connect(store: store, events: calendar.events) } }.buttonStyle(PivotPrimaryButton()).disabled(health.isRefreshing || store.locked)
-                if let sleep = health.sleep(on: day) {
-                    PivotCard { Label("Sonno rilevato", systemImage: "bed.double.fill"); Text(ActivityTiming.duration(sleep.durationSeconds)).font(.title2.bold()); Text("\(PivotDate.shortDate(sleep.start)) \(PivotDate.time(sleep.start)) – \(PivotDate.time(sleep.end))").font(.caption) }
+                if let report = health.lastReport {
+                    PivotCard(tint: PivotTheme.accent) {
+                        Label("Ultima lettura da Salute · \(PivotDate.time(report.readAt))", systemImage: "checkmark.shield.fill").font(.headline)
+                        Text("Letti \(report.workoutSamples) allenamenti e \(report.sleepDays) notti negli ultimi 7 giorni.").font(.subheadline)
+                        if report.appliedChanges == 0 {
+                            Text("Nessuna modifica nuova in Pivot.").font(.caption).foregroundStyle(PivotTheme.muted)
+                        } else {
+                            if report.workoutsApplied > 0 { Text("Allenamenti collegati al diario: \(report.workoutsApplied)").font(.caption) }
+                            if report.sleepDaysApplied > 0 { Text("Check-in del sonno aggiornati: \(report.sleepDaysApplied)").font(.caption) }
+                            if report.sleepEventsCompleted > 0 { Text("Eventi sonno completati: \(report.sleepEventsCompleted)").font(.caption) }
+                        }
+                        Text(report.pendingDecisions == 0 ? "Nessuna attività da chiarire." : "Da decidere: \(report.pendingDecisions) attività.")
+                            .font(.caption.weight(.semibold)).foregroundStyle(report.pendingDecisions == 0 ? PivotTheme.muted : PivotTheme.amber)
+                        Text("Pivot legge soltanto: non scrive dati nell’app Salute.").font(.caption).foregroundStyle(PivotTheme.muted)
+                    }.accessibilityIdentifier("health-refresh-report")
                 }
-                ForEach(health.workouts.filter { PivotDate.calendar.isDate($0.start, inSameDayAs: day) }) { workout in
-                    let matches = HealthImport.candidates(workout, events: items)
+                if let healthMessage { Text(healthMessage).font(.caption).foregroundStyle(PivotTheme.amber).accessibilityIdentifier("health-action-message") }
+                if let sleep = health.sleep(on: day) {
                     PivotCard {
-                        Label(workout.type == "walk" ? "Camminata" : (workout.type == "hike" ? "Escursione" : "Allenamento"), systemImage: "figure.walk")
-                        Text("\(PivotDate.time(workout.start)) · \(ActivityTiming.duration(workout.durationSeconds))").font(.subheadline)
-                        let linked = items.first { store.data.records[$0.id]?.health?.id == workout.id }
-                        Text(linked.map { "Collegato all’evento: \($0.title)" } ?? (matches.isEmpty ? "Attività generale: non conta come allenamento programmato." : "Collegamento non confermato: controlla i dettagli dell’attività.")).font(.caption).foregroundStyle(PivotTheme.muted)
+                        Label("Da Salute · sonno", systemImage: "bed.double.fill").font(.headline).foregroundStyle(PivotTheme.blue)
+                        Text(ActivityTiming.duration(sleep.durationSeconds)).font(.title2.bold())
+                        Text("\(PivotDate.shortDate(sleep.start)) \(PivotDate.time(sleep.start)) – \(PivotDate.time(sleep.end))").font(.caption)
+                        Text(store.data.checkIns[PivotDate.key(day)]?.sleep?.importedFromHealth == true ? "Usato da Pivot nel check-in e per la sveglia reale." : "Letto, ma non ha modificato il check-in di questa giornata.")
+                            .font(.caption).foregroundStyle(PivotTheme.muted)
                     }
+                }
+                let dayWorkouts = health.workouts.filter { PivotDate.calendar.isDate($0.start, inSameDayAs: day) }
+                ForEach(dayWorkouts) { workout in
+                    healthWorkoutCard(workout)
+                }
+                let otherPending = (store.data.workoutReviews ?? []).filter {
+                    !$0.resolved && !$0.dismissed && !PivotDate.calendar.isDate($0.workout.start, inSameDayAs: day)
+                }
+                if !otherPending.isEmpty {
+                    SectionHeading(title: "Altre attività da decidere", detail: "\(otherPending.count)")
+                    ForEach(otherPending) { review in healthWorkoutCard(review.workout) }
                 }
             }.navigationTitle("Salute").toolbar { Button("Chiudi") { showHealth = false } }
         }.presentationDragIndicator(.visible)
+    }
+    private func healthWorkoutCard(_ workout: HealthWorkoutSummary) -> some View {
+        let linked = agenda.planned.first { store.data.records[$0.id]?.health?.id == workout.id }
+        let review = (store.data.workoutReviews ?? []).first { $0.id == workout.id && !$0.resolved && !$0.dismissed }
+        return PivotCard {
+            Label("Da Salute · \(healthWorkoutName(workout))", systemImage: "heart.text.square.fill").font(.headline).foregroundStyle(PivotTheme.blue)
+            Text("\(PivotDate.shortDate(workout.start)) · \(PivotDate.time(workout.start))–\(PivotDate.time(workout.end)) · \(ActivityTiming.duration(workout.durationSeconds))").font(.subheadline)
+            HStack(spacing: 12) {
+                if let km = workout.distanceKM { Text(String(format: "%.2f km", km)) }
+                if let kcal = workout.activeCalories { Text("\(Int(kcal.rounded())) kcal") }
+                if let bpm = workout.averageBPM { Text("\(bpm) bpm") }
+            }.font(.caption).foregroundStyle(PivotTheme.muted)
+            if let linked, let record = store.data.records[linked.id] {
+                Text("Usato da Pivot: ‘\(linked.title)’ è stato completato con questi orari reali.").font(.caption).foregroundStyle(PivotTheme.accent)
+                if let timing = CalendarSynchronization.actualTiming(for: record, event: linked), CalendarSynchronization.needsCalendarUpdate(timing, event: linked) {
+                    Button("Usa questi orari anche nel Calendario") { Task { await syncHealthRecord(record, event: linked) } }
+                        .buttonStyle(PivotSecondaryButton()).disabled(store.locked)
+                } else {
+                    Text("Il Calendario ha già gli stessi orari.").font(.caption).foregroundStyle(PivotTheme.muted)
+                }
+            } else if let review {
+                Label("Scegli a quale allenamento corrisponde", systemImage: "questionmark.circle.fill").font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.amber)
+                ForEach(agenda.planned.filter { review.eventIDs.contains($0.id) }) { event in
+                    Button("È ‘\(event.title)’ · collega e aggiorna Calendario") { Task { await confirmHealthReview(review, event: event) } }
+                        .buttonStyle(PivotSecondaryButton()).disabled(store.locked)
+                }
+                Button("Non corrisponde a un allenamento programmato") { dismissHealthReview(review) }
+                    .font(.caption).disabled(store.locked)
+            } else {
+                Text("Non usato da Pivot: attività generale, senza corrispondenza sicura nel programma.").font(.caption).foregroundStyle(PivotTheme.muted)
+            }
+        }
+    }
+    private func healthWorkoutName(_ workout: HealthWorkoutSummary) -> String {
+        switch workout.type {
+        case "walk": return "Camminata"
+        case "hike": return "Escursione"
+        case "run": return "Corsa"
+        case "cycle": return "Bici"
+        case "strength", "functional": return "Allenamento di forza"
+        case "hiit": return "HIIT"
+        default: return "Allenamento"
+        }
+    }
+    private func dismissHealthReview(_ review: WorkoutReview) {
+        if store.change({ data in
+            if let index = data.workoutReviews?.firstIndex(where: { $0.id == review.id }) { data.workoutReviews?[index].dismissed = true }
+        }) { healthMessage = "Attività lasciata come dato generale di Salute. Nessun evento è stato modificato." }
+    }
+    private func confirmHealthReview(_ review: WorkoutReview, event: CalendarItem) async {
+        var record: EventRecord?
+        guard store.change({ data in
+            HealthImport.apply(review.workout, to: event, data: &data)
+            guard data.records[event.id]?.health?.id == review.id else { return }
+            if let index = data.workoutReviews?.firstIndex(where: { $0.id == review.id }) { data.workoutReviews?[index].resolved = true }
+            record = data.records[event.id]
+        }), let record else {
+            healthMessage = "Non ho modificato nulla: l’attività aveva già un esito manuale da conservare."
+            return
+        }
+        await syncHealthRecord(record, event: event)
+    }
+    private func syncHealthRecord(_ record: EventRecord, event: CalendarItem) async {
+        do {
+            if let updated = try await calendar.applyActualTimes(for: record, event: event, data: store.data) {
+                store.change { data in
+                    guard var saved = data.records[event.id] else { return }
+                    saved.snapshot = updated; data.records[event.id] = saved
+                }
+                healthMessage = "Dati Salute collegati e orari aggiornati nel Calendario."
+            } else {
+                healthMessage = "Dati Salute collegati. Il Calendario aveva già gli stessi orari."
+            }
+        } catch {
+            healthMessage = "Dati Salute salvati in Pivot, ma Calendario invariato: \(error.localizedDescription)"
+        }
     }
     private func detail(_ event: CalendarItem) -> some View { EventDetailView(event: event, initial: store.record(for: event), rule: store.rule(for: event)) }
     private func agendaRow(_ event: CalendarItem) -> some View {
