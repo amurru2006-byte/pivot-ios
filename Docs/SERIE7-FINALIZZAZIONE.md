@@ -1,6 +1,6 @@
 # Serie 7 — finalizzazione funzionale
 
-Stato aggiornato il 12 ottobre 2026. La V8 e ogni interpretazione AI restano fuori da questo lavoro.
+Stato aggiornato il 13 ottobre 2026. La V8 e ogni interpretazione AI restano fuori da questo lavoro.
 
 ## Regola di prodotto
 
@@ -68,13 +68,15 @@ Esito da finalizzare:
 - Presentare gli abbinamenti incerti come decisioni semplici, senza chat o AI.
 - Non trasformare Salute in una fonte di prescrizioni mediche e non scrivere dati in HealthKit.
 
-Secondo blocco in lavorazione:
+Secondo blocco completato e verificato nella CI 38379904044 (commit remoto 30c9816a):
 
 - riepilogo di ogni lettura con quantità di allenamenti e notti lette, modifiche applicate e attività ancora da decidere;
 - provenienza “Da Salute” visibile su sonno e allenamenti, con indicazione esplicita dell'uso fatto da Pivot;
 - scelta dell'evento direttamente nella schermata Salute, senza passare dalla chat o dall'AI;
 - aggiornamento degli orari della singola occorrenza nel Calendario soltanto dopo la conferma esplicita dell'utente; se il Calendario non è scrivibile, i dati Salute restano salvati in Pivot;
 - nessuna scrittura nell'app Salute e nessuna interpretazione medica.
+
+La verifica ha superato 218 test Core, compilazione Release, confezionamento IPA e tutti i 18 test UI. È stata corretta anche la direzione di scorrimento nel test della galleria dopo l'importazione: la galleria si trova sopra, non sotto, il pulsante di importazione. Permessi e lettura HealthKit sul vero iPhone restano da provare.
 
 ## Allenamento, recupero e Live Activity
 
@@ -93,6 +95,17 @@ Esito da finalizzare:
 - Barra di recupero compatta e persistente nell'app, sempre visibile sopra la barra inferiore durante un allenamento.
 - Countdown grande, esercizio corrente, prossima serie e target; pausa, reset e “prossima serie” raggiungibili senza scorrere.
 - Live Activity minimale con caratteri e aree di tocco più grandi; avvio automatico quando comincia l'allenamento, se autorizzato.
+
+Terzo blocco implementato, verifica macOS/simulatore da concludere:
+
+- barra fissata nell'area sicura, non nell'elenco: countdown, esercizio del recupero, pausa/reset e passaggio alla prossima serie;
+- stessa scelta della prossima serie in app e Live Activity; dall'ultimo esercizio si continua localmente prima di tornare a serie precedenti rimaste incomplete;
+- anche l'ultimo recupero resta visibile, con “Chiudi recupero” anziché una serie successiva inventata;
+- conservazione del recupero effettivo quando si conferma direttamente una nuova serie; modificare lo storico concluso non avvia un nuovo timer;
+- Live Activity automatica all'avvio e pulsante di ripristino; controlli 44 punti, layout distinto per lavoro e recupero; nelle isometrie bilaterali i controlli sono dedicati ai due lati, la zavorra è visibile e modificabile nell'app;
+- sei test Core aggiunti e due test UI nuovi: ottavo esercizio/ultima serie/persistenza e altezza/aree di tocco del layout Live Activity condiviso.
+
+Il layout condiviso segue il limite di altezza di 160 punti indicato nella [documentazione Apple](https://developer.apple.com/documentation/activitykit/displaying-live-data-with-live-activities). Il simulatore non dimostra l'avvio né il comportamento in background sul blocco schermo reale.
 
 ## Chiusura ed esportazione
 
@@ -141,4 +154,4 @@ Blocco successivo, dopo la chiusura dei punti precedenti:
 
 - L'email “Pivot - ranked” dell'8 ottobre contiene soltanto quattro immagini assegnate ai rank 1 e 2. Non risultano asset o nomi per i rank 3–7.
 - Nell'ultima CI i popup PR e rank sono passati.
-- Il solo test UI residuo riguarda la raggiungibilità della cronologia/progressi nella pagina Palestra dopo l'importazione della fixture.
+- Il test della galleria dopo l'importazione è ora passato nella CI 38379904044; nessun fallimento UI residuo nel checkpoint Salute. Il nuovo blocco recupero richiede una nuova verifica completa e il collaudo sul vero iPhone.

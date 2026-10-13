@@ -20,13 +20,22 @@ enum TrainingCompletion {
             set.skipped = true; set.done = false; set.completedAt = nil
             result = .skipped
         } else if set.canComplete(exercise) {
+            finishRest(in: &session, now: now)
             set.done = true; set.skipped = nil; set.completedAt = now
             let seconds = set.restSeconds ?? exercise.restSeconds
-            session.rest = seconds > 0 ? .init(exerciseID: exercise.id, setID: set.id, seconds: seconds, now: now) : nil
+            session.rest = seconds > 0 && session.end == nil ? .init(exerciseID: exercise.id, setID: set.id, seconds: seconds, now: now) : nil
             result = .performed
         } else { return .invalid }
         session.exercises[exerciseIndex].sets[setIndex] = set
         return result
+    }
+    static func finishRest(in session: inout TrainingSession, now: Date = Date()) {
+        guard let rest = session.rest else { return }
+        if let ei = session.exercises.firstIndex(where: { $0.id == rest.exerciseID }),
+           let si = session.exercises[ei].sets.firstIndex(where: { $0.id == rest.setID }) {
+            session.exercises[ei].sets[si].actualRestSeconds = rest.elapsed(at: now)
+        }
+        session.rest = nil
     }
     static func skipExercise(in session: inout TrainingSession, at index: Int, reason: String = "") {
         guard session.exercises.indices.contains(index) else { return }

@@ -100,6 +100,14 @@ struct TrainingView: View {
             Button { importing = true } label: { Label(busy ? "Leggo la scheda…" : "Importa nuova scheda PDF", systemImage: "square.and.arrow.down") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked || busy || library.plans.count >= 6)
             Text("Solo PDF preparati per Pivot. L'importazione mostra un riepilogo da confermare e non cancella gli allenamenti precedenti.").font(.caption).foregroundStyle(PivotTheme.muted)
             #if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.arguments.contains("--recovery-test") {
+                Button("Prepara recupero TEST") {
+                    Task {
+                        do { try await Serie7Fixture.installRecovery(); message = "Recupero pronto" }
+                        catch { message = error.localizedDescription }
+                    }
+                }.accessibilityIdentifier("recovery-fixture")
+            }
             if ProcessInfo.processInfo.arguments.contains("--serie7-test") {
                 Button("Prepara Serie 7 TEST") {
                     Task {
@@ -261,6 +269,7 @@ struct TrainingSessionView: View {
     @State private var setOptions: WorkoutSetOptionsTarget?
     @State private var skippingExercise: Int?
     @State private var skipReason = ""
+    @State private var controlsFocusID: UUID?
     var focusSetID: UUID? = nil
     let event: CalendarItem?
     init(plan: TrainingPlan, day: TrainingDay, library: TrainingLibrary, event: CalendarItem?) {
@@ -286,7 +295,7 @@ struct TrainingSessionView: View {
                     ClockField(title: "Inizio", value: Binding(get: { session.start }, set: { if let date = $0 { session.start = date } }), fallback: session.start)
                     ClockField(title: "Fine", value: $session.end, fallback: Date())
                 } else {
-                    Button("Inizia allenamento") { session.start = Date(); hasStarted = true; save() }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
+                    Button("Inizia allenamento") { session.start = Date(); hasStarted = true; save(startLiveActivity: true) }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
                 }
                 if hasStarted && session.end == nil {
                     Button("Termina allenamento") {
@@ -294,17 +303,17 @@ struct TrainingSessionView: View {
                         guard save() else { return }
                         Task { await syncCompletedWorkout() }
                     }.buttonStyle(PivotPrimaryButton())
-                    Button("Attiva controlli sulla schermata di blocco") {
+                    Text("Il recupero resta visibile in basso. I controlli di blocco schermo partono all’avvio, se Attività live è abilitata su iPhone.")
+                        .font(.caption).foregroundStyle(PivotTheme.muted)
+                    Button("Ripristina controlli sulla schermata di blocco") {
                         guard save() else { return }
                         Task {
-                            _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
                             await WorkoutRuntime.update(session, start: true)
                             if !WorkoutRuntime.status.isEmpty { message = WorkoutRuntime.status }
                         }
                     }.buttonStyle(PivotSecondaryButton())
                 }
             }
-            if session.rest != nil && session.end == nil { restCard }
             ForEach(session.exercises.indices, id: \.self) { index in
                 exerciseCard(index)
             }
@@ -328,6 +337,22 @@ struct TrainingSessionView: View {
             }.buttonStyle(PivotSecondaryButton()).disabled(store.locked || !hasStarted)
             if let message { Text(message).font(.caption).foregroundStyle(PivotTheme.amber) }
         }.navigationTitle("Allenamento")
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if hasStarted && session.end == nil {
+                    let next = TrainingWorkoutContext.next(in: session, focusedSetID: controlsFocusID ?? WorkoutRuntime.focusedSet[session.id])
+                    WorkoutRecoveryBar(session: session, next: next,
+                        pause: { session.rest?.togglePause(); save() },
+                        reset: { session.rest?.resetCountdown(); save() },
+                        advance: {
+                            WorkoutRuntime.finishRest(&session)
+                            controlsFocusID = next?.set.id
+                            WorkoutRuntime.focusedSet[session.id] = next?.set.id
+                            save()
+                            if let next { withAnimation { proxy.scrollTo(next.set.id, anchor: .center) } }
+                        })
+                        .disabled(store.locked)
+                }
+            }
             .overlay { WorkoutCelebrationOverlay(enabled: !sharing && !selectingExercise && setOptions == nil && skippingExercise == nil, sessionID: session.id) }
             .sheet(isPresented: $selectingExercise) {
                 ExercisePickerView { exercise in changeExercise(exercise); selectingExercise = false }
@@ -354,6 +379,7 @@ struct TrainingSessionView: View {
                     if let index = skippingExercise {
                         TrainingCompletion.skipExercise(in: &session, at: index, reason: skipReason)
                         WorkoutRuntime.focusedSet[session.id] = nil
+                        controlsFocusID = nil
                         save()
                     }
                     skippingExercise = nil
@@ -364,6 +390,7 @@ struct TrainingSessionView: View {
                 if let focusSetID {
                     try? await Task.sleep(nanoseconds: 200_000_000)
                     proxy.scrollTo(focusSetID, anchor: .center); WorkoutRuntime.focusedSet[session.id] = focusSetID
+                    controlsFocusID = focusSetID
                 }
             }
         }
@@ -579,6 +606,7 @@ struct TrainingSessionView: View {
         }
         if outcome == .performed || outcome == .skipped {
             WorkoutRuntime.focusedSet[session.id] = nil
+            controlsFocusID = nil
         }
         revealedSetID = nil
         save()
@@ -685,25 +713,6 @@ struct TrainingSessionView: View {
         .accessibilityLabel("Serie \(setIndex + 1), \(set.resolvedKind.label)\(set.reachesFailure ? ", Failure" : ""), cambia tipo")
         .accessibilityIdentifier("set-type-\(exerciseIndex)-\(setIndex)")
     }
-    private var restCard: some View {
-        PivotCard(tint: PivotTheme.blue) {
-            TimelineView(.periodic(from: Date(), by: 1)) { context in
-                if let rest = session.rest {
-                    Text(rest.deadline == nil ? "Recupero in pausa" : rest.remaining(at: context.date) == 0 ? "Recupero terminato" : "Recupero").font(.headline)
-                    Text(ActivityTiming.duration(rest.remaining(at: context.date))).font(.title.monospacedDigit())
-                }
-            }
-            HStack {
-                Button(session.rest?.deadline == nil ? "Riprendi" : "Pausa") { session.rest?.togglePause(); save() }
-                Spacer()
-                Button("Reset") {
-                    session.rest?.resetCountdown(); save()
-                }
-            }
-            Button("Inizia prossima serie") { WorkoutRuntime.finishRest(&session); save() }.buttonStyle(PivotSecondaryButton())
-            Text("La prossima serie chiude il recupero e registra il tempo effettivo. Gli avvisi dipendono dai permessi notifiche e da Full immersion.").font(.caption).foregroundStyle(PivotTheme.muted)
-        }
-    }
     private func changeExercise(_ exercise: TrainingExercise) {
         do {
             var updated = session
@@ -804,7 +813,7 @@ struct TrainingSessionView: View {
         let log = session.exercises[exerciseIndex]
         return TrainingSetTemplate.canRemove(log.sets, at: setIndex, prescribedWorkingSets: log.exercise.sets)
     }
-    @discardableResult private func save() -> Bool {
+    @discardableResult private func save(startLiveActivity: Bool = false) -> Bool {
         guard !store.locked else { return false }
         if !hasStarted {
             return store.change { data in
@@ -819,7 +828,14 @@ struct TrainingSessionView: View {
         if ok {
             message = "Allenamento salvato."
             let snapshot = session
-            Task { await WorkoutRuntime.scheduleRest(snapshot); await WorkoutRuntime.update(snapshot) }
+            Task {
+                await WorkoutRuntime.scheduleRest(snapshot)
+                // Start/end field observers may save a newer copy before this
+                // task runs. Never lose the one explicit request to start.
+                let latest = startLiveActivity ? store.data.training?.sessions.first(where: { $0.id == snapshot.id }) ?? snapshot : snapshot
+                await WorkoutRuntime.update(latest, start: startLiveActivity)
+                if startLiveActivity && !WorkoutRuntime.status.isEmpty { message = WorkoutRuntime.status }
+            }
         }
         return ok
     }

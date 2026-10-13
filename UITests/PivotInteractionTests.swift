@@ -1,6 +1,64 @@
 import XCTest
 
 final class PivotInteractionTests: XCTestCase {
+    func testLiveActivityLayoutKeepsLargeButtonsWithinSystemHeight() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--preview", "--screen=workout-widget"]; app.launch()
+        for id in ["working", "hold", "rest", "paused"] {
+            let card = app.descendants(matching: .any)["live-preview-" + id].firstMatch
+            XCTAssertTrue(card.waitForExistence(timeout: 15))
+            for _ in 0..<6 { if card.isHittable { break }; app.swipeUp() }
+            XCTAssertLessThanOrEqual(card.frame.height, 160, id)
+            for button in card.buttons.allElementsBoundByIndex {
+                XCTAssertGreaterThanOrEqual(button.frame.width, 44, button.label)
+                XCTAssertGreaterThanOrEqual(button.frame.height, 44, button.label)
+            }
+        }
+        let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-live-activity-large-controls"; image.lifetime = .keepAlways; add(image)
+    }
+    func testRecoveryStaysReachableAtEighthExerciseAndLastSet() {
+        continueAfterFailure = false
+        addUIInterruptionMonitor(withDescription: "Notifiche") { alert in
+            for title in ["Allow", "Consenti"] where alert.buttons[title].exists { alert.buttons[title].tap(); return true }
+            return false
+        }
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--recovery-test"]; app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 15)); app.tabBars.buttons["Palestra"].tap()
+        let fixture = app.buttons["recovery-fixture"]
+        for _ in 0..<15 { if fixture.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(fixture.isHittable); fixture.tap()
+        XCTAssertTrue(app.staticTexts["Recupero pronto"].waitForExistence(timeout: 5))
+        let url = URL(string: "pivot://workout/11111111-1111-4111-8111-111111111111?set=22222222-2222-4222-8222-222222222222")!
+        app.open(url)
+        let done = app.buttons["set-done-recovery-8-0"]
+        XCTAssertTrue(done.waitForExistence(timeout: 8)); done.tap()
+        let permission = app.alerts.firstMatch
+        if permission.waitForExistence(timeout: 2) {
+            for title in ["Allow", "Consenti"] where permission.buttons[title].exists { permission.buttons[title].tap(); break }
+        }
+        let timer = app.staticTexts["workout-rest-countdown"], pause = app.buttons["workout-rest-pause"]
+        XCTAssertTrue(timer.waitForExistence(timeout: 5)); XCTAssertTrue(pause.isHittable)
+        for _ in 0..<3 { app.swipeUp() }
+        XCTAssertTrue(timer.isHittable); XCTAssertTrue(pause.isHittable)
+        XCTAssertEqual(app.staticTexts["workout-rest-exercise"].label, "Cable Crunch")
+        XCTAssertGreaterThanOrEqual(pause.frame.height, 44); XCTAssertGreaterThanOrEqual(pause.frame.width, 44)
+        XCTAssertLessThanOrEqual(pause.frame.maxY, app.tabBars.firstMatch.frame.minY)
+        pause.tap(); XCTAssertTrue(app.staticTexts["Recupero in pausa"].exists)
+        let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-recovery-at-eighth-exercise"; image.lifetime = .keepAlways; add(image)
+        app.terminate(); app.open(url)
+        XCTAssertTrue(app.buttons["workout-rest-pause"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Recupero in pausa"].exists)
+        app.buttons["workout-rest-reset"].tap()
+        XCTAssertTrue(app.staticTexts["Recupero"].exists)
+        app.buttons["workout-next-set"].tap()
+        XCTAssertFalse(timer.exists)
+        let last = app.buttons["set-done-recovery-8-1"]
+        XCTAssertTrue(last.isHittable); last.tap()
+        XCTAssertTrue(timer.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["workout-next-set"].label.contains("Chiudi recupero"))
+        app.buttons["workout-next-set"].tap(); XCTAssertFalse(timer.exists)
+        XCTAssertTrue(app.staticTexts["Serie registrate"].exists)
+    }
     func testSerie7RankPopupUsesTheReceivedSecondCrestAndDoesNotRepeat() {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--serie7-test"]; app.launch()
@@ -172,7 +230,8 @@ final class PivotInteractionTests: XCTestCase {
         let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         for _ in 0..<12 {
             let top = app.navigationBars.firstMatch.frame.maxY + 8
-            let bottom = app.tabBars.firstMatch.frame.minY - 8
+            let controls = app.descendants(matching: .any)["workout-recovery-bar"].firstMatch
+            let bottom = (controls.exists ? controls.frame.minY : app.tabBars.firstMatch.frame.minY) - 8
             if row.frame.minY <= top {
                 start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 110)))
             } else if row.frame.maxY >= bottom {

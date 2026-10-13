@@ -24,6 +24,7 @@ struct WorkoutAttributes: ActivityAttributes {
         var targetSets: Int? = nil
         var targetReps: String? = nil
         var workingNumber: Int? = nil
+        var restExercise: String? = nil
     }
 }
 
