@@ -165,11 +165,17 @@ final class PivotInteractionTests: XCTestCase {
     }
     private func fullyRevealRow(_ row: XCUIElement, in app: XCUIApplication) {
         // isHittable can be true for a row partly hidden behind the navigation bar.
-        // Swipe and tap only after the complete row is within the visible viewport.
-        for _ in 0..<8 {
-            if row.frame.minY <= app.navigationBars.firstMatch.frame.maxY + 8 { app.swipeDown() }
-            else if row.frame.maxY >= app.tabBars.firstMatch.frame.minY - 8 { app.swipeUp() }
-            else { break }
+        // Full-screen swipes can oscillate between the two edges on long workout
+        // pages, so move the scroll view in small, deterministic increments.
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        for _ in 0..<12 {
+            let top = app.navigationBars.firstMatch.frame.maxY + 8
+            let bottom = app.tabBars.firstMatch.frame.minY - 8
+            if row.frame.minY <= top {
+                start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 110)))
+            } else if row.frame.maxY >= bottom {
+                start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -110)))
+            } else { break }
         }
         XCTAssertGreaterThan(row.frame.minY, app.navigationBars.firstMatch.frame.maxY)
         XCTAssertLessThan(row.frame.maxY, app.tabBars.firstMatch.frame.minY)
