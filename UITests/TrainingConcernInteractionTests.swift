@@ -4,7 +4,7 @@ final class TrainingConcernInteractionTests: XCTestCase {
     private func reveal(_ element: XCUIElement, in app: XCUIApplication, up: Bool = true) {
         for _ in 0..<24 {
             if element.isHittable { break }
-            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65))
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
             start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: up ? -150 : 150)))
         }
         XCTAssertTrue(element.isHittable, app.debugDescription)
@@ -32,6 +32,10 @@ final class TrainingConcernInteractionTests: XCTestCase {
     private func fillAndSave(_ app: XCUIApplication) {
         let area = app.textFields["concern-area"]
         area.tap(); area.typeText("Zona TEST")
+        let done = app.buttons["concern-keyboard-done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5), app.debugDescription)
+        done.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), app.debugDescription)
         let links = app.buttons["Esercizi collegati"]
         reveal(links, in: app); links.tap()
         let second = app.switches["concern-link-concern-second"]
