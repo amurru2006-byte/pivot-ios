@@ -74,7 +74,7 @@ enum WorkoutRuntime {
         TrainingCompletion.finishRest(in: &session)
     }
     static func scheduleRest(_ session: TrainingSession) async {
-        if let latest = store.data.training?.sessions.first(where: { $0.id == session.id }), latest.updatedAt > session.updatedAt { return }
+        guard let latest = store.data.training?.sessions.first(where: { $0.id == session.id }), latest.updatedAt <= session.updatedAt else { return }
         let generation = (restGeneration[session.id] ?? 0) + 1; restGeneration[session.id] = generation
         let center = UNUserNotificationCenter.current(), key = "workout-rest-" + session.id.uuidString
         center.removePendingNotificationRequests(withIdentifiers: [key])
@@ -96,7 +96,7 @@ enum WorkoutRuntime {
     }
     static func update(_ session: TrainingSession, start: Bool = false) async {
         if start { status = "" }
-        if let latest = store.data.training?.sessions.first(where: { $0.id == session.id }), latest.updatedAt > session.updatedAt { return }
+        guard let latest = store.data.training?.sessions.first(where: { $0.id == session.id }), latest.updatedAt <= session.updatedAt else { return }
         let activities = Activity<WorkoutAttributes>.activities.filter { $0.attributes.sessionID == session.id.uuidString }
         guard session.end == nil else {
             for activity in activities { await activity.end(nil, dismissalPolicy: .immediate) }
@@ -121,5 +121,16 @@ enum WorkoutRuntime {
             do { _ = try Activity.request(attributes: WorkoutAttributes(sessionID: session.id.uuidString), content: content, pushType: nil); status = "" }
             catch { status = "Attività live non disponibile: " + error.localizedDescription }
         } else { for activity in activities { await activity.update(content) } }
+    }
+    static func stop(sessionID: UUID) async {
+        focusedSet[sessionID] = nil
+        restGeneration[sessionID] = (restGeneration[sessionID] ?? 0) + 1
+        let key = "workout-rest-" + sessionID.uuidString
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [key])
+        center.removeDeliveredNotifications(withIdentifiers: [key])
+        for activity in Activity<WorkoutAttributes>.activities where activity.attributes.sessionID == sessionID.uuidString {
+            await activity.end(nil, dismissalPolicy: .immediate)
+        }
     }
 }

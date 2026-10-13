@@ -1,6 +1,83 @@
 import XCTest
 
 final class PivotInteractionTests: XCTestCase {
+    private let historyID = "33333333-3333-4333-8333-333333333333"
+    private let emptyHistoryID = "44444444-4444-4444-8444-444444444444"
+    private func prepareHistory(deletion: Bool = false) -> XCUIApplication {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--interaction-test", "--training-history-test"] + (deletion ? ["--history-deletion-test"] : [])
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 15)); app.tabBars.buttons["Palestra"].tap()
+        let fixture = app.buttons["history-fixture"]
+        for _ in 0..<15 { if fixture.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(fixture.isHittable); fixture.tap()
+        XCTAssertTrue(app.staticTexts["Cronologia pronta"].waitForExistence(timeout: 5))
+        openHistory(app)
+        return app
+    }
+    private func openHistory(_ app: XCUIApplication) {
+        let day = app.buttons["workout-day-history-squat-day"]
+        for _ in 0..<15 { if day.isHittable { break }; app.swipeDown() }
+        XCTAssertTrue(day.waitForExistence(timeout: 8)); XCTAssertTrue(day.isHittable); day.tap()
+        let history = app.buttons["workout-day-history"]
+        XCTAssertTrue(history.waitForExistence(timeout: 5)); history.tap()
+        XCTAssertTrue(app.navigationBars["Cronologia"].waitForExistence(timeout: 5))
+    }
+    private func verifyHistory(_ app: XCUIApplication, label: String) {
+        app.navigationBars["Cronologia"].buttons.element(boundBy: 0).tap()
+        app.navigationBars["Allenamento"].buttons.element(boundBy: 0).tap()
+        let verify = app.buttons["history-verify"]
+        for _ in 0..<15 { if verify.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(verify.isHittable); verify.tap()
+        XCTAssertTrue(app.staticTexts[label].waitForExistence(timeout: 8), app.debugDescription)
+    }
+    func testDayHistoryCorrectsCompletedWorkoutWithoutStartingRecoveryAndPersists() {
+        let app = prepareHistory()
+        let edit = app.buttons["history-open-" + historyID]
+        for _ in 0..<6 { if edit.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(edit.isHittable); edit.tap()
+        let field = app.textFields["weight-history-squat-0"]
+        for _ in 0..<8 { if field.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(field.isHittable); field.tap()
+        let value = field.value as? String ?? ""
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count) + "50")
+        app.buttons["Fine"].tap()
+        XCTAssertFalse(app.staticTexts["workout-rest-countdown"].exists)
+        let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-history-correction"; image.lifetime = .keepAlways; add(image)
+        app.navigationBars["Allenamento"].buttons.element(boundBy: 0).tap()
+        verifyHistory(app, label: "Cronologia verificata · correzione salvata")
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 15)); app.tabBars.buttons["Palestra"].tap()
+        openHistory(app)
+        for _ in 0..<6 { if edit.isHittable { break }; app.swipeUp() }
+        edit.tap()
+        for _ in 0..<8 { if field.isHittable { break }; app.swipeUp() }
+        XCTAssertEqual(field.value as? String, "50,0")
+        XCTAssertTrue(app.staticTexts["Allenamento terminato"].exists)
+    }
+    func testDayHistoryConfirmsDeletionOfRealAndEmptyWorkoutsAndPersists() {
+        let app = prepareHistory(deletion: true)
+        let empty = app.buttons["history-delete-" + emptyHistoryID]
+        XCTAssertTrue(empty.isHittable); empty.tap()
+        XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 3))
+        app.alerts.buttons["Annulla"].tap(); XCTAssertTrue(empty.exists)
+        empty.tap(); app.alerts.buttons["Elimina definitivamente"].tap()
+        XCTAssertTrue(app.staticTexts["history-message"].waitForExistence(timeout: 8)); XCTAssertFalse(empty.exists)
+        let real = app.buttons["history-delete-" + historyID]
+        for _ in 0..<5 { if real.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(real.isHittable); real.tap()
+        let warning = app.alerts.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "1 serie svolte")).firstMatch
+        XCTAssertTrue(warning.exists)
+        let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-history-delete-confirmation"; image.lifetime = .keepAlways; add(image)
+        app.alerts.buttons["Elimina definitivamente"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["workout-history-empty"].waitForExistence(timeout: 8))
+        verifyHistory(app, label: "Cronologia verificata · eliminazioni salvate")
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 15)); app.tabBars.buttons["Palestra"].tap()
+        openHistory(app)
+        XCTAssertTrue(app.descendants(matching: .any)["workout-history-empty"].exists)
+    }
     func testFinishFromBottomAutomaticallyOpensPDFAndKeepsEndOnReopen() {
         verifyFinalization(reportFailure: false)
     }

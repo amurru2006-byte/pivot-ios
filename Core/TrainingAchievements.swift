@@ -98,6 +98,55 @@ enum TrainingRecords {
         // set can earn both a PR and a rank in one atomic save.
         return achievements.filter { $0.kind == .rank || retainedPRs.contains($0.id) }
     }
+    /// Historical corrections recalculate existing medals, without creating new
+    /// retroactive popups. Current ranks/progress are derived from sessions.
+    static func reconciled(library: TrainingLibrary, profile: StrengthProfile?, now: Date = Date()) -> [TrainingAchievement]? {
+        guard let achievements = library.achievements else { return nil }
+        struct Performance {
+            var sessionID: UUID
+            var set: TrainingSet
+            var exercise: TrainingExercise
+            var value: Double
+        }
+        var performed: [Performance] = []
+        for session in library.sessions.sorted(by: { $0.start == $1.start ? $0.id.uuidString < $1.id.uuidString : $0.start < $1.start }) {
+            for log in session.exercises where log.skipped != true {
+                for set in log.sets {
+                    if let value = maximum(set, exercise: log.exercise) {
+                        performed.append(.init(sessionID: session.id, set: set, exercise: log.exercise, value: value))
+                    }
+                }
+            }
+        }
+        var result: [TrainingAchievement] = [], keys = Set<String>()
+        for original in achievements {
+            guard let index = performed.firstIndex(where: { $0.sessionID == original.sessionID && $0.set.id == original.setID }) else { continue }
+            let source = performed[index], earlier = performed[..<index]
+            var corrected = original
+            corrected.exercise = source.exercise.name; corrected.value = source.value
+            if original.kind == .personalRecord {
+                guard let previous = earlier.filter({ sameExercise($0.exercise, source.exercise) }).map(\.value).max(), source.value > previous + 0.01 else { continue }
+                corrected.previousValue = previous
+                corrected.id = "pr:\(source.sessionID):\(source.set.id):\(String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), source.value))"
+            } else {
+                guard let benchmark = StrengthBenchmark.resolve(source.exercise), benchmark == original.benchmark else { continue }
+                let previous = earlier.filter { StrengthBenchmark.resolve($0.exercise) == benchmark }.map(\.value).max()
+                if let profile, let rank = StrengthRanking.result(benchmark: benchmark, maximum: source.value, profile: profile, at: original.createdAt) {
+                    let earlierLevel = previous.flatMap { StrengthRanking.result(benchmark: benchmark, maximum: $0, profile: profile, at: original.createdAt) }?.level ?? -1
+                    guard rank.level > earlierLevel else { continue }
+                    corrected.rankLevel = rank.level
+                    corrected.id = "rank:\(benchmark.rawValue):\(rank.level)"
+                    corrected.previousValue = previous
+                } else {
+                    // No profile: do not invent a new rank for a changed load.
+                    guard abs(source.value - original.value) < 0.01 else { continue }
+                }
+            }
+            corrected.presentedAt = original.presentedAt ?? now
+            if keys.insert(corrected.id).inserted { result.append(corrected) }
+        }
+        return retainingHistory(result)
+    }
     static func isCurrent(_ achievement: TrainingAchievement, library: TrainingLibrary) -> Bool {
         guard let log = library.sessions.first(where: { $0.id == achievement.sessionID })?.exercises
             .first(where: { $0.sets.contains(where: { $0.id == achievement.setID }) }), log.skipped != true,

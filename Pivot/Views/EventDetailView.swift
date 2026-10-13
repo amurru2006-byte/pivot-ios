@@ -467,6 +467,12 @@ struct EventDetailView: View {
         record.updatedAt = Date()
         record.snapshot = event
         var saved = record
+        let stored = store.record(for: event)
+        if saved.actualStart != stored.actualStart || saved.actualEnd != stored.actualEnd || saved.activeMinutes != stored.activeMinutes || saved.status != stored.status {
+            saved.trainingSessionID = nil
+        } else {
+            saved.trainingSessionID = stored.trainingSessionID
+        }
         saved.logistics = store.record(for: event).logistics
         let ok = store.change { data in
             let previousStatus = data.records[event.id]?.status ?? .pending

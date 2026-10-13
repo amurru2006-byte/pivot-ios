@@ -18,6 +18,7 @@ final class PivotStore: ObservableObject {
     private let directory: URL
     private let file: URL
     private let documentsDirectory: URL
+    private var deletedTrainingIDs = Set<UUID>()
     #if DEBUG && targetEnvironment(simulator)
     private var reportFailureInjected = false
     #endif
@@ -52,6 +53,7 @@ final class PivotStore: ObservableObject {
         if ProcessInfo.processInfo.arguments.contains("--autofill-test") { storageName = "PivotAutofillTests" }
         if ProcessInfo.processInfo.arguments.contains("--training-edit-test") { storageName = "PivotTrainingEditTests" }
         if ProcessInfo.processInfo.arguments.contains("--workout-controls-test") { storageName = "PivotWorkoutControlsTests" }
+        if ProcessInfo.processInfo.arguments.contains("--training-history-test") { storageName = "PivotTrainingHistoryTests" }
         #endif
         directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(storageName, isDirectory: true)
         file = directory.appendingPathComponent("pivot-data.json")
@@ -266,6 +268,7 @@ final class PivotStore: ObservableObject {
             }
             try await persistence.save(restored, restoring: true)
             data = restored
+            deletedTrainingIDs.removeAll()
             locked = false
             error = nil
             writeExternal(restored)
@@ -321,23 +324,28 @@ final class PivotStore: ObservableObject {
         guard change({ $0.training = library }) else { throw BackupError.invalidData }
     }
 
-    @discardableResult func saveTraining(_ session: TrainingSession, tips: [String: String], event: CalendarItem?) -> Bool {
+    @discardableResult func saveTraining(_ session: TrainingSession, tips: [String: String], event: CalendarItem?, historicalEdit: Bool = false) -> Bool {
+        guard !deletedTrainingIDs.contains(session.id) else { error = "Questo allenamento è stato eliminato. Le modifiche non sono state salvate."; return false }
         var library = data.training ?? TrainingLibrary()
         var session = TrainingEdits.preservingCatalogChoices(in: session, library: library)
         for index in session.exercises.indices {
             TrainingSetTemplate.rememberWarmupFractions(in: &session.exercises[index].sets)
         }
         let previous = library.sessions.first { $0.id == session.id }
-        let earned = TrainingRecords.newAchievements(session: session, previous: previous, library: library, profile: data.strengthProfile)
+        let correctingHistory = historicalEdit || previous?.end != nil
+        let earned = correctingHistory ? [] : TrainingRecords.newAchievements(session: session, previous: previous, library: library, profile: data.strengthProfile)
         if !earned.isEmpty { library.achievements = TrainingRecords.retainingHistory((library.achievements ?? []) + earned) }
         if let index = library.sessions.firstIndex(where: { $0.id == session.id }) { library.sessions[index] = session }
         else { library.sessions.append(session) }
+        if correctingHistory { library.achievements = TrainingRecords.reconciled(library: library, profile: data.strengthProfile) }
         for (key, value) in tips { library.tips[key] = value }
         do { try library.validate() }
         catch { self.error = "Controlla carichi e ripetizioni prima di salvare. I dati precedenti sono conservati."; return false }
         return change { data in
             data.training = library
-            if let event = event ?? session.calendarEventID.flatMap({ data.records[$0]?.snapshot }) {
+            // A history opened from another event must never inherit that event.
+            if let eventID = session.calendarEventID,
+               let event = data.records[eventID]?.snapshot ?? (event?.id == eventID ? event : nil) {
                 let existing = data.records[event.id]
                 let record = existing ?? EventRecord(id: event.id, snapshot: event)
                 data.records[event.id] = TrainingTiming.merging(session, previous: existing == nil ? nil : previous, into: record)
@@ -346,6 +354,24 @@ final class PivotStore: ObservableObject {
     }
 
     func flushWorkoutChanges() async -> Bool { await writer.flush() }
+
+    func deleteTraining(_ expected: TrainingSession) async throws -> String {
+        guard !locked, !isLoading, !isRestoring else { throw TrainingHistory.HistoryError.unavailable }
+        let next = try TrainingHistory.removing(expected, from: data)
+        guard change({ $0 = next }) else { throw BackupError.invalidData }
+        deletedTrainingIDs.insert(expected.id)
+        await WorkoutRuntime.stop(sessionID: expected.id)
+        guard await flushWorkoutChanges() else {
+            return "Allenamento rimosso in memoria, ma il salvataggio su disco va riprovato nelle Impostazioni. Tieni Pivot aperto."
+        }
+        let report = TrainingReportFiles.url(for: expected.id, directory: directory.appendingPathComponent("TrainingReports", isDirectory: true))
+        do {
+            if FileManager.default.fileExists(atPath: report.path) { try FileManager.default.removeItem(at: report) }
+        } catch {
+            return "Allenamento eliminato. Non sono riuscito a rimuovere la vecchia copia PDF interna; le copie già condivise restano comunque fuori da Pivot."
+        }
+        return "Allenamento eliminato. Progressi e rank aggiornati; evento nel Calendario conservato. Le copie PDF già condivise non vengono cancellate."
+    }
 
     func trainingExportURL(_ session: TrainingSession) async throws -> URL {
         guard !locked, !isRestoring else { throw BackupError.invalidData }
