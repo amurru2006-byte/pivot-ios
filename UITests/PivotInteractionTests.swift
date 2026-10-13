@@ -681,8 +681,26 @@ final class PivotInteractionTests: XCTestCase {
         let reopened = app.buttons["open-pivot-coach"]
         for _ in 0..<6 { if reopened.isHittable { break }; app.swipeDown() }
         XCTAssertTrue(reopened.isHittable); reopened.tap()
-        for _ in 0..<12 { if app.staticTexts[text].exists { break }; app.swipeUp() }
-        XCTAssertTrue(app.staticTexts[text].exists)
+        let restoredMessage = app.staticTexts[text]
+        if !restoredMessage.waitForExistence(timeout: 8) {
+            let before = XCTAttachment(screenshot: app.screenshot()); before.name = "serie7-coach-reopen-before-scroll"; before.lifetime = .keepAlways; add(before)
+            // Lazy content can be above or below the restored scroll position.
+            // Seek in short steps in both directions; still require the exact
+            // saved message, not a generic chat row or a weaker success signal.
+            for direction in [-1.0, 1.0] {
+                for _ in 0..<24 {
+                    if restoredMessage.exists { break }
+                    let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+                    start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: direction * 150)))
+                }
+                if restoredMessage.exists { break }
+            }
+        }
+        if !restoredMessage.exists {
+            let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-coach-reopen-missing-message"; image.lifetime = .keepAlways; add(image)
+            let hierarchy = XCTAttachment(string: app.debugDescription); hierarchy.name = "serie7-coach-reopen-accessibility"; hierarchy.lifetime = .keepAlways; add(hierarchy)
+        }
+        XCTAssertTrue(restoredMessage.exists, app.debugDescription)
         XCTAssertFalse(app.staticTexts["Modello locale attivo"].exists)
     }
 
