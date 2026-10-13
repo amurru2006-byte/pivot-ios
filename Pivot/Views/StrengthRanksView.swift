@@ -1,20 +1,5 @@
 import SwiftUI
 
-enum StrengthRankPresentation {
-    static let count = 7
-    static func name(_ level: Int) -> String {
-        switch level {
-        case 0: return "Schiavo della gravità"
-        case 1: return "Patto col ferro"
-        default: return "Rank \(level + 1)"
-        }
-    }
-    static func emblem(_ level: Int) -> String? {
-        (0...1).contains(level) ? "Rank\(level + 1)Emblem" : nil
-    }
-    static func kg(_ value: Double) -> String { String(format: "%.1f", locale: Locale(identifier: "it_IT"), value) + " kg" }
-}
-
 struct StrengthRankEmblem: View {
     let level: Int
     var size: CGFloat = 76
@@ -24,7 +9,7 @@ struct StrengthRankEmblem: View {
                 Image(asset).resizable().scaledToFit().padding(3)
                     .background(.white, in: RoundedRectangle(cornerRadius: 12))
             } else {
-                // Reserved space; the remaining user-supplied crests are pending.
+                // Defensive fallback for an invalid level, not a missing rank.
                 RoundedRectangle(cornerRadius: 12).stroke(PivotTheme.muted.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [4]))
                     .overlay(Text("\(level + 1)").font(.title2.bold()).foregroundStyle(PivotTheme.muted))
             }
@@ -72,24 +57,50 @@ struct StrengthRanksView: View {
                 Text("Come viene stimato").font(.headline)
                 Text("Panca piana, squat e stacco sono indicatori dei movimenti indicati, non misure universali di un intero muscolo. Le altre macchine restano senza rank.")
                 Text("Massimale stimato con formula di Epley, confrontato con decili per età e categoria maschile/femminile di powerlifter agonisti. Non è un percentile della popolazione generale né un test di massimale. Le proporzioni al peso corporeo hanno limiti, soprattutto ai pesi estremi. L’altezza non entra nelle soglie pubblicate.")
-                Text("I sette livelli sono una scelta motivazionale di Pivot. I nomi e gli stemmi dal terzo al settimo sono in arrivo.")
+                Text("I sette livelli sono una scelta motivazionale di Pivot. Un rank non autorizza un aumento dei carichi o un rientro dopo un infortunio.")
                 Link("Norme pubblicate · van den Hoek et al., 2024", destination: URL(string: StrengthRanking.sourceURL)!)
             }.font(.caption)
             SectionHeading(title: "I sette rank")
             ForEach(0..<StrengthRankPresentation.count, id: \.self) { level in
+                NavigationLink { StrengthRankArtworkView(level: level) } label: {
                 PivotCard {
                     HStack(spacing: 14) {
                         StrengthRankEmblem(level: level, size: 58)
                         VStack(alignment: .leading, spacing: 4) {
                             Text(StrengthRankPresentation.name(level)).font(.headline)
-                            Text(level < 2 ? "Rank \(level + 1) / 7" : "Spazio riservato · nome e stemma in arrivo")
+                            Text("Rank \(level + 1) / 7 · apri stemma e titolo")
                                 .font(.caption).foregroundStyle(PivotTheme.muted)
                         }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").foregroundStyle(PivotTheme.muted).accessibilityHidden(true)
                     }
                 }
+                }.buttonStyle(.plain).accessibilityIdentifier("strength-rank-level-\(level + 1)")
             }
         }.navigationTitle("Rank")
             .sheet(isPresented: $editingProfile) { StrengthProfileEditor() }
+    }
+}
+
+struct StrengthRankArtworkView: View {
+    let level: Int
+    var body: some View {
+        PivotScreen {
+            PivotHeader(title: StrengthRankPresentation.name(level), subtitle: "Rank \(level + 1) / 7 · immagini originali")
+            if let emblem = StrengthRankPresentation.emblem(level),
+               let title = StrengthRankPresentation.titleArtwork(level) {
+                Image(emblem).resizable().scaledToFit().padding(8)
+                    .background(.white, in: RoundedRectangle(cornerRadius: 16))
+                    .accessibilityLabel("Stemma: \(StrengthRankPresentation.name(level))")
+                    .accessibilityIdentifier("rank-original-emblem")
+                Image(title).resizable().scaledToFit().padding(8)
+                    .background(.white, in: RoundedRectangle(cornerRadius: 16))
+                    .accessibilityLabel("Titolo grafico: \(StrengthRankPresentation.name(level))")
+                    .accessibilityIdentifier("rank-original-title")
+                Text("Traguardo motivazionale, non una valutazione medica o un carico da provare.")
+                    .font(.caption).foregroundStyle(PivotTheme.muted)
+            }
+        }.navigationTitle("Immagini del rank")
     }
 }
 

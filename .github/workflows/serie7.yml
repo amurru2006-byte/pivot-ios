@@ -11,7 +11,9 @@ concurrency:
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 55
+    # Expanded regression suite plus two iOS builds can exceed 55 minutes on
+    # a cold hosted runner. Keep a bounded limit without skipping UI coverage.
+    timeout-minutes: 70
     steps:
       - name: Scarica codice
         uses: actions/checkout@v4

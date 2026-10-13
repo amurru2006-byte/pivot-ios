@@ -19,6 +19,9 @@ struct TrainingPlanEditor: View {
             Form {
                 Section(planID == nil ? "Nuova scheda / nuovo obiettivo" : "Modifica la scheda") {
                     TextField("Nome della scheda", text: $payload.name).accessibilityIdentifier("training-plan-name")
+                    TrainingPhasePicker(phase: $payload.phase, title: "Fase della scheda")
+                        .accessibilityIdentifier("training-plan-phase")
+                    Text("È il contesto dichiarato della programmazione: non applica percentuali né cambia i carichi. Recupero/rientro non è un'autorizzazione medica.").font(.caption)
                     TextField("Motivo / indicazioni del coach", text: $changeNote, axis: .vertical)
                     Text("I vecchi allenamenti restano invariati. Le modifiche si applicano alle nuove sessioni, non a quelle già iniziate.").font(.caption)
                 }
@@ -40,6 +43,9 @@ struct TrainingPlanEditor: View {
                 ForEach(payload.days.indices, id: \.self) { index in
                     Section {
                         TextField("Nome del giorno", text: $payload.days[index].name)
+                        TrainingPhasePicker(phase: $payload.days[index].phase, title: "Fase della giornata",
+                            inheritanceLabel: "Usa fase scheda · \(payload.phase?.label ?? "non dichiarata")")
+                            .accessibilityIdentifier("training-day-phase-\(payload.days[index].id)")
                         ForEach(payload.days[index].exercises.indices, id: \.self) { exerciseIndex in
                             DisclosureGroup(payload.days[index].exercises[exerciseIndex].name) {
                                 TextField("Nome visualizzato (stesso esercizio)", text: $payload.days[index].exercises[exerciseIndex].name)
@@ -113,8 +119,10 @@ struct TrainingRevisionsView: View {
                 PivotCard {
                     Text(DisplayDate.label(revision.date, format: "d MMM yyyy HH:mm")).font(.headline)
                     Text(revision.payload.name)
+                    Text("Fase scheda: \(revision.payload.phase?.label ?? "non dichiarata")").font(.caption)
                     if !revision.note.isEmpty { Text(revision.note).font(.caption).foregroundStyle(PivotTheme.blue) }
                     ForEach(revision.payload.days) { day in
+                        Text("\(day.name) · \(TrainingPhase.resolved(plan: revision.payload, day: day)?.label ?? "fase non dichiarata")").font(.caption)
                         Text(day.name + ": " + day.exercises.map { "\($0.name) \($0.sets)×\($0.reps)" }.joined(separator: " · ")).font(.caption)
                     }
                     Button("Ripristina questa versione") {

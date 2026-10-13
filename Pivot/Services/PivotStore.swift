@@ -55,6 +55,8 @@ final class PivotStore: ObservableObject {
         if ProcessInfo.processInfo.arguments.contains("--workout-controls-test") { storageName = "PivotWorkoutControlsTests" }
         if ProcessInfo.processInfo.arguments.contains("--training-history-test") { storageName = "PivotTrainingHistoryTests" }
         if ProcessInfo.processInfo.arguments.contains("--training-concern-test") { storageName = "PivotTrainingConcernTests" }
+        if ProcessInfo.processInfo.arguments.contains("--training-phase-test") { storageName = "PivotTrainingPhaseTests" }
+        if ProcessInfo.processInfo.arguments.contains("--training-progression-test") { storageName = "PivotTrainingProgressionTests" }
         #endif
         directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(storageName, isDirectory: true)
         file = directory.appendingPathComponent("pivot-data.json")

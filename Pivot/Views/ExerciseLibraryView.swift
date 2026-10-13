@@ -264,12 +264,14 @@ struct ExerciseStatisticsView: View {
     let exercise: TrainingExercise
     var current: TrainingSession? = nil
     @State private var progress = ExerciseProgress(performances: [])
+    @State private var repProgression: TrainingRepProgression?
     @State private var catalogEntry: CatalogExercise?
     @State private var catalogReady = false
     private var displayedExercise: TrainingExercise { TrainingEdits.withSavedCatalog(exercise, library: store.data.training ?? TrainingLibrary()) }
     var body: some View {
         PivotScreen {
             PivotHeader(title: exercise.name, subtitle: "Solo serie fatte · stesso esercizio e stesso identificativo.")
+            if let repProgression { TrainingRepProgressionCard(exercise: exercise, result: repProgression) }
             ExerciseThumbnail(exercise: exercise).frame(maxWidth: .infinity).frame(height: 210)
             if catalogReady && catalogEntry == nil { ExerciseImageAssignmentButton(exercise: exercise) }
             if let entry = catalogEntry {
@@ -299,7 +301,7 @@ struct ExerciseStatisticsView: View {
                         MetricTile(title: "Allenamenti", value: "\(progress.performances.count)", icon: "calendar")
                     }
                     PivotCard {
-                        Text("Progressione della durata").font(.headline)
+                        Text("Durate registrate").font(.headline)
                         Chart(Array(progress.performances.suffix(30))) { point in
                             LineMark(x: .value("Data", point.date), y: .value("Secondi", point.bestHold))
                             PointMark(x: .value("Data", point.date), y: .value("Secondi", point.bestHold))
@@ -316,19 +318,21 @@ struct ExerciseStatisticsView: View {
                     MetricTile(title: "Allenamenti", value: "\(progress.performances.count)", icon: "calendar")
                 }
                 PivotCard {
-                    Text("Progressione del carico").font(.headline)
+                    Text("Carichi registrati").font(.headline)
                     Chart(Array(progress.performances.suffix(30))) { point in
                         LineMark(x: .value("Data", point.date), y: .value("Carico kg", point.bestLoad)).foregroundStyle(PivotTheme.accent)
                         PointMark(x: .value("Data", point.date), y: .value("Carico kg", point.bestLoad)).foregroundStyle(PivotTheme.accent)
                     }.frame(height: 180)
-                    Text("Migliore serie di ogni allenamento · fino agli ultimi 30").font(.caption).foregroundStyle(PivotTheme.muted)
+                    Text("Miglior carico registrato di ogni allenamento, incluse le serie di riscaldamento · fino agli ultimi 30. I tipi di serie possono differire: il grafico non deduce uno stallo o una regola di aumento.").font(.caption).foregroundStyle(PivotTheme.muted)
                 }
                 Text("Stima Epley: kg × (1 + ripetizioni/30), solo serie da 1 a 10 ripetizioni; a 1 ripetizione mostro il carico fatto. Riscaldamenti, serie non svolte e carichi di assistenza sono esclusi dai massimali e dai PR. È un riferimento teorico, soprattutto se non eri vicino al cedimento: non è un carico da provare. Volume = somma di kg × ripetizioni, secondo il carico che inserisci (per manubri usa sempre la stessa convenzione).").font(.caption).foregroundStyle(PivotTheme.muted)
                 }
                 SectionHeading(title: "Cronologia recente")
+                Text("La fase è il contesto dichiarato di quella sessione: un carico più basso in scarico o rientro non dimostra da solo una perdita di forza.").font(.caption).foregroundStyle(PivotTheme.muted)
                 ForEach(Array(progress.performances.reversed().prefix(12))) { point in
                     PivotCard {
                         Text(DisplayDate.label(point.date, format: "d MMM yyyy") + (point.finished ? "" : " · in corso")).font(.headline)
+                        Text("Fase: \(point.phase?.label ?? "non dichiarata")").font(.caption).foregroundStyle(PivotTheme.muted)
                         Text(point.sets.map { TrainingReports.performance($0, exercise: displayedExercise) }.joined(separator: " · ")).font(.subheadline)
                         if displayedExercise.usesDuration { Text("Tenuta totale \(point.totalHold) s").font(.caption).foregroundStyle(PivotTheme.blue) }
                         else { Text("Volume \(point.volume.formatted()) kg·rep · stima \(kg(point.estimatedMax))").font(.caption).foregroundStyle(PivotTheme.blue) }
@@ -337,9 +341,12 @@ struct ExerciseStatisticsView: View {
             }
         }.navigationTitle("Progressi")
             .task(id: "\(exercise.id)|\(store.data.updatedAt.timeIntervalSince1970)|\(current?.updatedAt.timeIntervalSince1970 ?? 0)") {
-                let library = store.data.training ?? TrainingLibrary(), current = current, id = exercise.id
-                let result = await Task.detached(priority: .utility) { ExerciseProgress.calculate(exerciseID: id, library: library, current: current) }.value
-                guard !Task.isCancelled else { return }; progress = result
+                let library = store.data.training ?? TrainingLibrary(), current = current, exercise = exercise
+                let result = await Task.detached(priority: .utility) {
+                    (ExerciseProgress.calculate(exerciseID: exercise.id, library: library, current: current, exercise: exercise),
+                     TrainingRepProgression.calculate(exercise: exercise, library: library, current: current))
+                }.value
+                guard !Task.isCancelled else { return }; progress = result.0; repProgression = result.1
                 if let entries = try? await ExerciseCatalogLoader.shared.entries() {
                     catalogEntry = ExerciseCatalog.match(displayedExercise, in: entries)
                 }

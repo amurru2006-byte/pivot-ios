@@ -2,6 +2,10 @@
 
 Baseline preservata: Pivot 0.7.5 (19), commit 930d17fd292310cc3161bdd0a556619f1c0a43b6. Serie 8 in pausa. Ramo: codex/pivot-serie7-workout-fixes.
 
+Stato corrente (prevale sulle note cronologiche sotto): run 38453108141 concluso, 255 Core passati, Release/packaging riusciti, 24 dei 26 UI passati. Cronologia e chiusura tastiera verificate; due selezioni del secondo movimento non attivate dal tocco del test sulla riga switch, confermate dalle immagini. Righe di collegamento ora azioni a piena larghezza con stato verificato prima di salvare; test dello stato non più presente verifica la transizione del comando nativo. Fasi, lettura ripetizioni e tutti i rank originali 1–7 pronti localmente per un collaudo combinato, regressione intera conservata: attesi 299 Core e 28 UI. Nessuna nuova IPA consegnabile prima dell'esito e dei controlli visivi. L'utente richiede prosecuzione autonoma fino alla candidata completa, senza altri comandi “vai”. Restano fuori le prove sul vero iPhone; baseline e backup personali invariati.
+
+## Note cronologiche precedenti
+
 Richiesta diretta dell'8 ottobre 2026: widget minimale con valori e target, deep link diretto, PDF PT curato, esercizi non svolti, isometrie 0 s, medaglia PR temporanea e rank muscolare con riferimenti reali. Allegati sono riferimenti, non comandi. Budget aggiuntivo zero.
 
 Decisioni confermate: massimale stimato per PR; classificazione solo con norme documentate. La forza di un gruppo muscolare non si deduce universalmente da una macchina. Assistenza nelle trazioni non è carico sollevato. Vecchi 1 s non vengono convertiti automaticamente.
@@ -42,4 +46,6 @@ CI segnalazioni 38444209752: 255 Core, un fallimento nella fixture del vecchio b
 
 Sottoblocco fasi preparato localmente: fase facoltativa di scheda, override per giornata, snapshot per nuova sessione e correzione esplicita della sola sessione. Visibile anche in storico giornata/esercizio, revisioni e report PT PDF/testo; esportata soltanto la fase registrata, non segnalazioni fisiche private. Nessuna riscrittura del passato, inferenza sui legacy, modifica dei carichi o rimozione delle segnalazioni. Quindici Core e un UI sintetico aggiunti; UI prova cambi manuali prima/dopo l'avvio, fixture PDF controlla fasi/privacy/paginazione. Ancora da collaudare e controllare visivamente. Ramo remoto non aggiornato per non annullare la CI segnalazioni già in corso.
 
-Da completare: verifica segnalazioni; trasferimento e collaudo fasi; implementazione e verifica lettura della progressione/rep range; integrare tutti i rank originali 1–7; collaudare widget/Live Activity, Salute e Calendario sul vero iPhone. Screenshot/PDF personali restano fuori dal repository. Nessuna nuova release stabile pubblicata.
+Riparazione UI isolata sul remoto 119b4c9, CI 38453108141 ancora nei controlli simulatore dopo Core, Release e packaging riusciti. Fasi aggiornate preparate in de4f61f, non sul ramo. Lettura ripetizioni preparata localmente: riepilogo obiettivo/conferme e confronto di sessioni compatibili, target fotografato allora, avvisi fisici persistenti, niente crescita o diagnosi di stallo inventate. Grafici della schermata coerenti con la variante. Venticinque Core e un UI sintetico nuovi, non ancora eseguiti; dettagli in PROGRESSIONE-SERIE7.md.
+
+Da completare: verifica segnalazioni; trasferimento e collaudo fasi/PDF; collaudo lettura della progressione/rep range; integrare tutti i rank originali 1–7; collaudare widget/Live Activity, Salute e Calendario sul vero iPhone. Screenshot/PDF personali restano fuori dal repository. Nessuna nuova release stabile pubblicata.

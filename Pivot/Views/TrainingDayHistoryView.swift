@@ -27,6 +27,7 @@ struct TrainingDayHistoryView: View {
                     Text("\(PivotDate.shortDate(session.start)) · \(PivotDate.time(session.start))").font(.headline)
                     Text("\(session.end.map { "Terminato alle " + PivotDate.time($0) } ?? "In corso") · \(TrainingHistory.performedSets(session)) serie svolte")
                         .font(.subheadline).foregroundStyle(PivotTheme.muted)
+                    Text("Fase: \(session.phase?.label ?? "non dichiarata")").font(.caption).foregroundStyle(PivotTheme.muted)
                     NavigationLink {
                         TrainingSessionView(session: session, tips: library.tips,
                             event: session.calendarEventID.flatMap { store.data.records[$0]?.snapshot }, historicalEdit: true)

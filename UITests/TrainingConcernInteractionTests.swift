@@ -38,11 +38,27 @@ final class TrainingConcernInteractionTests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), app.debugDescription)
         let links = app.buttons["Esercizi collegati"]
         reveal(links, in: app); links.tap()
-        let second = app.switches["concern-link-concern-second"]
+        let first = app.buttons["concern-link-concern-first"]
+        XCTAssertEqual(first.value as? String, "Collegato", app.debugDescription)
+        let second = app.buttons["concern-link-concern-second"]
+        XCTAssertEqual(second.value as? String, "Non collegato", app.debugDescription)
         reveal(second, in: app); second.tap()
+        XCTAssertTrue(second.waitForExistence(timeout: 3))
+        XCTAssertEqual(second.value as? String, "Collegato", app.debugDescription)
+        XCTAssertEqual(first.value as? String, "Collegato", app.debugDescription)
         let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-concern-links"; image.lifetime = .keepAlways; add(image)
         app.buttons["concern-save"].tap()
         XCTAssertTrue(app.textFields["concern-area"].waitForNonExistence(timeout: 8), app.debugDescription)
+    }
+    private func setResolved(_ toggle: XCUIElement, to value: Bool, in app: XCUIApplication) {
+        reveal(toggle, in: app)
+        XCTAssertEqual(toggle.value as? String, value ? "0" : "1", app.debugDescription)
+        // SwiftUI exposes the labelled row as a switch; its midpoint is the
+        // label, not the native switch at the trailing edge. Tap the control.
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+        let selected = NSPredicate(format: "value == %@", value ? "1" : "0")
+        expectation(for: selected, evaluatedWith: toggle)
+        waitForExpectations(timeout: 3)
     }
     private func verifyFromRoot(_ app: XCUIApplication, resolved: Bool = false) {
         let verify = app.buttons["concern-verify"]
@@ -67,7 +83,7 @@ final class TrainingConcernInteractionTests: XCTestCase {
         let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-concern-warning"; image.lifetime = .keepAlways; add(image)
         second.tap()
         let resolved = app.switches["concern-resolved"]
-        reveal(resolved, in: app); resolved.tap(); app.buttons["concern-save"].tap()
+        setResolved(resolved, to: true, in: app); app.buttons["concern-save"].tap()
         XCTAssertTrue(app.textFields["concern-area"].waitForNonExistence(timeout: 8))
         XCTAssertFalse(app.buttons["concern-warning-concern-first"].exists)
         XCTAssertFalse(app.buttons["concern-warning-concern-second"].exists)
@@ -77,7 +93,7 @@ final class TrainingConcernInteractionTests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 15)); app.tabBars.buttons["Palestra"].tap()
         openSaved(app)
         reveal(resolved, in: app); XCTAssertEqual(resolved.value as? String, "1")
-        resolved.tap(); app.buttons["concern-save"].tap()
+        setResolved(resolved, to: false, in: app); app.buttons["concern-save"].tap()
         XCTAssertTrue(app.textFields["concern-area"].waitForNonExistence(timeout: 8))
         app.navigationBars["Dolori e infortuni"].buttons.element(boundBy: 0).tap()
         verifyFromRoot(app)

@@ -81,6 +81,7 @@ struct TrainingView: View {
                 PivotCard(tint: PivotTheme.accent) {
                     Label("Scheda attiva", systemImage: "doc.richtext").font(.caption).foregroundStyle(PivotTheme.accent)
                     Text(plan.payload.name).font(.title2.bold())
+                    if let phase = plan.payload.phase { Text("Fase scheda: \(phase.label)").font(.subheadline).foregroundStyle(PivotTheme.muted) }
                     if plan.document != nil { Button("Apri PDF originale della scheda") { preview = plan.document }.buttonStyle(PivotSecondaryButton()) }
                     Button("Modifica scheda · indicazioni del coach") { editingPlan = plan }.buttonStyle(PivotSecondaryButton()).disabled(store.locked).accessibilityIdentifier("edit-training-plan")
                     if !(plan.revisions ?? []).isEmpty {
@@ -92,6 +93,9 @@ struct TrainingView: View {
                     NavigationLink(value: WorkoutRoute.day(planID: plan.id, dayID: day.id)) {
                         PivotCard {
                             ActionRow(title: day.name, subtitle: "\(day.exercises.count) esercizi · apri il diario", icon: "dumbbell.fill")
+                            if let phase = TrainingPhase.resolved(plan: plan.payload, day: day) {
+                                Text("Fase: \(phase.label)").font(.caption).foregroundStyle(PivotTheme.muted)
+                            }
                             Text(day.exercises.map(\.name).joined(separator: " · ")).font(.caption).foregroundStyle(PivotTheme.muted).lineLimit(3)
                         }
                     }.buttonStyle(.plain).disabled(store.locked).accessibilityIdentifier("workout-day-\(day.id)")
@@ -104,6 +108,38 @@ struct TrainingView: View {
             Button { importing = true } label: { Label(busy ? "Leggo la scheda…" : "Importa nuova scheda PDF", systemImage: "square.and.arrow.down") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked || busy || library.plans.count >= 6)
             Text("Solo PDF preparati per Pivot. L'importazione mostra un riepilogo da confermare e non cancella gli allenamenti precedenti.").font(.caption).foregroundStyle(PivotTheme.muted)
             #if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.arguments.contains("--training-progression-test") {
+                Button("Prepara progressione TEST") {
+                    Task {
+                        do { try await TrainingRepProgressionFixture.install(); message = "Progressione pronta" }
+                        catch { message = error.localizedDescription }
+                    }
+                }.accessibilityIdentifier("progression-fixture")
+                if let exercise = library.activePlan?.payload.days.first?.exercises.first {
+                    NavigationLink { ExerciseStatisticsView(exercise: exercise) } label: { Text("Apri obiettivo TEST") }
+                        .accessibilityIdentifier("progression-open")
+                }
+                Button("Verifica progressione TEST") {
+                    Task {
+                        do { message = try await TrainingRepProgressionFixture.verify() }
+                        catch { message = "Progressione non valida: \(error.localizedDescription)" }
+                    }
+                }.accessibilityIdentifier("progression-verify")
+            }
+            if ProcessInfo.processInfo.arguments.contains("--training-phase-test") {
+                Button("Prepara fasi TEST") {
+                    Task {
+                        do { try await TrainingPhaseFixture.install(); message = "Fasi pronte" }
+                        catch { message = error.localizedDescription }
+                    }
+                }.accessibilityIdentifier("phase-fixture")
+                Button("Verifica fasi TEST") {
+                    Task {
+                        do { message = try await TrainingPhaseFixture.verify() }
+                        catch { message = "Fasi non valide: \(error.localizedDescription)" }
+                    }
+                }.accessibilityIdentifier("phase-verify")
+            }
             if ProcessInfo.processInfo.arguments.contains("--training-concern-test") {
                 Button("Prepara segnalazioni TEST") {
                     Task {
@@ -405,6 +441,7 @@ struct TrainingSessionView: View {
             .onChange(of: session.notes) { _, _ in if hasStarted { save() } }
             .onChange(of: session.start) { _, _ in if hasStarted { save() } }
             .onChange(of: session.end) { _, _ in if hasStarted { save() } }
+            .onChange(of: session.phase) { _, _ in if hasStarted { save() } }
             .onChange(of: tips) { _, _ in save() }
             .onChange(of: store.data.updatedAt) { _, _ in
                 if let latest = store.data.training?.sessions.first(where: { $0.id == session.id }) {
@@ -436,6 +473,10 @@ struct TrainingSessionView: View {
     private var sessionHeader: some View {
         PivotCard(tint: PivotTheme.accent) {
             Text(!hasStarted ? "Pronto per iniziare" : session.end == nil ? "Allenamento in corso" : "Allenamento terminato").font(.headline)
+            TrainingPhasePicker(phase: $session.phase, title: "Fase di questo allenamento")
+                .accessibilityIdentifier("workout-phase")
+                .disabled(store.locked || store.isRestoring)
+            Text("Solo contesto: non cambia carichi o scheda e non certifica il recupero.").font(.caption).foregroundStyle(PivotTheme.muted)
             NavigationLink(value: WorkoutRoute.history(planID: session.planID, dayID: session.dayID, dayName: session.dayName)) {
                 Label("Cronologia di \(session.dayName)", systemImage: "clock.arrow.circlepath")
             }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("workout-day-history")
