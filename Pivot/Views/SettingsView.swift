@@ -106,6 +106,12 @@ struct SettingsView: View {
     PivotCard(tint: PivotTheme.accent) {
         Label("Salute e Apple Watch", systemImage: "heart.text.square.fill").font(.headline)
         Text(health.status).font(.subheadline).foregroundStyle(PivotTheme.muted)
+        if let report = health.lastReport {
+            Text("Ultima lettura: \(DisplayDate.label(report.readAt, format: "d MMM · HH:mm")) · \(report.workoutSamples) allenamenti · \(report.sleepDays) notti")
+                .font(.caption).foregroundStyle(PivotTheme.muted)
+            Text(report.appliedChanges == 0 ? "Nessuna modifica nuova applicata in Pivot." : "Modifiche applicate in Pivot: \(report.appliedChanges). Da decidere: \(report.pendingDecisions).")
+                .font(.caption).foregroundStyle(report.pendingDecisions == 0 ? PivotTheme.muted : PivotTheme.amber)
+        }
         if let diagnostic = health.connectionDiagnostic {
             DisclosureGroup("Dettagli del collegamento Salute") {
                 Text(diagnostic).font(.caption).textSelection(.enabled)
