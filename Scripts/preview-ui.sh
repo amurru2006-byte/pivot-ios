@@ -45,4 +45,7 @@ PIVOT_APP_DATA=$(xcrun simctl get_app_container "$PIVOT_SIMULATOR" app.pivot.per
 if [ -f "$PIVOT_APP_DATA/Documents/Pivot-QA-report.pdf" ]; then
   cp "$PIVOT_APP_DATA/Documents/Pivot-QA-report.pdf" build/Pivot-QA-report.pdf
 fi
+if [ -f "$PIVOT_APP_DATA/Documents/Pivot-QA-finalization.pdf" ]; then
+  cp "$PIVOT_APP_DATA/Documents/Pivot-QA-finalization.pdf" build/Pivot-QA-finalization.pdf
+fi
 exit "$PIVOT_UI_TEST_STATUS"

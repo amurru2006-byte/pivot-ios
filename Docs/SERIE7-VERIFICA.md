@@ -15,3 +15,5 @@ Checkpoint Salute, CI 38379904044, commit remoto 30c9816ac759a30e4f38ccca38cb3e8
 13 ottobre: aggiunti sei test Core per contesto serie/recupero e conservazione del tempo effettivo, un test UI per recupero all'ottavo esercizio/ultima serie/persistenza e un test UI per altezza e pulsanti della Live Activity condivisa. Verifica completa del nuovo blocco da concludere.
 
 Nessuna release stabile sostituita. La candidata 0.7.6 (20) richiede ancora il collaudo hardware prima di essere promossa.
+
+Blocco chiusura/PDF del 13 ottobre: aggiunti sei test Core per fine automatica/manuale, idempotenza, orari invalidi, nessuna serie inventata e identità del report. Due flussi UI nuovi controllano chiusura dal fondo, anteprima automatica, file persistente da dati salvati, riapertura/fine invariata e riprova dopo un errore PDF sintetico (solo Debug simulatore). Il test importazione/salvataggio ora richiede l'anteprima e il comando di condivisione. Il PDF sintetico finale viene conservato negli artefatti del collaudo. Esito completo da verificare.

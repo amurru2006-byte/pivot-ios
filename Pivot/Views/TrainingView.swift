@@ -270,6 +270,7 @@ struct TrainingSessionView: View {
     @State private var skippingExercise: Int?
     @State private var skipReason = ""
     @State private var controlsFocusID: UUID?
+    @State private var finishing = false
     var focusSetID: UUID? = nil
     let event: CalendarItem?
     init(plan: TrainingPlan, day: TrainingDay, library: TrainingLibrary, event: CalendarItem?) {
@@ -289,31 +290,7 @@ struct TrainingSessionView: View {
         ScrollViewReader { proxy in
         PivotScreen {
             PivotHeader(title: session.dayName, subtitle: "Segna solo quello che fai davvero.")
-            PivotCard(tint: PivotTheme.accent) {
-                Text(!hasStarted ? "Pronto per iniziare" : session.end == nil ? "Allenamento in corso" : "Allenamento terminato").font(.headline)
-                if hasStarted {
-                    ClockField(title: "Inizio", value: Binding(get: { session.start }, set: { if let date = $0 { session.start = date } }), fallback: session.start)
-                    ClockField(title: "Fine", value: $session.end, fallback: Date())
-                } else {
-                    Button("Inizia allenamento") { session.start = Date(); hasStarted = true; save(startLiveActivity: true) }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
-                }
-                if hasStarted && session.end == nil {
-                    Button("Termina allenamento") {
-                        WorkoutRuntime.finishRest(&session); session.end = Date()
-                        guard save() else { return }
-                        Task { await syncCompletedWorkout() }
-                    }.buttonStyle(PivotPrimaryButton())
-                    Text("Il recupero resta visibile in basso. I controlli di blocco schermo partono all’avvio, se Attività live è abilitata su iPhone.")
-                        .font(.caption).foregroundStyle(PivotTheme.muted)
-                    Button("Ripristina controlli sulla schermata di blocco") {
-                        guard save() else { return }
-                        Task {
-                            await WorkoutRuntime.update(session, start: true)
-                            if !WorkoutRuntime.status.isEmpty { message = WorkoutRuntime.status }
-                        }
-                    }.buttonStyle(PivotSecondaryButton())
-                }
-            }
+            sessionHeader
             ForEach(session.exercises.indices, id: \.self) { index in
                 exerciseCard(index)
             }
@@ -324,19 +301,26 @@ struct TrainingSessionView: View {
                 if !hasStarted { Text("Inizia l'allenamento per aggiungere o sostituire un esercizio; puoi anche modificare la scheda prima di iniziare.").font(.caption).foregroundStyle(PivotTheme.muted) }
             }
             PivotCard { TextField("Note sull'allenamento…", text: $session.notes, axis: .vertical).lineLimit(2...5) }
-            Button("Salva allenamento") {
-                guard save() else { return }
-                Task { await syncCompletedWorkout() }
-            }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
-            Button("Esporta per il personal") {
-                guard save() else { return }
-                Task {
-                    do { export = try await store.trainingExportURL(session); sharing = true }
-                    catch { message = error.localizedDescription }
-                }
-            }.buttonStyle(PivotSecondaryButton()).disabled(store.locked || !hasStarted)
+            Button(session.end == nil ? "Termina e salva allenamento" : "Salva modifiche e apri PDF") {
+                Task { await finishAndExport() }
+            }.buttonStyle(PivotPrimaryButton()).disabled(store.locked || !hasStarted || finishing)
+                .accessibilityIdentifier("finish-workout")
+            Text(session.end == nil ? "Chiude il recupero, registra l’ora di fine e apre il PDF per il personal. Le modifiche sono già salvate mentre ti alleni." : "Il PDF viene aggiornato con le correzioni, senza cambiare l’ora di fine.")
+                .font(.caption).foregroundStyle(PivotTheme.muted)
+            if finishing { ProgressView("Salvo l’allenamento e preparo il PDF…").accessibilityIdentifier("workout-finalizing") }
+            #if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.arguments.contains("--finalization-test"), session.end != nil {
+                Button("Verifica PDF conservato") {
+                    Task {
+                        do { message = try await WorkoutFinalizationFixture.verify() }
+                        catch { message = "PDF finale non valido: \(error.localizedDescription)" }
+                    }
+                }.accessibilityIdentifier("verify-final-report")
+            }
+            #endif
             if let message { Text(message).font(.caption).foregroundStyle(PivotTheme.amber) }
         }.navigationTitle("Allenamento")
+            .disabled(finishing)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if hasStarted && session.end == nil {
                     let next = TrainingWorkoutContext.next(in: session, focusedSetID: controlsFocusID ?? WorkoutRuntime.focusedSet[session.id])
@@ -392,6 +376,31 @@ struct TrainingSessionView: View {
                     proxy.scrollTo(focusSetID, anchor: .center); WorkoutRuntime.focusedSet[session.id] = focusSetID
                     controlsFocusID = focusSetID
                 }
+            }
+        }
+    }
+    private var sessionHeader: some View {
+        PivotCard(tint: PivotTheme.accent) {
+            Text(!hasStarted ? "Pronto per iniziare" : session.end == nil ? "Allenamento in corso" : "Allenamento terminato").font(.headline)
+            if hasStarted {
+                ClockField(title: "Inizio", value: Binding(get: { session.start }, set: { if let date = $0 { session.start = date } }), fallback: session.start)
+                ClockField(title: "Fine", value: $session.end, fallback: Date())
+            } else {
+                Button("Inizia allenamento") { session.start = Date(); hasStarted = true; save(startLiveActivity: true) }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
+            }
+            if hasStarted && session.end == nil {
+                Button("Termina e salva allenamento") { Task { await finishAndExport() } }
+                    .buttonStyle(PivotPrimaryButton()).disabled(store.locked || finishing)
+                    .accessibilityIdentifier("finish-workout-top")
+                Text("Il recupero resta visibile in basso. I controlli di blocco schermo partono all’avvio, se Attività live è abilitata su iPhone.")
+                    .font(.caption).foregroundStyle(PivotTheme.muted)
+                Button("Ripristina controlli sulla schermata di blocco") {
+                    guard save() else { return }
+                    Task {
+                        await WorkoutRuntime.update(session, start: true)
+                        if !WorkoutRuntime.status.isEmpty { message = WorkoutRuntime.status }
+                    }
+                }.buttonStyle(PivotSecondaryButton())
             }
         }
     }
@@ -814,7 +823,7 @@ struct TrainingSessionView: View {
         return TrainingSetTemplate.canRemove(log.sets, at: setIndex, prescribedWorkingSets: log.exercise.sets)
     }
     @discardableResult private func save(startLiveActivity: Bool = false) -> Bool {
-        guard !store.locked else { return false }
+        guard !store.locked, !finishing else { return false }
         if !hasStarted {
             return store.change { data in
                 var library = data.training ?? TrainingLibrary()
@@ -839,24 +848,51 @@ struct TrainingSessionView: View {
         }
         return ok
     }
-    private func syncCompletedWorkout() async {
-        guard session.end != nil, let event,
-              let record = store.data.records[event.id] else { return }
+    private func finishAndExport() async {
+        guard hasStarted, !store.locked, !finishing else { return }
+        let completed: TrainingSession
+        do { completed = try TrainingFinalization.completed(session) }
+        catch { message = error.localizedDescription; return }
+        finishing = true
+        defer { finishing = false }
+        guard store.saveTraining(completed, tips: tips, event: event) else {
+            message = store.error ?? "Allenamento non chiuso: controlla i dati e riprova."
+            return
+        }
+        session = completed
+        controlsFocusID = nil; WorkoutRuntime.focusedSet[session.id] = nil
+        await WorkoutRuntime.update(completed)
+        guard await store.flushWorkoutChanges() else {
+            message = "Salvataggio su disco non riuscito. Tieni Pivot aperto e riprova: il PDF non è stato generato."
+            return
+        }
+        let calendarResult = await syncCompletedWorkout()
+        do {
+            export = try await store.trainingExportURL(completed)
+            message = "Allenamento salvato. PDF conservato in Pivot." + (calendarResult.map { " " + $0 } ?? "")
+            sharing = true
+        } catch {
+            message = "Allenamento salvato, ma il PDF non è stato creato: \(error.localizedDescription) Premi di nuovo Salva modifiche e apri PDF." + (calendarResult.map { " " + $0 } ?? "")
+        }
+    }
+    private func syncCompletedWorkout() async -> String? {
+        guard session.end != nil, let eventID = session.calendarEventID ?? event?.id,
+              let record = store.data.records[eventID] else { return nil }
         // The snapshot is replaced only after a successful EventKit write. It
         // therefore also prevents a second Save tap from rewriting stale times.
         let source = record.snapshot
         guard let timing = CalendarSynchronization.actualTiming(for: record, event: source),
-              CalendarSynchronization.needsCalendarUpdate(timing, event: source) else { return }
+              CalendarSynchronization.needsCalendarUpdate(timing, event: source) else { return nil }
         do {
             if let updated = try await calendar.applyActualTimes(for: record, event: source, data: store.data) {
                 store.change { data in
-                    guard var saved = data.records[event.id] else { return }
-                    saved.snapshot = updated; data.records[event.id] = saved
+                    guard var saved = data.records[eventID] else { return }
+                    saved.snapshot = updated; data.records[eventID] = saved
                 }
             }
-            message = "Allenamento salvato e orari aggiornati nel Calendario."
+            return "Orari aggiornati nel Calendario."
         } catch {
-            message = "Allenamento salvato in Pivot, ma il Calendario non è stato modificato: \(error.localizedDescription)"
+            return "Il Calendario non è stato modificato: \(error.localizedDescription)"
         }
     }
 }

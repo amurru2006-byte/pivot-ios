@@ -4,13 +4,19 @@ import CoreText
 
 enum TrainingReportPDF {
     enum ExportError: LocalizedError {
-        case empty
-        var errorDescription: String? { "In questa settimana non ci sono allenamenti con serie svolte." }
+        case empty, unfinished
+        var errorDescription: String? {
+            switch self {
+            case .empty: return "In questa settimana non ci sono allenamenti con serie svolte."
+            case .unfinished: return "Termina e salva l’allenamento prima di aprire il PDF finale."
+            }
+        }
     }
-    static func write(sessions: [TrainingSession], library: TrainingLibrary, title: String, interval: DateInterval? = nil) throws -> URL {
+    static func write(sessions: [TrainingSession], library: TrainingLibrary, title: String, interval: DateInterval? = nil, destination: URL? = nil) throws -> URL {
         let data = render(sessions: sessions, library: library, title: title, interval: interval)
         let first = sessions.first?.start ?? Date()
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Pivot-\(interval == nil ? "allenamento" : "settimana")-\(PivotDate.key(first))-\(UUID().uuidString.prefix(8)).pdf")
+        let url = destination ?? FileManager.default.temporaryDirectory.appendingPathComponent("Pivot-\(interval == nil ? "allenamento" : "settimana")-\(PivotDate.key(first))-\(UUID().uuidString.prefix(8)).pdf")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         return url
     }
