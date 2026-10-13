@@ -1,6 +1,67 @@
 import XCTest
 
 final class PivotInteractionTests: XCTestCase {
+    func testFinishFromBottomAutomaticallyOpensPDFAndKeepsEndOnReopen() {
+        verifyFinalization(reportFailure: false)
+    }
+    func testPDFWriteFailureKeepsWorkoutAndAllowsRetry() {
+        verifyFinalization(reportFailure: true)
+    }
+    private func verifyFinalization(reportFailure: Bool) {
+        continueAfterFailure = false
+        addUIInterruptionMonitor(withDescription: "Notifiche") { alert in
+            for title in ["Allow", "Consenti"] where alert.buttons[title].exists { alert.buttons[title].tap(); return true }
+            return false
+        }
+        let app = XCUIApplication()
+        app.launchArguments = ["--interaction-test", "--recovery-test", "--finalization-test"] + (reportFailure ? ["--report-failure-test"] : [])
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 15)); app.tabBars.buttons["Palestra"].tap()
+        let fixture = app.buttons["recovery-fixture"]
+        for _ in 0..<15 { if fixture.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(fixture.isHittable); fixture.tap()
+        XCTAssertTrue(app.staticTexts["Recupero pronto"].waitForExistence(timeout: 5))
+        let url = URL(string: "pivot://workout/11111111-1111-4111-8111-111111111111?set=22222222-2222-4222-8222-222222222222")!
+        app.open(url)
+        let done = app.buttons["set-done-recovery-8-0"]
+        XCTAssertTrue(done.waitForExistence(timeout: 8)); done.tap()
+        let permission = app.alerts.firstMatch
+        if permission.waitForExistence(timeout: 2) {
+            for title in ["Allow", "Consenti"] where permission.buttons[title].exists { permission.buttons[title].tap(); break }
+        }
+        XCTAssertTrue(app.staticTexts["workout-rest-countdown"].exists)
+        let finish = app.buttons["finish-workout"]
+        for _ in 0..<8 { if finish.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(finish.isHittable); finish.tap()
+        if reportFailure {
+            let warning = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Allenamento salvato, ma il PDF non è stato creato:")).firstMatch
+            XCTAssertTrue(warning.waitForExistence(timeout: 8), app.debugDescription)
+            XCTAssertFalse(app.navigationBars["Report per il PT"].exists)
+            XCTAssertFalse(app.staticTexts["workout-rest-countdown"].exists)
+            XCTAssertTrue(finish.label.contains("Salva modifiche")); finish.tap()
+        }
+        XCTAssertTrue(app.navigationBars["Report per il PT"].waitForExistence(timeout: 8))
+        let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-auto-final-pdf"; image.lifetime = .keepAlways; add(image)
+        app.buttons["Chiudi"].tap()
+        XCTAssertFalse(app.staticTexts["workout-rest-countdown"].exists)
+        let verify = app.buttons["verify-final-report"]
+        for _ in 0..<8 { if verify.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(verify.isHittable); verify.tap()
+        let report = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "PDF finale verificato · fine ")).firstMatch
+        XCTAssertTrue(report.waitForExistence(timeout: 8)); let originalEnd = report.label
+        app.launchArguments.removeAll { $0 == "--report-failure-test" }
+        app.terminate(); app.open(url)
+        XCTAssertTrue(app.navigationBars["Allenamento"].waitForExistence(timeout: 15))
+        for _ in 0..<15 { if verify.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(verify.isHittable); verify.tap()
+        XCTAssertTrue(report.waitForExistence(timeout: 8)); XCTAssertEqual(report.label, originalEnd)
+        for _ in 0..<5 { if finish.isHittable { break }; app.swipeDown() }
+        XCTAssertTrue(finish.isHittable); finish.tap()
+        XCTAssertTrue(app.navigationBars["Report per il PT"].waitForExistence(timeout: 8))
+        app.buttons["Chiudi"].tap()
+        for _ in 0..<5 { if verify.isHittable { break }; app.swipeUp() }
+        verify.tap(); XCTAssertTrue(report.waitForExistence(timeout: 8)); XCTAssertEqual(report.label, originalEnd)
+    }
     func testLiveActivityLayoutKeepsLargeButtonsWithinSystemHeight() {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--preview", "--screen=workout-widget"]; app.launch()
@@ -561,9 +622,12 @@ final class PivotInteractionTests: XCTestCase {
         if permission.waitForExistence(timeout: 3) {
             for title in ["Allow", "Consenti"] where permission.buttons[title].exists { permission.buttons[title].tap(); break }
         }
-        let finish = app.buttons["Termina allenamento"]
+        let finish = app.buttons["finish-workout-top"]
         for _ in 0..<8 { if finish.isHittable { break }; app.swipeDown() }
         finish.tap()
+        XCTAssertTrue(app.navigationBars["Report per il PT"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["Condividi PDF"].exists)
+        app.buttons["Chiudi"].tap()
         XCTAssertTrue(app.staticTexts["Allenamento terminato"].waitForExistence(timeout: 4))
         app.terminate(); app.launch(); app.tabBars.buttons["Palestra"].tap()
         let reopened = app.buttons["workout-day-test-a"]

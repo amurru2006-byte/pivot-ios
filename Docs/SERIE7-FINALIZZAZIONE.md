@@ -123,7 +123,19 @@ Esito consigliato:
 - Imposta l'ora di fine, chiude il recupero e la Live Activity, salva, ricalcola risultati e genera il PDF.
 - Il PDF resta conservato nello storico Pivot e viene aperto subito in anteprima, da cui condividerlo o salvarlo in File.
 
-Decisione aperta: confermare se l'anteprima automatica con copia interna soddisfa “esporta automaticamente”, oppure se scegliere una cartella File permanente per i salvataggi successivi.
+Decisione applicata il 13 ottobre, nella libertà operativa concessa dall'utente: PDF conservato in Pivot e anteprima automatica con “Condividi PDF”. Nessuna scelta di cartella obbligatoria. Una cartella File permanente resta un'eventuale preferenza futura, non un blocco per concludere l'allenamento.
+
+Quarto blocco implementato, verifica completa da concludere:
+
+- “Termina e salva allenamento” in alto e in fondo usa lo stesso flusso; rimossi il salvataggio manuale ambiguo e l'esportazione finale separata;
+- prepara una copia con fine valida, conserva un'eventuale fine inserita manualmente, chiude il recupero e salva senza inventare serie fatte/non svolte;
+- ferma Live Activity e avvisi del recupero, attende il salvataggio su disco e aggiorna l'occorrenza collegata nel Calendario;
+- genera il PDF dai dati salvati, lo conserva in Application Support/TrainingReports con identità UUID stabile e apre subito l'anteprima;
+- “Salva modifiche e apri PDF” aggiorna un report esistente senza posticipare la fine né creare doppioni; i report derivati sono rigenerabili dalle sessioni ripristinate da backup;
+- se il salvataggio su disco fallisce, il PDF non viene presentato come concluso; se fallisce solo il PDF o il Calendario, la sessione salvata resta conservata e il problema è esplicito;
+- sei test Core nuovi e due flussi UI: chiusura dal fondo, anteprima, persistenza/fine invariata, errore PDF sintetico e riprova. La fixture verifica file persistente, identità stabile e uso della sessione salvata invece di una vista obsoleta.
+
+La grafica del report resta invariata; il collaudo conserva anche un PDF finale sintetico per la verifica visiva. Nessun dato Salute/profilo forza viene aggiunto all'esportazione.
 
 ## Cronologia delle giornate della scheda
 

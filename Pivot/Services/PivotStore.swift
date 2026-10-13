@@ -18,6 +18,9 @@ final class PivotStore: ObservableObject {
     private let directory: URL
     private let file: URL
     private let documentsDirectory: URL
+    #if DEBUG && targetEnvironment(simulator)
+    private var reportFailureInjected = false
+    #endif
     private let persistence: FilePersistence
     private lazy var writer = CoalescingWriter<AppData>(write: { [persistence, diagnostics] snapshot in
         let started = ProcessInfo.processInfo.systemUptime
@@ -345,7 +348,19 @@ final class PivotStore: ObservableObject {
     func flushWorkoutChanges() async -> Bool { await writer.flush() }
 
     func trainingExportURL(_ session: TrainingSession) async throws -> URL {
-        try TrainingReportPDF.write(sessions: [session], library: data.training ?? TrainingLibrary(), title: "Diario allenamento")
+        guard !locked, !isRestoring else { throw BackupError.invalidData }
+        let library = data.training ?? TrainingLibrary()
+        guard let saved = library.sessions.first(where: { $0.id == session.id }), saved.end != nil else { throw TrainingReportPDF.ExportError.unfinished }
+        #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--report-failure-test"), !reportFailureInjected {
+            reportFailureInjected = true
+            throw CocoaError(.fileWriteOutOfSpace)
+        }
+        #endif
+        // Reports are derived from the saved session, not a stale view copy.
+        // They stay on disk across launches and can be regenerated from backup.
+        let destination = TrainingReportFiles.url(for: saved.id, directory: directory.appendingPathComponent("TrainingReports", isDirectory: true))
+        return try TrainingReportPDF.write(sessions: [saved], library: library, title: "Diario allenamento", destination: destination)
     }
     func trainingWeekExportURL(containing date: Date) async throws -> URL {
         let library = data.training ?? TrainingLibrary()

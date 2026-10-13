@@ -78,6 +78,7 @@ enum WorkoutRuntime {
         let generation = (restGeneration[session.id] ?? 0) + 1; restGeneration[session.id] = generation
         let center = UNUserNotificationCenter.current(), key = "workout-rest-" + session.id.uuidString
         center.removePendingNotificationRequests(withIdentifiers: [key])
+        if session.end != nil || session.rest == nil { center.removeDeliveredNotifications(withIdentifiers: [key]) }
         guard session.end == nil, let rest = session.rest, let deadline = rest.deadline, deadline > Date() else { return }
         var settings = await center.notificationSettings()
         if settings.authorizationStatus == .notDetermined, UIApplication.shared.applicationState == .active {
