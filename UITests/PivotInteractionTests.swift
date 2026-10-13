@@ -217,8 +217,12 @@ final class PivotInteractionTests: XCTestCase {
         XCTAssertTrue(done.waitForExistence(timeout: 8)); done.tap()
         let close = app.buttons["close-workout-achievement"]
         XCTAssertTrue(close.waitForExistence(timeout: 3), app.debugDescription); close.tap() // PR first, then rank.
-        XCTAssertTrue(app.staticTexts["Nuovo rank!"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["Patto col ferro"].exists)
+        // Inspect both exact texts in one snapshot. On the slower Intel
+        // simulator, two separate queries consumed the real 4.5-second card
+        // lifetime even though the recording showed the correct rank.
+        let rankTexts = app.staticTexts.matching(NSPredicate(format: "label IN %@", ["Nuovo rank!", "Patto col ferro"]))
+        let rankVisible = XCTNSPredicateExpectation(predicate: NSPredicate(format: "count == 2"), object: rankTexts)
+        XCTAssertEqual(XCTWaiter.wait(for: [rankVisible], timeout: 8), .completed)
         let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-rank-patto-col-ferro"; image.lifetime = .keepAlways; add(image)
         XCTAssertTrue(close.waitForNonExistence(timeout: 8)) // Real automatic dismissal.
         app.terminate(); app.open(url)
@@ -415,8 +419,13 @@ final class PivotInteractionTests: XCTestCase {
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--report-test"]; app.launch()
         XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 15)); app.tabBars.buttons["Palestra"].tap()
         let button = app.buttons["report-fixture"]
-        for _ in 0..<15 { if button.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(button.isHittable); button.tap()
+        for _ in 0..<40 {
+            if button.isHittable { break }
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+            let above = button.exists && button.frame.maxY > 0 && button.frame.minY < app.navigationBars.firstMatch.frame.maxY
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: above ? 150 : -150)))
+        }
+        XCTAssertTrue(button.isHittable, app.debugDescription); button.tap()
         let message = app.staticTexts["training-message"]
         XCTAssertTrue(message.waitForExistence(timeout: 10))
         XCTAssertTrue(message.label.contains("PDF verificato:"), message.label)
