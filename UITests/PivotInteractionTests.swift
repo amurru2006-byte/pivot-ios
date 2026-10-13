@@ -20,9 +20,10 @@ final class PivotInteractionTests: XCTestCase {
         let day = app.buttons["workout-day-history-squat-day"]
         for _ in 0..<15 { if day.isHittable { break }; app.swipeDown() }
         XCTAssertTrue(day.waitForExistence(timeout: 8)); XCTAssertTrue(day.isHittable); day.tap()
+        XCTAssertTrue(app.navigationBars["Allenamento"].waitForExistence(timeout: 5), app.debugDescription)
         let history = app.buttons["workout-day-history"]
-        XCTAssertTrue(history.waitForExistence(timeout: 5)); history.tap()
-        XCTAssertTrue(app.navigationBars["Cronologia"].waitForExistence(timeout: 5))
+        XCTAssertTrue(history.waitForExistence(timeout: 5)); XCTAssertTrue(history.isHittable, app.debugDescription); history.tap()
+        XCTAssertTrue(app.navigationBars["Cronologia"].waitForExistence(timeout: 5), app.debugDescription)
         let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-history-list"; image.lifetime = .keepAlways; add(image)
         let hierarchy = XCTAttachment(string: app.debugDescription); hierarchy.name = "serie7-history-accessibility"; hierarchy.lifetime = .keepAlways; add(hierarchy)
     }

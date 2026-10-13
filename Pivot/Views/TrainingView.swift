@@ -213,6 +213,8 @@ struct TrainingView: View {
                        let day = plan.payload.days.first(where: { $0.id == dayID }) {
                         TrainingSessionView(plan: plan, day: day, library: library, event: event)
                     }
+                case .history(let planID, let dayID, let dayName):
+                    TrainingDayHistoryView(planID: planID, dayID: dayID, dayName: dayName)
                 }
             }
             .sheet(isPresented: $showingReport) { if let reportURL { TrainingReportPreview(url: reportURL) } }
@@ -434,9 +436,7 @@ struct TrainingSessionView: View {
     private var sessionHeader: some View {
         PivotCard(tint: PivotTheme.accent) {
             Text(!hasStarted ? "Pronto per iniziare" : session.end == nil ? "Allenamento in corso" : "Allenamento terminato").font(.headline)
-            NavigationLink {
-                TrainingDayHistoryView(planID: session.planID, dayID: session.dayID, dayName: session.dayName)
-            } label: {
+            NavigationLink(value: WorkoutRoute.history(planID: session.planID, dayID: session.dayID, dayName: session.dayName)) {
                 Label("Cronologia di \(session.dayName)", systemImage: "clock.arrow.circlepath")
             }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("workout-day-history")
             if historicalEdit {

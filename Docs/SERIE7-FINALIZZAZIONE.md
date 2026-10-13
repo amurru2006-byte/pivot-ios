@@ -2,6 +2,8 @@
 
 Stato aggiornato il 13 ottobre 2026. La V8 e ogni interpretazione AI restano fuori da questo lavoro.
 
+Ultimo controllo: CI segnalazioni 38444835357 conclusa con 255 Core passati, Release e packaging riusciti, ma tre errori su 26 UI. Tastiera del modulo segnalazioni resa chiudibile con Fine; apertura cronologia trasferita a una route stabile nello stesso NavigationStack degli allenamenti. Nuovo collaudo della riparazione ancora necessario. Fasi preparate localmente, ma non aggiunte al ramo finché la riparazione delle segnalazioni non è verificata. Il precedente candidato 89c127fd rimane l'ultimo verificato interamente sul simulatore.
+
 ## Regola di prodotto
 
 Per ogni funzione chiedere:
@@ -180,6 +182,8 @@ Chiarimento successivo: ritirata la risposta "solo avviso". Richiesti contesto e
 - Nessuna interpretazione clinica o AI in Serie 7.
 
 Primo sottoblocco implementato: segnalazioni dal menu ⋯, contesto zona/lato/data e note, collegamenti espliciti a più movimenti, avvisi persistenti, sezione generale e storico riattivabile. Non cambia da solo i carichi né inventa soglie leg extension/squat. Dettagli e confini in `Docs/PROGRESSIONE-SERIE7.md`; verifica dei nuovi 13 Core e due UI ancora da concludere. Fasi e lettura della progressione restano il sottoblocco successivo.
+
+Secondo sottoblocco fasi preparato localmente: contesto facoltativo di scheda/giornata, copia nella sessione, correzione della sola sessione, visualizzazione nello storico e revisioni, fase registrata nei PDF/testo PT senza segnalazioni private. Nessuna percentuale di carico inventata né fase retroattiva sui vecchi backup. Quindici Core e un UI aggiunti, più controlli della fixture PDF; nuovo rendering da controllare. Aggiornamento del ramo/collaudo dopo l'esito delle segnalazioni. Rep range e lettura della progressione ancora da fare.
 
 ## Rank e verifica
 

@@ -1,6 +1,8 @@
 # Progressione e problematiche fisiche — confini del prossimo blocco
 
-Decisioni dirette del 13 ottobre 2026. Primo sottoblocco segnalazioni implementato; verifica macOS/simulatore da concludere. Fasi e lettura della progressione ancora da implementare.
+Decisioni dirette del 13 ottobre 2026. Segnalazioni implementate, verifica completa ancora in corso. Sottoblocco fasi preparato localmente con test; non ancora trasferito al collaudo. Lettura della progressione/rep range ancora da implementare.
+
+Ultimo esito segnalazioni: CI 38444835357 con 255 Core passati, app e packaging compilati; 23 dei 26 UI passati. Riparazione in preparazione per tastiera del modulo (Fine esplicito e controllo chiusura) e apertura della cronologia (route stabile). Prima confermare questa riparazione isolata, poi trasferire le fasi; nessun esito UI positivo ancora dichiarato. Dettagli in SERIE7-VERIFICA.md.
 
 ## Risultato utile in Serie 7
 
@@ -33,6 +35,17 @@ L'AI potrà aiutare a spiegare lo storico, raccogliere il contesto e presentare 
 - “Non più presente” conserva lo storico e rimuove gli avvisi; riattivazione possibile. Non equivale a un via libera clinico. Nessun archivio automatico in base al tempo trascorso.
 - Persistenza nello stesso archivio/backup personale protetto; campo opzionale per i vecchi backup. Escluso dai report PT e dal contesto inviato automaticamente al Coach. Un errore di disco resta esplicito con possibilità di riprova, e un editor obsoleto non sovrascrive una versione più recente.
 - Aggiunti 13 test Core e due flussi UI sintetici per collegamenti, compatibilità, validazione, conflitti, isolamento dagli allenamenti, annullamento, storico, riattivazione e persistenza. Esito ancora da verificare, non una funzione già distribuita sul telefono.
+
+## Fasi: secondo sottoblocco preparato localmente
+
+- “Fase della scheda” nell'editor: non dichiarata, carico, scarico, recupero/rientro. Ogni giornata può usare quella della scheda o una propria fase esplicita.
+- Ogni nuova sessione conserva una copia del contesto della giornata/scheda. Modificare o ripristinare la scheda non riscrive le sessioni esistenti, anche se ancora in corso.
+- “Fase di questo allenamento” permette una correzione esplicita della singola sessione, con autosalvataggio dopo l'avvio; prima dell'avvio non crea un allenamento soltanto per aver scelto una fase.
+- Fase visibile nella scheda/giornata, nella cronologia della giornata, nelle versioni della scheda, nella cronologia recente dell'esercizio e nei report PT PDF/testo. Il report usa la fase salvata nella sessione, non quella della scheda attuale; non include automaticamente le segnalazioni fisiche. Le metriche restano quelle effettivamente registrate, non corrette per percentuali inventate.
+- Vecchie sessioni: fase non dichiarata, senza inferire il passato dalla scheda attuale. Campi opzionali compatibili con backup e payload delle schede già esistenti.
+- Non modifica carichi, serie, ripetizioni, stato dolore, PR/rank o Calendario. I valori precompilati restano l'ultimo dato registrato, non una nuova prescrizione di scarico o rientro. Il nome di una fase non autorizza un aumento né rimuove gli avvisi.
+- Quindici nuovi test Core e un flusso UI sintetico, con screenshot editor/storico: eredità/override, snapshot, backup legacy, revisioni/ripristino, assenza di modifica dei carichi, finalizzazione, sostituzione, avvisi indipendenti, conservazione delle metriche ed esportazione del solo contesto dichiarato. Il flusso UI prova cambi manuali prima/dopo l'avvio, senza un avvio implicito. Fixture PDF ampliata per due fasi differenti e protezione delle segnalazioni private; stress di paginazione invariato con le tre fasi. Ancora da compilare/eseguire e ispezionare visivamente su macOS.
+- Non trasferire il blocco mentre il collaudo segnalazioni è in corso: un nuovo push sul ramo annullerebbe la verifica precedente. Dopo il suo esito, trasferire e collaudare separatamente le fasi.
 
 ## Riferimenti e privacy
 

@@ -2,6 +2,7 @@ import Foundation
 enum WorkoutRoute: Hashable {
     case session(WorkoutDeepLink)
     case day(planID: UUID, dayID: String)
+    case history(planID: UUID, dayID: String?, dayName: String)
 }
 struct WorkoutDeepLink: Identifiable, Hashable {
     var id: UUID
