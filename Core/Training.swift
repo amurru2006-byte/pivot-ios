@@ -240,6 +240,8 @@ struct TrainingLibrary: Codable {
     var sessions: [TrainingSession] = []
     var tips: [String: String] = [:]
     var achievements: [TrainingAchievement]? = nil
+    // Optional for compatibility; health reports are separate from workout logs.
+    var concerns: [TrainingConcern]? = nil
     var activePlan: TrainingPlan? { plans.first { $0.id == activePlanID } }
     func previous(exerciseID: String, before: Date, excluding sessionID: UUID? = nil) -> TrainingExerciseLog? {
         sessions.filter { $0.id != sessionID && $0.end != nil && $0.start <= before }
@@ -258,6 +260,10 @@ struct TrainingLibrary: Codable {
         return TrainingSession(planID: plan.id, dayName: day.name, calendarEventID: eventID, start: now, exercises: logs, dayID: day.id)
     }
     func validate() throws {
+        if let concerns {
+            guard concerns.count <= 500, Set(concerns.map(\.id)).count == concerns.count,
+                  concerns.allSatisfy(\.isValid) else { throw TrainingConcerns.ConcernError.invalid }
+        }
         guard plans.count <= 6, Set(plans.map(\.id)).count == plans.count,
               activePlanID == nil || plans.contains(where: { $0.id == activePlanID }),
               Set(sessions.map(\.id)).count == sessions.count else { throw TrainingError.invalidPlan }

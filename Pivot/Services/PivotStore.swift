@@ -54,6 +54,7 @@ final class PivotStore: ObservableObject {
         if ProcessInfo.processInfo.arguments.contains("--training-edit-test") { storageName = "PivotTrainingEditTests" }
         if ProcessInfo.processInfo.arguments.contains("--workout-controls-test") { storageName = "PivotWorkoutControlsTests" }
         if ProcessInfo.processInfo.arguments.contains("--training-history-test") { storageName = "PivotTrainingHistoryTests" }
+        if ProcessInfo.processInfo.arguments.contains("--training-concern-test") { storageName = "PivotTrainingConcernTests" }
         #endif
         directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(storageName, isDirectory: true)
         file = directory.appendingPathComponent("pivot-data.json")
@@ -354,6 +355,13 @@ final class PivotStore: ObservableObject {
     }
 
     func flushWorkoutChanges() async -> Bool { await writer.flush() }
+
+    func saveTrainingConcern(_ concern: TrainingConcern, expected: TrainingConcern?) async throws -> (concern: TrainingConcern, persisted: Bool) {
+        guard !locked, !isLoading, !isRestoring else { throw TrainingConcerns.ConcernError.unavailable }
+        let saved = try TrainingConcerns.saving(concern, expected: expected, in: data.training ?? .init())
+        guard change({ $0.training = saved.library }) else { throw TrainingConcerns.ConcernError.unavailable }
+        return (saved.concern, await flushWorkoutChanges())
+    }
 
     func deleteTraining(_ expected: TrainingSession) async throws -> String {
         guard !locked, !isLoading, !isRestoring else { throw TrainingHistory.HistoryError.unavailable }
