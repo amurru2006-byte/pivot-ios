@@ -12,12 +12,13 @@ struct PivotWorkoutWidget: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) { Image(systemName: "dumbbell.fill").foregroundStyle(.mint) }
-                DynamicIslandExpandedRegion(.trailing) { Text("Serie \(context.state.number)").font(.caption) }
+                DynamicIslandExpandedRegion(.trailing) { Text(context.state.kind == "Warm-up" ? "W\(context.state.number)" : "Serie \(context.state.workingNumber ?? context.state.number)").font(.caption) }
                 DynamicIslandExpandedRegion(.bottom) { WorkoutLiveView(sessionID: context.attributes.sessionID, state: context.state) }
             } compactLeading: { Image(systemName: "dumbbell.fill") }
               compactTrailing: {
                 if let end = context.state.deadline { Text(timerInterval: Date()...max(Date(), end), countsDown: true).monospacedDigit().frame(width: 48) }
-                else { Text("S\(context.state.number)") }
+                else if let seconds = context.state.pausedSeconds { Text("Ⅱ \(seconds)s").monospacedDigit().frame(width: 58) }
+                else { Text(context.state.isDone ? "✓" : context.state.kind == "Warm-up" ? "W\(context.state.number)" : "S\(context.state.workingNumber ?? context.state.number)") }
             } minimal: { Image(systemName: "dumbbell.fill") }
             .widgetURL(workoutURL(context))
         }

@@ -22,7 +22,10 @@ enum WorkoutRuntime {
         if ["pause", "reset", "next"].contains(action) {
             if action == "pause" { session.rest?.togglePause() }
             if action == "reset" { session.rest?.resetCountdown() }
-            if action == "next" { finishRest(&session) }
+            if action == "next" {
+                focusedSet[session.id] = TrainingWorkoutContext.next(in: session, focusedSetID: focusedSet[session.id])?.set.id
+                finishRest(&session)
+            }
         } else {
             guard let ei = session.exercises.firstIndex(where: { $0.sets.contains { $0.id.uuidString == setID } }),
                   let si = session.exercises[ei].sets.firstIndex(where: { $0.id.uuidString == setID }),
@@ -68,11 +71,7 @@ enum WorkoutRuntime {
         await update(session)
     }
     static func finishRest(_ session: inout TrainingSession) {
-        guard let rest = session.rest else { return }
-        if let ei = session.exercises.firstIndex(where: { $0.id == rest.exerciseID }), let si = session.exercises[ei].sets.firstIndex(where: { $0.id == rest.setID }) {
-            session.exercises[ei].sets[si].actualRestSeconds = rest.elapsed(at: Date())
-        }
-        session.rest = nil
+        TrainingCompletion.finishRest(in: &session)
     }
     static func scheduleRest(_ session: TrainingSession) async {
         if let latest = store.data.training?.sessions.first(where: { $0.id == session.id }), latest.updatedAt > session.updatedAt { return }
@@ -95,28 +94,26 @@ enum WorkoutRuntime {
         try? await center.add(.init(identifier: key, content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: max(1, deadline.timeIntervalSinceNow), repeats: false)))
     }
     static func update(_ session: TrainingSession, start: Bool = false) async {
+        if start { status = "" }
         if let latest = store.data.training?.sessions.first(where: { $0.id == session.id }), latest.updatedAt > session.updatedAt { return }
         let activities = Activity<WorkoutAttributes>.activities.filter { $0.attributes.sessionID == session.id.uuidString }
         guard session.end == nil else {
             for activity in activities { await activity.end(nil, dismissalPolicy: .immediate) }
             await scheduleRest(session); return
         }
-        let logs = session.exercises
-        let candidates = logs.filter { $0.skipped != true }.flatMap { log in log.sets.filter { !$0.isResolved }.map { (log.exercise, $0) } }
-        let fallback = logs.reversed().compactMap { log in log.sets.last.map { (log.exercise, $0) } }.first
-        let current = candidates.first { $0.1.id == focusedSet[session.id] } ?? candidates.first ?? fallback
-        guard let (exercise, set) = current else {
+        let next = TrainingWorkoutContext.next(in: session, focusedSetID: focusedSet[session.id])
+        let origin = TrainingWorkoutContext.restOrigin(in: session)
+        guard let current = next ?? origin ?? TrainingWorkoutContext.last(in: session) else {
             for activity in activities { await activity.end(nil, dismissalPolicy: .immediate) }; return
         }
+        let exercise = current.exercise, set = current.set
         let state = WorkoutAttributes.ContentState(exercise: exercise.name, setID: set.id.uuidString, number: set.number, kind: set.resolvedKind.label,
             kg: set.kg, reps: set.reps, seconds: set.durationSeconds, left: set.leftSeconds, right: set.rightSeconds,
             isometric: exercise.usesDuration, weighted: exercise.weightedHold == true, separateSides: exercise.separateSides == true,
             deadline: session.rest?.deadline, pausedSeconds: session.rest?.remainingWhenPaused,
-            status: candidates.isEmpty ? "Serie registrate" : status, isDone: candidates.isEmpty,
+            status: next == nil ? "Serie registrate" : status, isDone: next == nil,
             targetSets: exercise.sets, targetReps: exercise.reps,
-            workingNumber: logs.first(where: { $0.id == exercise.id }).map { log in
-                log.sets.prefix { $0.id != set.id }.filter { $0.resolvedKind != .warmup }.count + 1
-            })
+            workingNumber: current.workingNumber, restExercise: origin?.exercise.name)
         let content = ActivityContent(state: state, staleDate: nil)
         if activities.isEmpty && start {
             guard ActivityAuthorizationInfo().areActivitiesEnabled else { status = "Abilita Attività live nelle impostazioni di iOS"; return }
