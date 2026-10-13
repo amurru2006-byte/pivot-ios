@@ -118,7 +118,9 @@ final class PivotInteractionTests: XCTestCase {
         XCTAssertTrue(importer.isHittable); importer.tap()
         XCTAssertTrue(app.buttons["Usa questa scheda"].waitForExistence(timeout: 8)); app.buttons["Usa questa scheda"].tap()
         let gallery = app.buttons["exercise-statistics-test-squat"]
-        for _ in 0..<10 { if gallery.isHittable { break }; app.swipeUp() }
+        // The import control is below the gallery, so return toward the top
+        // after dismissing the confirmation sheet.
+        for _ in 0..<10 { if gallery.isHittable { break }; app.swipeDown() }
         XCTAssertTrue(gallery.waitForExistence(timeout: 5))
         let photos = XCTAttachment(screenshot: app.screenshot())
         photos.name = "training-restored-073-photos"; photos.lifetime = .keepAlways; add(photos)
