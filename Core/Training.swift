@@ -28,12 +28,14 @@ struct TrainingDay: Codable, Identifiable, Equatable {
     var id: String
     var name: String
     var exercises: [TrainingExercise]
+    var phase: TrainingPhase? = nil
 }
 
 struct TrainingPlanPayload: Codable, Equatable {
     var formatVersion: Int
     var name: String
     var days: [TrainingDay]
+    var phase: TrainingPhase? = nil
     func validate() throws {
         guard formatVersion == 1, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               (1...14).contains(days.count), Set(days.map(\.id)).count == days.count else { throw TrainingError.invalidPlan }
@@ -232,6 +234,8 @@ struct TrainingSession: Codable, Identifiable, Equatable {
     var updatedAt = Date()
     var dayID: String? = nil
     var rest: TrainingRest? = nil
+    // Snapshot of declared context at creation; never inferred retroactively.
+    var phase: TrainingPhase? = nil
 }
 
 struct TrainingLibrary: Codable {
@@ -257,7 +261,8 @@ struct TrainingLibrary: Codable {
             resolved.weightedHold = exercise.weightedHold ?? last?.exercise.weightedHold
             return TrainingExerciseLog(exercise: resolved, sets: sets)
         }
-        return TrainingSession(planID: plan.id, dayName: day.name, calendarEventID: eventID, start: now, exercises: logs, dayID: day.id)
+        return TrainingSession(planID: plan.id, dayName: day.name, calendarEventID: eventID, start: now, exercises: logs, dayID: day.id,
+                               phase: TrainingPhase.resolved(plan: plan.payload, day: day))
     }
     func validate() throws {
         if let concerns {
@@ -339,6 +344,7 @@ enum TrainingPDFFormat {
 enum TrainingExport {
     static func text(_ session: TrainingSession, library: TrainingLibrary) -> String {
         var rows = ["PIVOT — \(session.dayName)", "Data: \(PivotDate.key(session.start))", "Inizio: \(PivotDate.time(session.start))", "Fine: \(session.end.map(PivotDate.time) ?? "in corso")"]
+        rows.append("Fase dichiarata: \(session.phase?.label ?? "non dichiarata")")
         for log in session.exercises {
             rows.append("\n\(log.exercise.name) · programma \(log.exercise.sets) × \(log.exercise.reps)")
             if let last = library.previous(exerciseID: log.id, before: session.start, excluding: session.id) {

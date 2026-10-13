@@ -2,7 +2,7 @@
 
 Stato aggiornato il 13 ottobre 2026. La V8 e ogni interpretazione AI restano fuori da questo lavoro.
 
-Ultimo controllo: CI segnalazioni 38444835357 conclusa con 255 Core passati, Release e packaging riusciti, ma tre errori su 26 UI. Tastiera del modulo segnalazioni resa chiudibile con Fine; apertura cronologia trasferita a una route stabile nello stesso NavigationStack degli allenamenti. Nuovo collaudo della riparazione ancora necessario. Fasi preparate localmente, ma non aggiunte al ramo finché la riparazione delle segnalazioni non è verificata. Il precedente candidato 89c127fd rimane l'ultimo verificato interamente sul simulatore.
+Ultimo controllo: CI 38453108141 conclusa con 255 Core passati, Release e packaging riusciti, 24 dei 26 UI passati. Tastiera e cronologia ora passate; restano due flussi segnalazioni perché il tocco sulla riga etichettata come switch non ha attivato il secondo collegamento (confermato nelle schermate). Collegamenti trasformati in azioni sull'intera riga con stato esplicito e asserzione prima del salvataggio; controllo dello stato non più presente mira al comando nativo dello switch e verifica la transizione. Fasi e progressione già preparate, rank originali 1–7 integrati localmente: prossimo collaudo combinato con tutta la regressione, senza altri rinvii o riduzione delle asserzioni. Ancora nessun nuovo candidato verificato; 89c127fd resta l'ultimo interamente passato sul simulatore.
 
 ## Regola di prodotto
 
@@ -183,7 +183,9 @@ Chiarimento successivo: ritirata la risposta "solo avviso". Richiesti contesto e
 
 Primo sottoblocco implementato: segnalazioni dal menu ⋯, contesto zona/lato/data e note, collegamenti espliciti a più movimenti, avvisi persistenti, sezione generale e storico riattivabile. Non cambia da solo i carichi né inventa soglie leg extension/squat. Dettagli e confini in `Docs/PROGRESSIONE-SERIE7.md`; verifica dei nuovi 13 Core e due UI ancora da concludere. Fasi e lettura della progressione restano il sottoblocco successivo.
 
-Secondo sottoblocco fasi preparato localmente: contesto facoltativo di scheda/giornata, copia nella sessione, correzione della sola sessione, visualizzazione nello storico e revisioni, fase registrata nei PDF/testo PT senza segnalazioni private. Nessuna percentuale di carico inventata né fase retroattiva sui vecchi backup. Quindici Core e un UI aggiunti, più controlli della fixture PDF; nuovo rendering da controllare. Aggiornamento del ramo/collaudo dopo l'esito delle segnalazioni. Rep range e lettura della progressione ancora da fare.
+Secondo sottoblocco fasi preparato localmente: contesto facoltativo di scheda/giornata, copia nella sessione, correzione della sola sessione, visualizzazione nello storico e revisioni, fase registrata nei PDF/testo PT senza segnalazioni private. Nessuna percentuale di carico inventata né fase retroattiva sui vecchi backup. Quindici Core e un UI aggiunti, più controlli della fixture PDF; nuovo rendering da controllare. Aggiornamento del ramo/collaudo dopo l'esito delle segnalazioni.
+
+Terzo sottoblocco lettura ripetizioni preparato localmente: “Obiettivo e andamento” nella schermata progressi, limite minimo/superiore distinto, serie prescritte effettivamente confermate, confronto delle ripetizioni solo fra sessioni concluse compatibili. Target originale e fase della sessione conservati, non dedotti dalla scheda attuale; avvisi accessibili anche con risultato numerico raggiunto. Nessuno stallo o aumento automatico dedotto. Grafici filtrati per variante; vecchi chiamanti ID-only invariati. Venticinque Core e un UI sintetico aggiunti; verifica ancora da eseguire dopo le fasi, senza interrompere la CI di riparazione 38453108141. Dettagli in PROGRESSIONE-SERIE7.md.
 
 ## Rank e verifica
 

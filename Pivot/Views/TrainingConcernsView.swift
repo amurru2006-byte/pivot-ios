@@ -102,10 +102,22 @@ struct TrainingConcernEditor: View {
                 Section {
                     DisclosureGroup("Esercizi collegati") {
                         ForEach(candidates) { exercise in
-                            Toggle(exercise.name, isOn: Binding(get: { concern.exercises.contains { $0.id == exercise.id } }, set: { selected in
-                                if selected { concern.exercises.append(exercise) }
-                                else { concern.exercises.removeAll { $0.id == exercise.id } }
-                            })).accessibilityIdentifier("concern-link-\(exercise.id)")
+                            let selected = concern.exercises.contains { $0.id == exercise.id }
+                            Button {
+                                if selected { concern.exercises.removeAll { $0.id == exercise.id } }
+                                else { concern.exercises.append(exercise) }
+                            } label: {
+                                HStack {
+                                    Text(exercise.name).foregroundStyle(PivotTheme.text)
+                                    Spacer()
+                                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                                        .foregroundStyle(selected ? PivotTheme.accent : PivotTheme.muted)
+                                        .accessibilityHidden(true)
+                                }.frame(minHeight: 44).contentShape(Rectangle())
+                            }.buttonStyle(.plain)
+                                .accessibilityLabel(exercise.name)
+                                .accessibilityValue(selected ? "Collegato" : "Non collegato")
+                                .accessibilityIdentifier("concern-link-\(exercise.id)")
                         }
                     }
                     Text("Gli avvisi valgono solo per i movimenti che selezioni, incluse le varianti identiche del catalogo. Non collego esercizi automaticamente in base alla zona. Senza collegamenti, la segnalazione resta in questa sezione.")

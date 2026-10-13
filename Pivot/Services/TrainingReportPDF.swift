@@ -34,17 +34,23 @@ enum TrainingReportPDF {
             for (si, session) in sessions.enumerated() {
                 if si > 0 { page.begin() }
                 let plan = library.plans.first { $0.id == session.planID }?.payload.name ?? "Scheda registrata nel diario"
-                page.ensure(118)
-                page.text(session.dayName, size: 23, weight: .bold, color: ReportCanvas.ink)
-                page.text(plan, size: 11, weight: .medium, color: ReportCanvas.accent)
                 let done = session.exercises.flatMap(\.sets).filter(\.done).count
                 let skipped = session.exercises.reduce(0) { $0 + ($1.skipped == true ? $1.sets.count : $1.sets.filter { $0.skipped == true }.count) }
+                let phase = "Fase dichiarata: \(session.phase?.label ?? "non dichiarata")"
+                let counts = "\(session.exercises.count) esercizi · \(done) serie fatte · \(skipped) non svolte"
+                let headerHeight = page.textHeight(session.dayName, size: 23, weight: .bold)
+                    + page.textHeight(plan, size: 11, weight: .medium)
+                    + page.textHeight(phase, size: 9) + 57 + page.textHeight(counts, size: 10)
+                page.ensure(headerHeight)
+                page.text(session.dayName, size: 23, weight: .bold, color: ReportCanvas.ink)
+                page.text(plan, size: 11, weight: .medium, color: ReportCanvas.accent)
+                page.text(phase, size: 9, color: ReportCanvas.muted)
                 page.summary([
                     ("DATA", PivotDate.shortDate(session.start)),
                     ("INIZIO / FINE", "\(PivotDate.time(session.start)) / \(session.end.map(PivotDate.time) ?? "in corso")"),
                     ("DURATA TOTALE", session.end.map { ActivityTiming.duration(max(0, Int($0.timeIntervalSince(session.start)))) } ?? "in corso")
                 ])
-                page.text("\(session.exercises.count) esercizi · \(done) serie fatte · \(skipped) non svolte", size: 10, color: ReportCanvas.muted)
+                page.text(counts, size: 10, color: ReportCanvas.muted)
                 for (ei, log) in session.exercises.enumerated() {
                     let heading = "\(ei + 1). \(log.exercise.name)"
                     page.ensure(100); page.y += 8
@@ -128,6 +134,10 @@ private final class ReportCanvas {
             draw(value.1, x: x + 10, y: y + 23, size: 11, weight: .semibold, color: Self.ink)
         }
         y += 57
+    }
+    func textHeight(_ value: String, size: CGFloat, weight: UIFont.Weight = .regular, gap: CGFloat = 7) -> CGFloat {
+        let font = UIFont.systemFont(ofSize: size, weight: weight)
+        return CGFloat(wrapped(value, font: font, width: width).count) * (font.lineHeight + 3) + gap
     }
     func text(_ value: String, size: CGFloat = 10, weight: UIFont.Weight = .regular, color: UIColor = ReportCanvas.ink, gap: CGFloat = 7) {
         let font = UIFont.systemFont(ofSize: size, weight: weight)

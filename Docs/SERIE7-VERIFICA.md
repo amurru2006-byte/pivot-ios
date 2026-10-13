@@ -1,5 +1,13 @@
 # Verifica Serie 7
 
+Ultimo esito effettivo: run 38453108141 su 119b4c9, 255 Core senza fallimenti, Release/packaging riusciti; 26 UI, due fallimenti nei flussi segnalazioni, tutti i precedenti 24 passati, compresa correzione della cronologia. Fine chiude la tastiera e i collegamenti sono raggiungibili. Gli screenshot dopo il tocco del secondo switch lo mostrano ancora spento, e solo il primo movimento ha l'avviso; la verifica dati rifiuta correttamente il salvataggio con un collegamento solo. Nessuna asserzione è stata rimossa per nascondere l'errore.
+
+Riparazione successiva: collegamenti resi pulsanti a piena riga con checkmark e stato accessibile Collegato/Non collegato; test richiede entrambi collegati prima del salvataggio. Per lo switch Non più presente il test tocca il controllo sul bordo destro, non il centro dell'etichetta, e attende il nuovo valore. Fasi, progressione e rank ora nel prossimo collaudo combinato: attesi 299 Core e 28 UI, ancora non eseguiti su questa revisione. Timeout CI portato a 70 minuti per le due build e la regressione ampliata, senza saltare test.
+
+Artefatti verificati fuori dal clone in ../qa/serie7-ci/concerns-119b4c9/: logs.zip SHA256 2efabad0f4c118ff4d2745fdc8fd169ec8605108e57f0a4add4e8a360ba8e92b; previews.zip SHA256 25c6652135e69119353c37189fcff5e99e4c964877ab2d05f3e49154c0f1bb98. Nessun IPA caricato dal run fallito. Dopo il prossimo esito: ispezione di tutti i rank, segnalazioni/fasi/progressi e PDF UIKit realmente generati, integrità IPA/entitlements; poi consegna distinta dal collaudo hardware.
+
+## Evidenze cronologiche precedenti
+
 Baseline 0.7.5 preservata. Commit del primo blocco: f0922919bd80df787c94e67ec8a4f0005e423ca5. Correzione percorso artefatti: 3a70c2059a91ab1aa80a5bffbe280cd277d634bd.
 
 CI del primo blocco 37797210284: riuscita, 198 Core e 15 UI senza fallimenti.
@@ -37,3 +45,7 @@ Il terzo fallimento riguarda l'apertura della cronologia nel test correzione: il
 Artefatti recuperati in ../qa/serie7-ci/concerns-dbdfd02f: SHA256 logs.zip 2e24aef48c1ff4571a6732ae3ecee2883ad2d4a75cf2bf9a00c4fc1c5fe7270c, previews.zip 912e7bf7e6bacac06d0f849b5ad17add902d918093661f9496ebc033a7d714b4. Verifica completa ancora aperta; baseline e ultimo candidato interamente verificato invariati.
 
 Fasi preparate localmente: quindici Core per compatibilità, ereditarietà/override, snapshot, revisioni/ripristino, finalizzazione/sostituzione, conservazione di carichi e metriche, indipendenza dagli avvisi ed export del solo contesto registrato; un UI per editor, nuova sessione, cambi manuali prima/dopo l'avvio, vecchio storico, verifica sintetica dei dati e riavvio. Fixture PDF con due fasi esplicite, esclusione delle segnalazioni private e stress delle tabelle con tutte e tre le fasi. Header PDF misurato dal testo effettivo con gli stessi font/wrapping del renderer, non una riserva fissa; controllo visivo nuovo ancora necessario. Nessun nuovo test eseguito su macOS; aggiornamento del ramo dopo la CI segnalazioni per non annullarla. Controlli statici locali senza Swift/Xcode.
+
+Riparazione UI isolata sul remoto 119b4c97892bc4e9562f957e022ac5b12fbeded5, albero 91286c0e75891ddefb5bbd3febe3433260f2d67e verificato identico con indice Git locale separato. CI 38453108141 in corso: Core, Release e packaging riusciti; UI ancora da verificare nell'ultima osservazione. Non contiene fasi né nuova lettura delle ripetizioni. Preparato fasi corretto de4f61f25684ea0c9668adbd48b57e9795da2500, parent 119b4c9, albero 7efde90bf5e80d96b2f1a000cbf9ea42c0f2f0ea; NON sul ramo.
+
+Lettura ripetizioni preparata localmente dopo le fasi: 25 Core e un UI nuovi, ancora non eseguiti. Filtri su conferma, serie prescritte, target originale, variante, fase e struttura/carichi; confronto solo numerico senza aumenti inventati, avvisi indipendenti dal risultato. Grafici della schermata filtrati per la stessa variante. Fixture separata Debug/simulatore, verifica risultato/confronto e conservazione dei dati, screenshot serie7-rep-goal. Totali futuri attesi 295 Core/28 UI dopo il blocco fasi 270/27. Windows senza Swift/Xcode: solo controlli statici; nuovo collaudo da avviare dopo i blocchi precedenti, non durante il run attuale.

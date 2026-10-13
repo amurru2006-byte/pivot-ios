@@ -1,8 +1,8 @@
 # Progressione e problematiche fisiche — confini del prossimo blocco
 
-Decisioni dirette del 13 ottobre 2026. Segnalazioni implementate, verifica completa ancora in corso. Sottoblocco fasi preparato localmente con test; non ancora trasferito al collaudo. Lettura della progressione/rep range ancora da implementare.
+Decisioni dirette del 13 ottobre 2026. Segnalazioni implementate, verifica completa ancora in corso. Sottoblocco fasi preparato localmente con test; non ancora trasferito al collaudo. Lettura della progressione/rep range preparata localmente, non ancora compilata o verificata sul simulatore.
 
-Ultimo esito segnalazioni: CI 38444835357 con 255 Core passati, app e packaging compilati; 23 dei 26 UI passati. Riparazione in preparazione per tastiera del modulo (Fine esplicito e controllo chiusura) e apertura della cronologia (route stabile). Prima confermare questa riparazione isolata, poi trasferire le fasi; nessun esito UI positivo ancora dichiarato. Dettagli in SERIE7-VERIFICA.md.
+Ultimo esito segnalazioni: CI 38453108141 con 255 Core passati, app e packaging compilati; 24 dei 26 UI passati. Tastiera e cronologia passate. Nei due flussi segnalazioni la seconda selezione resta disattivata dopo il tocco sulla riga dello switch: collegamenti ora selezionabili dall'intera riga, con stato accessibile e controllo prima del salvataggio. Prossima verifica combinata con fasi, lettura ripetizioni e tutti i rank, mantenendo la regressione completa. Nessun successo anticipato dichiarato. Dettagli in SERIE7-VERIFICA.md.
 
 ## Risultato utile in Serie 7
 
@@ -47,8 +47,19 @@ L'AI potrà aiutare a spiegare lo storico, raccogliere il contesto e presentare 
 - Quindici nuovi test Core e un flusso UI sintetico, con screenshot editor/storico: eredità/override, snapshot, backup legacy, revisioni/ripristino, assenza di modifica dei carichi, finalizzazione, sostituzione, avvisi indipendenti, conservazione delle metriche ed esportazione del solo contesto dichiarato. Il flusso UI prova cambi manuali prima/dopo l'avvio, senza un avvio implicito. Fixture PDF ampliata per due fasi differenti e protezione delle segnalazioni private; stress di paginazione invariato con le tre fasi. Ancora da compilare/eseguire e ispezionare visivamente su macOS.
 - Non trasferire il blocco mentre il collaudo segnalazioni è in corso: un nuovo push sul ramo annullerebbe la verifica precedente. Dopo il suo esito, trasferire e collaudare separatamente le fasi.
 
+## Lettura delle ripetizioni: terzo sottoblocco preparato localmente
+
+- Riepilogo “Obiettivo e andamento” in cima a Cronologia e progressi dell'esercizio, prima della foto e delle indicazioni tecniche. Esito, serie prescritte confermate, limite superiore raggiunto e fase registrata; dettagli del calcolo espandibili. Se la prescrizione attuale è cambiata, il risultato esplicita il target originale della sessione.
+- Interpreta soltanto numeri e intervalli numerici espliciti, ad esempio 6 o 6–8. AMRAP, piramidi, tempo, istruzioni per lato, isometrie e strutture back-off/drop set restano da leggere con il PT, senza soglie inventate.
+- Valori precompilati/non confermati, warm-up e serie extra non soddisfano le serie prescritte. Serie mancanti o saltate restano incomplete; un allenamento in corso è un dato parziale, anche con ripetizioni già registrate. Non sostituisce un ultimo risultato incompleto con un vecchio successo.
+- Confronta le ripetizioni totali soltanto con una sessione precedente conclusa e completa della stessa esatta variante/ID, target, numero di serie, tipi/gruppi/cedimento, indicazioni PT, recuperi prescritti, fase e carichi. Restano possibili differenze di tecnica, sensazioni e recupero effettivo: nessuna diagnosi di stallo o perdita di forza. Fase assente resta sconosciuta. Una sessione storica aperta esplicitamente non si confronta con il proprio futuro.
+- Grafici/statistiche della schermata usano lo stesso filtro di identità della variante; i chiamanti ID-only esistenti mantengono la loro API. Dati originali e metriche dei risultati selezionati non vengono riscritti.
+- Segnalazioni attive visibili e apribili anche quando il limite numerico è raggiunto. Scarico/rientro non generano inviti ad aumentare. Nessuna variazione di carichi, scheda, rank, Calendario o stato dolore; nessuna regola di crescita impostata né quantità di aumento suggerita.
+- Venticinque Core e un UI sintetico aggiunti: parsing, esclusioni, incompleti, snapshot dei target, confronto/non confronto, varianti, dati invalidi, storico selezionato, grafici coerenti, avvisi e assenza di mutazioni. Fixture Debug/simulatore in archivio isolato, senza sintomi personali. Il flusso UI controlla risultato 3/3, confronto +6, apertura avvisi e dati invariati dopo riavvio. Totale futuro atteso, dopo le fasi: 295 Core e 28 UI; non ancora eseguito.
+- Dopo la conclusione del run precedente, il collaudo successivo copre riparazione, fasi/PDF, lettura ripetizioni e rank insieme, con tutta la regressione. Nessun push ha annullato la CI precedente.
+
 ## Riferimenti e privacy
 
 La guida ortopedica [AAOS, Knee Conditioning Program](https://www.orthoinfo.org/recovery/knee-conditioning-program/) richiede supervisione e selezione individuale degli esercizi con medico/fisioterapista: non viene trasformata in un protocollo personale o in conversioni tra macchine e bilanciere.
 
-Sintomi e dati sanitari personali non sono inseriti nel repository o nelle fixture pubblicabili. Test sintetici e persistenza compatibile con backup esistenti. Restano da finalizzare i criteri non clinici della progressione e le fasi; nessun obiettivo riabilitativo tra esercizi viene inventato.
+Sintomi e dati sanitari personali non sono inseriti nel repository o nelle fixture pubblicabili. Test sintetici e persistenza compatibile con backup esistenti. Restano da collaudare le fasi e la lettura non clinica della progressione; nessun obiettivo riabilitativo tra esercizi viene inventato.

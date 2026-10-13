@@ -236,10 +236,24 @@ final class PivotInteractionTests: XCTestCase {
         let ranks = app.buttons["strength-ranks"]
         for _ in 0..<15 { if ranks.isHittable { break }; app.swipeDown() }
         XCTAssertTrue(ranks.isHittable); ranks.tap()
-        for name in ["Schiavo della gravità", "Patto col ferro", "Rank 3", "Rank 4", "Rank 5", "Rank 6", "Rank 7"] {
-            let label = app.staticTexts[name].firstMatch
-            for _ in 0..<15 { if label.isHittable { break }; app.swipeUp() }
-            XCTAssertTrue(label.isHittable, name)
+        let names = ["Schiavo della gravità", "Patto col ferro", "Sfidante della fisica", "Distruttore di ego",
+                     "Mutante", "Forza primordiale", "Onnipotente del carico"]
+        for (index, name) in names.enumerated() {
+            let row = app.buttons["strength-rank-level-\(index + 1)"]
+            for _ in 0..<24 {
+                if row.isHittable { break }
+                let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+                start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -150)))
+            }
+            XCTAssertTrue(row.isHittable, app.debugDescription)
+            XCTAssertTrue(row.label.contains(name), row.label); row.tap()
+            XCTAssertTrue(app.navigationBars["Immagini del rank"].waitForExistence(timeout: 5), app.debugDescription)
+            XCTAssertTrue(app.staticTexts[name].exists)
+            XCTAssertTrue(app.images["rank-original-emblem"].exists, app.debugDescription)
+            XCTAssertTrue(app.images["rank-original-title"].exists, app.debugDescription)
+            let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-rank-original-\(index + 1)"; image.lifetime = .keepAlways; add(image)
+            app.navigationBars["Immagini del rank"].buttons.element(boundBy: 0).tap()
+            XCTAssertTrue(app.navigationBars["Rank"].waitForExistence(timeout: 5))
         }
         let profile = app.buttons["strength-profile"]
         for _ in 0..<15 { if profile.isHittable { break }; app.swipeDown() }

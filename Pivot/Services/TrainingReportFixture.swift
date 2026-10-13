@@ -24,13 +24,18 @@ enum TrainingReportFixture {
                                 sets: [.init(number: 1), .init(number: 2)], skipped: true, skipReason: "Mancanza di tempo")
         ]
         var session = TrainingSession(planID: UUID(), dayName: "Squat / esempio sintetico", calendarEventID: nil, start: date, end: date.addingTimeInterval(4200), exercises: logs, notes: "Esempio di controllo qualità: non contiene dati personali.")
+        session.phase = .loading
         let first = session
         session.id = UUID(); session.start = date.addingTimeInterval(86400); session.end = session.start.addingTimeInterval(4500); session.dayName = "Bench / esempio sintetico"
-        let library = TrainingLibrary(sessions: [first, session], tips: [bench.id: String(repeating: "Promemoria di prova: posizione, controllo e regolazioni. ", count: 35)])
+        session.phase = .deload
+        let report = TrainingConcern(area: "PRIVATE-AREA-TEST", notes: "PRIVATE-SYMPTOM-TEST", professionalGuidance: "PRIVATE-GUIDANCE-TEST", exercises: [.init(bench)])
+        let library = TrainingLibrary(sessions: [first, session], tips: [bench.id: String(repeating: "Promemoria di prova: posizione, controllo e regolazioni. ", count: 35)], concerns: [report])
         let data = TrainingReportPDF.render(sessions: [first, session], library: library, title: "Riepilogo settimanale", interval: TrainingReports.week(containing: date))
         guard let document = PDFDocument(data: data), document.pageCount >= 2, let text = document.string,
               text.contains("2 allenamenti svolti"), text.contains("Sx 25 s"), text.contains("Recupero previsto"),
               text.contains("NON SVOLTA"), text.contains("Mancanza di tempo"), text.contains("cedimento"), text.contains("sedile 4"),
+              text.contains("Fase dichiarata: Carico"), text.contains("Fase dichiarata: Scarico"),
+              !text.contains(report.area), !text.contains(report.notes), !text.contains(report.professionalGuidance),
               !text.contains("Ale Murru") else { throw TrainingError.invalidPlan }
         // Vary note lengths to move a tall first row across page boundaries.
         // Headers must never be stranded alone, even with multiline intensity.
@@ -39,7 +44,8 @@ enum TrainingReportFixture {
                                       coachNotes: String(repeating: "Nota sintetica per spostare la tabella e controllare le pagine. ", count: length))
             return .init(planID: UUID(), dayName: "Stress \(length)", calendarEventID: nil, start: date, end: date.addingTimeInterval(100),
                          exercises: [.init(exercise: ex, sets: [.init(number: 1, kg: 70, reps: 6, done: true, kind: .superset, toFailure: true,
-                                                                     supersetGroup: String(repeating: "W", count: 20), isAdditional: true)])])
+                                                                     supersetGroup: String(repeating: "W", count: 20), isAdditional: true)])],
+                         phase: TrainingPhase.allCases[length % TrainingPhase.allCases.count])
         }
         let stressPDF = TrainingReportPDF.render(sessions: stress, library: .init(), title: "Controllo sintetico")
         guard let stressDocument = PDFDocument(data: stressPDF) else { throw TrainingError.invalidPlan }

@@ -10,6 +10,7 @@ struct ExercisePerformance: Identifiable {
     var finished: Bool
     var bestHold: Int = 0
     var totalHold: Int = 0
+    var phase: TrainingPhase? = nil
 }
 
 struct ExerciseProgress {
@@ -22,12 +23,14 @@ struct ExerciseProgress {
         guard set.holdTotal == 0, set.done, let kg = set.kg, kg.isFinite, kg > 0, let reps = set.reps, (1...10).contains(reps) else { return nil }
         return reps == 1 ? kg : kg * (1 + Double(reps) / 30)
     }
-    static func calculate(exerciseID: String, library: TrainingLibrary, current: TrainingSession? = nil) -> ExerciseProgress {
+    static func calculate(exerciseID: String, library: TrainingLibrary, current: TrainingSession? = nil, exercise: TrainingExercise? = nil) -> ExerciseProgress {
         var sessions = library.sessions.filter { $0.end != nil }
         if let current { sessions.removeAll { $0.id == current.id }; sessions.append(current) }
         var performances: [ExercisePerformance] = []
         for session in sessions {
-            guard let log = session.exercises.first(where: { $0.id == exerciseID }) else { continue }
+            guard let log = session.exercises.first(where: { log in
+                log.id == exerciseID && (exercise.map { TrainingRepProgression.sameIdentity(log.exercise, $0) } ?? true)
+            }) else { continue }
             let sets = log.sets.filter { $0.done && $0.canComplete(log.exercise) }
             guard !sets.isEmpty else { continue }
             let usesDuration = log.exercise.usesDuration
@@ -37,7 +40,7 @@ struct ExerciseProgress {
             let bestHold: Int = sets.map { max($0.durationSeconds ?? 0, max($0.leftSeconds ?? 0, $0.rightSeconds ?? 0)) }.max() ?? 0
             let totalHold: Int = sets.reduce(0) { $0 + $1.holdTotal }
             let performance = ExercisePerformance(id: session.id, date: session.start, sets: sets, volume: volume, bestLoad: load,
-                estimatedMax: maximum, finished: session.end != nil, bestHold: bestHold, totalHold: totalHold)
+                estimatedMax: maximum, finished: session.end != nil, bestHold: bestHold, totalHold: totalHold, phase: session.phase)
             performances.append(performance)
         }
         return .init(performances: performances.sorted { $0.date < $1.date })
