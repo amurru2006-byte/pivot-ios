@@ -72,6 +72,10 @@ struct TrainingView: View {
             NavigationLink { StrengthRanksView() } label: {
                 Label("Rank e profilo forza", systemImage: "medal.fill")
             }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("strength-ranks")
+            NavigationLink { TrainingConcernsView() } label: {
+                let count = (library.concerns ?? []).filter(\.isActive).count
+                Label(count == 0 ? "Dolori e infortuni" : "Dolori e infortuni · \(count) da tenere presenti", systemImage: "heart.text.square")
+            }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("training-concerns")
             if let event { Label(event.title, systemImage: "calendar").font(.subheadline) }
             if let plan = library.activePlan {
                 PivotCard(tint: PivotTheme.accent) {
@@ -100,6 +104,20 @@ struct TrainingView: View {
             Button { importing = true } label: { Label(busy ? "Leggo la scheda…" : "Importa nuova scheda PDF", systemImage: "square.and.arrow.down") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked || busy || library.plans.count >= 6)
             Text("Solo PDF preparati per Pivot. L'importazione mostra un riepilogo da confermare e non cancella gli allenamenti precedenti.").font(.caption).foregroundStyle(PivotTheme.muted)
             #if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.arguments.contains("--training-concern-test") {
+                Button("Prepara segnalazioni TEST") {
+                    Task {
+                        do { try await TrainingConcernFixture.install(); message = "Segnalazioni pronte" }
+                        catch { message = error.localizedDescription }
+                    }
+                }.accessibilityIdentifier("concern-fixture")
+                Button("Verifica segnalazione TEST") {
+                    Task {
+                        do { message = try await TrainingConcernFixture.verify(kind: ProcessInfo.processInfo.arguments.contains("--reported-injury-test") ? .reportedInjury : .pain) }
+                        catch { message = "Segnalazione non valida: \(error.localizedDescription)" }
+                    }
+                }.accessibilityIdentifier("concern-verify")
+            }
             if ProcessInfo.processInfo.arguments.contains("--training-history-test") {
                 Button("Prepara cronologia TEST") {
                     Task {
@@ -289,6 +307,7 @@ struct TrainingSessionView: View {
     @State private var finishing = false
     @State private var persisted = false
     @State private var removed = false
+    @State private var reportingConcern: TrainingConcernEditorTarget?
     var focusSetID: UUID? = nil
     let event: CalendarItem?
     let historicalEdit: Bool
@@ -365,7 +384,10 @@ struct TrainingSessionView: View {
                         .disabled(store.locked)
                 }
             }
-            .overlay { WorkoutCelebrationOverlay(enabled: !sharing && !selectingExercise && setOptions == nil && skippingExercise == nil, sessionID: session.id) }
+            .overlay { WorkoutCelebrationOverlay(enabled: !sharing && !selectingExercise && setOptions == nil && skippingExercise == nil && reportingConcern == nil, sessionID: session.id) }
+            .sheet(item: $reportingConcern) { target in
+                TrainingConcernEditor(target: target, additionalExercises: session.exercises.map(\.exercise))
+            }
             .sheet(isPresented: $selectingExercise) {
                 ExercisePickerView { exercise in changeExercise(exercise); selectingExercise = false }
             }
@@ -464,6 +486,12 @@ struct TrainingSessionView: View {
                 .accessibilityIdentifier("workout-exercise-statistics-\(exercise.id)")
                 Spacer(minLength: 4)
                 Menu {
+                    Button("Segnala dolore", systemImage: "heart.text.square") {
+                        reportingConcern = .init(kind: .pain, exercise: exercise, sessionID: hasStarted ? session.id : nil)
+                    }.disabled(store.locked || store.isRestoring)
+                    Button("Segnala infortunio", systemImage: "bandage") {
+                        reportingConcern = .init(kind: .reportedInjury, exercise: exercise, sessionID: hasStarted ? session.id : nil)
+                    }.disabled(store.locked || store.isRestoring)
                     if session.exercises[index].skipped == true || session.exercises[index].sets.contains(where: { $0.skipped == true }) {
                         Button("Riprendi esercizio", systemImage: "arrow.uturn.backward") {
                             TrainingCompletion.resumeExercise(in: &session, at: index); save()
@@ -481,11 +509,28 @@ struct TrainingSessionView: View {
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.headline)
-                        .frame(width: 40, height: 40)
+                        .frame(width: 44, height: 44)
                         .background(PivotTheme.raised, in: Circle())
                 }
                 .accessibilityLabel("Opzioni esercizio")
                 .accessibilityIdentifier("exercise-options-\(exercise.id)")
+            }
+            let concerns = TrainingConcerns.active(for: exercise, in: store.data.training ?? .init())
+            if let concern = concerns.first {
+                Button { reportingConcern = .init(concern) } label: {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Label("\(concern.kind.label) · \(concern.location)", systemImage: "exclamationmark.triangle")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Segnalato da te · aggiorna il contesto. Non è un via libera ad aumentare i carichi.").font(.caption)
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                        .foregroundStyle(PivotTheme.amber)
+                        .background(PivotTheme.amber.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                }.buttonStyle(.plain).disabled(store.locked || store.isRestoring)
+                    .accessibilityIdentifier("concern-warning-\(exercise.id)")
+                if concerns.count > 1 {
+                    NavigationLink("Altre \(concerns.count - 1) segnalazioni · apri tutte") { TrainingConcernsView() }
+                        .font(.caption)
+                }
             }
             if hasCompletedSets {
                 Text("Hai già registrato delle serie: per conservare ciò che hai fatto, aggiungi il nuovo esercizio come extra.")

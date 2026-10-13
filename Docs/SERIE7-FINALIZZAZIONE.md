@@ -171,14 +171,18 @@ Blocco successivo, dopo la chiusura dei punti precedenti:
 
 Risposta diretta dell'utente il 13 ottobre: il personal non ha dato regole per aumenti o scarico. Nessun protocollo inventato; ogni cambio di carico richiede conferma dell'utente. La lettura dello storico può fornire contesto, non applicare aumenti o riduzioni da sola.
 
+Chiarimento successivo: ritirata la risposta "solo avviso". Richiesti contesto e percorso tra più esercizi, senza fermare indiscriminatamente la registrazione. L'esempio della pressa prima dello squat non è un criterio di idoneità ricevuto da un professionista. Separare basi non cliniche Serie 7 da assistenza AI futura; nessun protocollo riabilitativo inventato in nessuna serie. Dettagli in `Docs/PROGRESSIONE-SERIE7.md`.
+
 - Consiglio di progressione nella scheda dell'esercizio basato sul rep range e sul lavoro realmente svolto.
 - Valutazione dello storico complessivo, mai dei valori precompilati o delle serie non confermate.
 - Fase della programmazione per scheda/giornata: carico, scarico, recupero/rientro.
 - Sezione problematiche/infortuni con zona interessata e comportamento conservativo sui movimenti coinvolti.
 - Nessuna interpretazione clinica o AI in Serie 7.
 
+Primo sottoblocco implementato: segnalazioni dal menu ⋯, contesto zona/lato/data e note, collegamenti espliciti a più movimenti, avvisi persistenti, sezione generale e storico riattivabile. Non cambia da solo i carichi né inventa soglie leg extension/squat. Dettagli e confini in `Docs/PROGRESSIONE-SERIE7.md`; verifica dei nuovi 13 Core e due UI ancora da concludere. Fasi e lettura della progressione restano il sottoblocco successivo.
+
 ## Rank e verifica
 
-- L'email “Pivot - ranked” dell'8 ottobre contiene soltanto quattro immagini assegnate ai rank 1 e 2. Non risultano asset o nomi per i rank 3–7.
-- Nell'ultima CI i popup PR e rank sono passati.
-- Il test della galleria dopo l'importazione è ora passato nella CI 38379904044; nessun fallimento UI residuo nel checkpoint Salute. Il nuovo blocco recupero richiede una nuova verifica completa e il collaudo sul vero iPhone.
+- L'email “Pivot - ranked” dell'8 ottobre contiene i rank 1 e 2. Il 13 ottobre è stata trovata la bozza “Pivot” del 9 ottobre con dodici JPEG: sei coppie stemma/scritta dei rank 2–7, tutte scaricate e viste. I sette nomi sono Schiavo della gravità, Patto col ferro, Sfidante della fisica, Distruttore di ego, Mutante, Forza primordiale e Onnipotente del carico. Integrazione dei nuovi asset ancora da eseguire; non mancano più le fonti.
+- CI combinata 38427261328: 242 Core e 24 UI senza fallimenti, Release/packaging e artefatto candidato riusciti. Cronologia, recupero e chiusura/PDF verificati, comprese schermate e report sintetico finale; pacchetto controllato per integrità/configurazione. Nessuna installazione o firma reale verificata.
+- Restano verifica segnalazioni, progressione/fasi, integrazione completa rank e collaudo vero iPhone. Serie 8/AI in pausa.
