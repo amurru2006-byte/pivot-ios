@@ -26,10 +26,11 @@ enum ClientRegistry {
             data.clients.append(client); return client.id
         }
         guard let index = data.clients.firstIndex(where: { $0.id == editingID }) else { throw Failure.missing }
+        let formerName = data.clients[index].name
         data.clients[index].name = name
         data.clients[index].rateCents = rateCents
         data.clients[index].paymentCadence = cadence
-        data.clients[index].calendarAliases = cleanAliases(aliases, name: name)
+        data.clients[index].calendarAliases = cleanAliases(aliases + [formerName], name: name)
         return data.clients[index].id
     }
 

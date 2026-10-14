@@ -55,6 +55,7 @@ struct ClientMergeForm: View {
             PivotScreen {
                 if let target {
                     PivotHeader(title: "Unisci due profili", subtitle: "Da usare solo se sono davvero la stessa persona, non due omonimi.")
+                    Text("Prima di unire, conserva un backup da Impostazioni. Da questa schermata l’unione non si può annullare.").font(.caption).foregroundStyle(PivotTheme.muted)
                     Text("Conserva: \(target.name) · \(Money.display(target.rateCents))/ora").font(.headline)
                     Picker("Profilo da unire", selection: $sourceID) {
                         Text("Scegli un profilo").tag(nil as UUID?)

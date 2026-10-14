@@ -109,11 +109,33 @@ final class IncomeCorrectionTests: XCTestCase {
     func testOldBackupsWithoutOptionalRegistryAndAuditFieldsStillLoad() throws {
         var data = fixture(); data.clients[0].calendarAliases = ["Marta calendario"]
         let backup = try BackupCodec.encodeCompact(data)
-        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: backup) as? [String: Any])
-        object.removeValue(forKey: "incomeEdits")
         // Verify legacy client payload independently; no new mandatory field.
         let client = try JSONDecoder().decode(Client.self, from: Data("{\"id\":\"44444444-4444-4444-8444-444444444444\",\"name\":\"Test\",\"rateCents\":0}".utf8))
         XCTAssertNil(client.calendarAliases)
         XCTAssertNoThrow(try BackupCodec.decode(backup))
+    }
+    func testRenamingProfileKeepsFormerCalendarNameAndIdentity() throws {
+        var data = fixture(); let id = data.clients[0].id
+        try ClientRegistry.save(name: "Marta Esempio", rateCents: 1800, cadence: .weekly, editingID: id, data: &data)
+        XCTAssertEqual(data.clients.count, 1)
+        XCTAssertEqual(StudentRecognition.recognize(title: "Lezione con Marta Test", clients: data.clients).client?.id, id)
+        XCTAssertEqual(try ClientRegistry.save(name: "Marta Test", rateCents: 1900, cadence: .weekly, data: &data), id)
+        XCTAssertEqual(data.clients[0].name, "Marta Esempio")
+    }
+    func testLedgerReusesUniqueIdentityEvenWhenCallerConstructsANewClient() throws {
+        var data = fixture(); let id = data.clients[0].id
+        let event = CalendarItem(id: "new-lesson", eventIdentifier: "new-lesson", calendarIdentifier: "test", calendarTitle: "Lavoro", title: "Lezione con Marta Test", start: data.income[0].date, end: data.income[0].date.addingTimeInterval(3600), location: "", notes: "", colorHex: "#ABCDEF", isAllDay: false, writable: true, kind: .tutoring)
+        var record = EventRecord(id: event.id, snapshot: event)
+        XCTAssertNotNil(TutoringLedger.register(event: event, record: &record, client: Client(name: "marta test", rateCents: 0), amountCents: 1800, collectedCents: 0, paymentDate: event.end, data: &data))
+        XCTAssertEqual(data.clients.count, 1); XCTAssertEqual(data.income.last?.clientID, id)
+        XCTAssertNoThrow(try BackupCodec.decode(BackupCodec.encodeCompact(data)))
+    }
+    func testLedgerDoesNotCreateThirdProfileForAmbiguousCalendarName() {
+        var data = fixture(); data.clients.append(Client(name: "Marta Test", rateCents: 1500))
+        let event = CalendarItem(id: "ambiguous-lesson", eventIdentifier: "ambiguous-lesson", calendarIdentifier: "test", calendarTitle: "Lavoro", title: "Lezione con Marta Test", start: data.income[0].date, end: data.income[0].date.addingTimeInterval(3600), location: "", notes: "", colorHex: "#ABCDEF", isAllDay: false, writable: true, kind: .tutoring)
+        var record = EventRecord(id: event.id, snapshot: event)
+        XCTAssertNil(TutoringLedger.register(event: event, record: &record, client: Client(name: "Marta Test", rateCents: 0), amountCents: 1800, collectedCents: 0, paymentDate: event.end, data: &data))
+        XCTAssertEqual(data.clients.count, 2); XCTAssertEqual(data.income.count, 1)
+        XCTAssertFalse(record.tutoringAnswered ?? true)
     }
 }
