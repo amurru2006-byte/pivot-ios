@@ -39,7 +39,9 @@ final class OnlineCoachInteractionTests: XCTestCase {
         let countdown = app.staticTexts["coach-online-countdown"]
         XCTAssertTrue(countdown.waitForExistence(timeout: 8))
         XCTAssertTrue(countdown.label.contains("Riprova tra"))
-        let input = app.textViews["coach-message-input"]
+        // SwiftUI's vertical TextField is not always exposed as a textView.
+        // Require the exact composer identifier, then test real typing and value.
+        let input = app.descendants(matching: .any)["coach-message-input"]
         XCTAssertTrue(input.waitForExistence(timeout: 8))
         for _ in 0..<8 { if input.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(input.isHittable); input.tap(); input.typeText("Preferisco dopo cena")
