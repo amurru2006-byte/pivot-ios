@@ -16,7 +16,7 @@ Un evento passato senza registrazione è da verificare. Il sonno che si sovrappo
 - Esempio richiesto 60, 90, 75 minuti: stima 75 minuti. Sono mostrabili numero e identificativi dei campioni, minimo/massimo; con meno di cinque campioni il dato resta provvisorio. La mediana è una stima centrale robusta, non una probabilità o una promessa. Minuti frazionari arrotondati in alto. Margine eventuale deve essere esplicito.
 - `CalendarTimeBudget`: durata attività separata da andata, preparazione, ritorno e margine. Zero esplicito è valido; preparazione/tragitti non confermati non diventano zero automaticamente.
 - `CalendarRecoveryWindows`: ricerca di intervalli completi, rispetto degli altri eventi e dei loro buffer, quiete, disponibilità non confermata degli eventi giornalieri, sola occorrenza corrente e controllo delle proposte già presenti. Nessun accorciamento, spostamento di terzi o scrittura esterna in questo blocco. Questi intervalli non vengono passati alla vecchia conferma modificando falsamente lo snapshot dell'evento.
-- Aggiunti 26 test Core per stima, revisione e intervalli; workflow di regressione Core completa sul ramo V8. Test e compilazione da eseguire su macOS, non dichiarati passati dal solo controllo locale Windows.
+- Aggiunti 29 test Core per stima, revisione e intervalli; workflow di regressione Core completa sul ramo V8. Il primo collaudo dei 26 test iniziali e della fondazione riutilizzata ha superato tutta la regressione; i tre ulteriori controlli sono da eseguire nella revisione successiva.
 
 ## Passi successivi e domande aperte
 
@@ -33,4 +33,4 @@ L'utente vuole in seguito un aiuto contestuale con problematiche registrate, and
 
 ## Stato verifiche
 
-Preparazione locale Windows. `git diff --check` superato; suite macOS da completare. Interfaccia, endpoint AI, qualità di conversazione e nuova installazione iPhone non verificati. Il workflow Core non costruisce una nuova IPA e non sostituisce la consegna Serie 7.
+Primo collaudo macOS: run 38585212355, job 115925255177, remoto `930f34da5a4297730de9754ce8c52744a55a6cb3`, albero identico al locale `b4df23cac403583bc69047160c38cceb5e117834`: 340 Core, zero fallimenti, compilazione Core riuscita. Include 303 della Serie 7, 11 della fondazione precedente e 26 nuovi. Revisione successiva con 29 nuovi controlli da eseguire. `git diff --check` superato. Interfaccia, compilazione app iOS, endpoint AI, qualità di conversazione e nuova installazione iPhone non verificati. Il workflow Core non costruisce una nuova IPA e non sostituisce la consegna Serie 7.
