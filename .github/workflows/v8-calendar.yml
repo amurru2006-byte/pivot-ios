@@ -11,7 +11,7 @@ concurrency:
 jobs:
   core:
     runs-on: macos-15-intel
-    timeout-minutes: 150
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - name: Seleziona strumenti
@@ -53,6 +53,17 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tee build/build.log
       - name: Regressione UI completa su iPhone simulato
         run: bash Scripts/preview-ui.sh
+      - name: Prepara candidata V8 solo dopo tutte le verifiche
+        run: bash Scripts/package-v8-candidate.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pivot-V8-iPhone-candidate
+          path: |
+            build/Pivot-0.8.0.ipa
+            build/Pivot-0.8.0-manifest.json
+            build/packaged-entitlements.plist
+          retention-days: 1
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -62,11 +73,13 @@ jobs:
             build/build.log
             build/preview-build.log
             build/interaction-tests.log
-          retention-days: 14
+          retention-days: 1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: Pivot-V8-online-previews
-          path: build/Previews/
-          retention-days: 14
+          path: |
+            build/Previews/
+            !build/Previews/**/*.mp4
+          retention-days: 1
           if-no-files-found: ignore

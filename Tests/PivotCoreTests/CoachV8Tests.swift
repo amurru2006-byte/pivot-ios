@@ -46,6 +46,25 @@ final class CoachV8Tests: XCTestCase {
         XCTAssertEqual(snapshot.request.events.count, 2)
         XCTAssertTrue(json.contains("mezzogiorno"))
     }
+    func testClarificationShowsKnownOriginalTimesInsteadOfInternalAliases() throws {
+        let events = [lunch, gym], data = state(events)
+        let snapshot = try CoachV8Snapshot.make(message: "Quale attività?", events: events, data: data, now: now)
+        var value = response(snapshot, mode: .clarify)
+        value.reply = "Intendi e0 oppure e1?"
+        let result = try CoachV8Planner.preview(value, snapshot: snapshot, events: events, data: data, now: now)
+        XCTAssertFalse(result.reply.contains("e0")); XCTAssertFalse(result.reply.contains("e1"))
+        XCTAssertTrue(result.reply.contains(PivotDate.time(gym.start)))
+        XCTAssertTrue(result.reply.contains(PivotDate.time(lunch.start)))
+        XCTAssertFalse(result.reply.contains("private")); XCTAssertTrue(result.options.isEmpty)
+    }
+    func testUnknownAliasInClarificationNeverInventsAnActivity() throws {
+        let events = [lunch, gym], data = state(events)
+        let snapshot = try CoachV8Snapshot.make(message: "Quale attività?", events: events, data: data, now: now)
+        var value = response(snapshot, mode: .clarify); value.reply = "Vuoi spostare e99?"
+        let result = try CoachV8Planner.preview(value, snapshot: snapshot, events: events, data: data, now: now)
+        XCTAssertFalse(result.reply.contains("e99")); XCTAssertTrue(result.reply.contains("nome nel Calendario"))
+        XCTAssertTrue(result.options.isEmpty)
+    }
     func testLocalPreviewPreservesOrderDurationsBuffersAndDoesNotMutate() throws {
         let events = [lunch, gym]
         var data = state(events)

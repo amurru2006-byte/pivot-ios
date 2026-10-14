@@ -13,7 +13,7 @@ enum CoachV8Planner {
             throw CoachV8Error.invalidResponse
         }
         guard response.mode == .plan else {
-            return .init(reply: response.reply, options: [], needsActivityClarification: response.mode == .clarify)
+            return .init(reply: userFacingReply(response.reply, request: snapshot.request), options: [], needsActivityClarification: response.mode == .clarify)
         }
         var simulated = data
         var moves: [PlanMove] = []
@@ -67,5 +67,25 @@ enum CoachV8Planner {
         }
         // Hours and claims about actions in model prose cannot override the verified plan.
         return .init(reply: "Ho preparato questa sequenza con le durate e gli impegni della tua giornata. Controlla orari e conseguenze prima di applicarla.", options: [option])
+    }
+
+    // Replace internal aliases using only metadata already in the request. Free
+    // calendar titles never enter the chat/history sent back to the provider.
+    private static func userFacingReply(_ text: String, request: CoachV8Request) -> String {
+        let fallback = "Quale attività intendi? Indica il suo nome nel Calendario: non scelgo un evento al posto tuo."
+        guard let pattern = try? NSRegularExpression(pattern: #"\be[0-9]{1,2}\b"#) else { return fallback }
+        var result = text
+        for match in pattern.matches(in: text, range: NSRange(text.startIndex..., in: text)).reversed() {
+            guard let range = Range(match.range, in: result),
+                  let event = request.events.first(where: { $0.id == String(result[range]) }) else { return fallback }
+            let label: String
+            switch event.category {
+            case .gym: label = "la palestra prevista"
+            case .lunch: label = "il pranzo previsto"
+            case .other: label = "l'attività prevista"
+            }
+            result.replaceSubrange(range, with: label + " alle " + PivotDate.time(event.start))
+        }
+        return result.count <= 1000 ? result : fallback
     }
 }

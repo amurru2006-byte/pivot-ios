@@ -1,0 +1,70 @@
+import Foundation
+
+enum ClientRegistry {
+    enum Failure: Error { case invalid, ambiguous, missing }
+
+    static func named(_ name: String, clients: [Client]) -> [Client] {
+        let key = EventCoalescer.normalized(name)
+        guard !key.isEmpty else { return [] }
+        return clients.filter { client in ([client.name] + (client.calendarAliases ?? [])).contains { EventCoalescer.normalized($0) == key } }
+    }
+
+    // Updating a tariff does not recalculate old lessons or receipts.
+    @discardableResult static func save(name: String, rateCents: Int, cadence: PaymentCadence,
+                                       aliases: [String] = [], editingID: UUID? = nil, data: inout AppData) throws -> UUID {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, rateCents >= 0, rateCents <= 100_000_000 else { throw Failure.invalid }
+        let matches = named(name, clients: data.clients)
+        guard !matches.contains(where: { $0.id != editingID }), editingID != nil else {
+            if editingID != nil || matches.count > 1 { throw Failure.ambiguous }
+            if let existing = matches.first {
+                return try save(name: existing.name, rateCents: rateCents, cadence: cadence,
+                                aliases: (existing.calendarAliases ?? []) + aliases, editingID: existing.id, data: &data)
+            }
+            let client = Client(name: name, rateCents: rateCents, paymentCadence: cadence,
+                                calendarAliases: cleanAliases(aliases, name: name))
+            data.clients.append(client); return client.id
+        }
+        guard let index = data.clients.firstIndex(where: { $0.id == editingID }) else { throw Failure.missing }
+        data.clients[index].name = name
+        data.clients[index].rateCents = rateCents
+        data.clients[index].paymentCadence = cadence
+        data.clients[index].calendarAliases = cleanAliases(aliases, name: name)
+        return data.clients[index].id
+    }
+
+    static func cleanAliases(_ aliases: [String], name: String) -> [String]? {
+        var seen: Set<String> = [EventCoalescer.normalized(name)]
+        let result = aliases.compactMap { alias -> String? in
+            let value = alias.trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = EventCoalescer.normalized(value)
+            return !key.isEmpty && seen.insert(key).inserted ? value : nil
+        }
+        return result.isEmpty ? nil : result
+    }
+
+    // Requires a human confirmation of both IDs. Equal names are NOT proof that
+    // two profiles are the same person; never run this as an automatic migration.
+    static func merge(sourceID: UUID, into targetID: UUID, data: inout AppData) throws {
+        guard sourceID != targetID,
+              let source = data.clients.first(where: { $0.id == sourceID }),
+              let targetIndex = data.clients.firstIndex(where: { $0.id == targetID }) else { throw Failure.missing }
+        let target = data.clients[targetIndex]
+        data.clients[targetIndex].calendarAliases = cleanAliases(
+            (target.calendarAliases ?? []) + [source.name] + (source.calendarAliases ?? []), name: target.name)
+        let incomeIDs = Set(data.income.filter { $0.clientID == sourceID }.map(\.id))
+        for index in data.income.indices where data.income[index].clientID == sourceID {
+            data.income[index].clientID = targetID; data.income[index].clientName = target.name
+        }
+        for index in data.payments.indices where incomeIDs.contains(data.payments[index].incomeID) {
+            data.payments[index].clientName = target.name
+        }
+        if var drafts = data.activityDrafts {
+            for key in Array(drafts.keys) where drafts[key]?.clientID == sourceID {
+                drafts[key]?.clientID = targetID; drafts[key]?.studentName = target.name
+            }
+            data.activityDrafts = drafts
+        }
+        data.clients.removeAll { $0.id == sourceID }
+    }
+}

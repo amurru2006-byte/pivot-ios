@@ -11,11 +11,11 @@ enum StudentRecognition {
 
     static func recognize(title: String, clients: [Client]) -> Result {
         let name = calendarName(title)
-        let exact = clients.filter { !name.isEmpty && normalized($0.name) == normalized(name) }
+        let exact = clients.filter { client in names(client).contains { !name.isEmpty && normalized($0) == normalized(name) } }
         if exact.count == 1 { return Result(name: exact[0].name, client: exact[0], ambiguous: false) }
         if exact.count > 1 { return Result(name: name, client: nil, ambiguous: true) }
         let titleWords = normalized(title)
-        let candidates = clients.filter { containsWords(titleWords, normalized($0.name)) }
+        let candidates = clients.filter { client in names(client).contains { containsWords(titleWords, normalized($0)) } }
         // "Anna Rossi" is more specific than an otherwise matching "Anna".
         let specific = candidates.filter { candidate in
             !candidates.contains { other in
@@ -31,11 +31,12 @@ enum StudentRecognition {
     static func existingClient(named name: String, clients: [Client]) -> Client? {
         let key = normalized(name)
         guard !key.isEmpty else { return nil }
-        let matches = clients.filter { normalized($0.name) == key }
+        let matches = clients.filter { client in names(client).contains { normalized($0) == key } }
         return matches.count == 1 ? matches[0] : nil
     }
 
     private static func normalized(_ name: String) -> String { EventCoalescer.normalized(name) }
+    private static func names(_ client: Client) -> [String] { [client.name] + (client.calendarAliases ?? []) }
     private static func containsWords(_ text: String, _ name: String) -> Bool {
         !name.isEmpty && (" " + text + " ").contains(" " + name + " ")
     }

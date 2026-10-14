@@ -206,6 +206,10 @@ struct CoachView: View {
         PivotCard(tint: PivotTheme.blue) {
             Label(onlineCoach.isConfigured && !useLocal ? "AI online" : "Base locale", systemImage: onlineCoach.isConfigured && !useLocal ? "network" : "iphone")
                 .font(.headline).accessibilityIdentifier("coach-online-mode")
+            if onlineCoach.isConfigured && !useLocal {
+                Text("Primo collegamento: proposte per pranzo e palestra di oggi. Recuperi su altri giorni e tragitti automatici non sono ancora disponibili.")
+                    .font(.caption).foregroundStyle(PivotTheme.muted)
+            }
             if let failure = onlineCoach.failure {
                 Text(failure.errorDescription ?? "AI online non disponibile").font(.subheadline)
                     .accessibilityIdentifier("coach-online-error")
@@ -302,6 +306,7 @@ struct CoachView: View {
         HStack {
             if item.role == .user { Spacer(minLength: 42) }
             Text(item.text).font(.subheadline).padding(13)
+                .accessibilityIdentifier(item.role == .user ? "coach-user-message" : "coach-assistant-message")
                 .background(item.role == .user ? PivotTheme.accent.opacity(0.18) : PivotTheme.surface, in: RoundedRectangle(cornerRadius: 16))
                 .frame(maxWidth: 560, alignment: item.role == .user ? .trailing : .leading)
             if item.role != .user { Spacer(minLength: 42) }
@@ -375,6 +380,11 @@ struct CoachView: View {
             coach.options = result.options
             data.coachState = coach
         }) else { message = "Messaggio non salvato. Riprova."; return }
+        guard await store.flushPendingWrites() else {
+            message = "La conversazione è ancora in memoria, ma non è salvata su disco. Tieni Pivot aperto e riprova il salvataggio nelle Impostazioni."
+            return
+        }
+        guard !Task.isCancelled else { return }
         if coachModel.isReady {
             Task {
                 guard let comment = await coachModel.comment(userMessage: clean, verified: result, context: context) else { return }
@@ -423,6 +433,11 @@ struct CoachView: View {
                 coach.options = result.options
                 data.coachState = coach
             }) else { message = "Non riesco a salvare la conversazione. Il messaggio resta qui."; return }
+            guard await store.flushPendingWrites() else {
+                message = "La conversazione è ancora in memoria, ma non è salvata su disco. Tieni Pivot aperto e riprova il salvataggio nelle Impostazioni."
+                return
+            }
+            try Task.checkCancellation()
             if input.trimmingCharacters(in: .whitespacesAndNewlines) == clean { input = "" }
             message = result.options.isEmpty ? "Nessuna modifica è stata preparata." : nil
         } catch let failure as CoachOnlineFailure {

@@ -16,7 +16,7 @@ La successiva precisazione dell'utente amplia il requisito a percorsi multimodal
 2. Online con piano gratuito: prima candidata GPT-OSS 120B servita da Groq, passando dal gateway autenticato già predisposto. Disponibilità del piano gratuito e risposte strutturate verificate nella documentazione ufficiale il 14 ottobre. Limiti e impostazioni reali dell'account vanno verificati prima dell'attivazione. Questo percorso è la proposta iniziale, non una promessa di qualità o gratuità perpetua.
 3. Modello su un proprio computer/server: possibile controllo maggiore dell'esecuzione, ma hardware da verificare, macchina accesa e raggiungibile, manutenzione, rete e consumi. Non è automaticamente gratuito né indipendente da internet quando si è fuori casa. Non scegliere senza conoscere l'hardware e la disponibilità del computer.
 
-Il gateway attuale usa GPT-OSS 120B nel codice, ma non è distribuito. Il modello è sostituibile nello sviluppo mantenendo il contratto di azioni verificabili. La scelta sarà confermata solo dopo confronto su casi sintetici in italiano e sulla qualità delle alternative, non dal solo superamento dei test di schema.
+Il gateway attuale usa GPT-OSS 120B ed è distribuito su Workers Free. I piani gratuiti e ZDR sono verificati negli account reali; i segreti server sono configurati senza esporli nella conversazione. Sono iniziate prove sintetiche italiane, senza calendario reale: successo su risveglio e pranzo/palestra, ma anche risposte rifiutate dai controlli prima degli affinamenti. Il modello è sostituibile nello sviluppo mantenendo il contratto di azioni verificabili. Non dichiarare affidabilità completa o qualità delle alternative dal solo superamento dello schema. Stato aggiornato in `V8-ONLINE-PRIVACY-E-QUOTE.md`.
 
 ## Dati e memoria
 
@@ -57,4 +57,4 @@ Pivot si personalizza tramite preferenze e dati salvati verificabili: ad esempio
 - Apple MKDirections, candidato per i tragitti nell'app iOS: https://developer.apple.com/documentation/mapkit/mkdirections
 - Trenord, pagina ufficiale circolazione in tempo reale: https://www.trenord.it/linee-e-orari/circolazione/tempo-reale/
 
-Nessun servizio è stato attivato e nessun nuovo dato personale è stato inviato per valutare queste strade.
+Aggiornamento: il solo servizio personale `pivot-coach` è pubblicato e autenticato, senza costi o upgrade. Il modello è stato interrogato soltanto con dati sintetici; nessun calendario reale o dato Salute è stato inviato per queste prove. L'iPhone e la nuova distribuzione restano da collegare/collaudare.

@@ -11,7 +11,8 @@ const fixture = () => ({ version:1, requestID:'12345678-1234-1234-1234-123456789
   events:[{ id:'e0',kind:'meal',category:'lunch',status:'pending',
     start:'2026-10-08T11:00:00+02:00',end:'2026-10-08T11:45:00+02:00',durationMinutes:45,flexibility:'compressible',travelConfirmed:true }],
   history:[{role:'user',text:'Mi sono svegliato a mezzogiorno'}], memories:[] });
-const answer = () => ({ version:1,requestID:fixture().requestID,mode:'plan',eventIDs:['e0'],reply:'Prepariamo il pranzo' });
+const answer = () => ({ version:1,requestID:fixture().requestID,mode:'plan',eventIDs:['e0'],
+  reply:'Posso proporti una soluzione per queste attività. Verifichiamo gli spazi disponibili: nessun evento è stato modificato.' });
 const environment = async () => ({ GROQ_API_KEY:'synthetic-provider-secret',
   PIVOT_CLIENT_TOKEN_SHA256:await tokenDigest(token),PRIVACY_READY:'zdr-confirmed',
   PIVOT_RATE_LIMITER:{ limit:async () => ({success:true}) } });
@@ -34,7 +35,7 @@ test('authenticated request uses fixed provider/model, strict schema and no-stor
     const sent = JSON.parse(init.body);
     assert.equal(sent.model,'openai/gpt-oss-120b');
     assert.equal(sent.stream,false);
-    assert.equal(init.redirect,'error');
+    assert.equal(init.redirect,'manual');
     assert.equal(sent.response_format.json_schema.strict,true);
     assert.equal(sent.response_format.json_schema.schema.additionalProperties,false);
     assert.equal(JSON.parse(sent.messages[1].content).history[0].text,fixture().history[0].text);
@@ -169,4 +170,83 @@ test('response and request diagnostics never expose provider secrets or raw exce
   }});
   assert.deepEqual(await response.json(),{error:'provider_unavailable'});
   assert.equal(response.headers.get('Cache-Control'),'no-store');
+});
+
+test('provider rejection diagnostics are closed HTTP-status codes, not error bodies', async () => {
+  for(const [status,code] of [[400,'provider_request_rejected'],[422,'provider_request_rejected'],
+    [401,'provider_credentials_rejected'],[403,'provider_access_denied'],
+    [404,'provider_endpoint_unavailable'],[500,'provider_internal_error'],[503,'provider_capacity_unavailable']]) {
+    let calls=0;
+    const response=await handle(request(),await environment(),{clock,fetchProvider:async () => {
+      calls++; return new Response('private-calendar provider-secret invented-status',{status});
+    }});
+    assert.equal(response.status,502);
+    assert.deepEqual(await response.json(),{error:code});
+    assert.equal(response.headers.get('Cache-Control'),'no-store');
+    assert.equal(calls,1);
+  }
+});
+
+test('transport and JSON failures expose only closed categories, never exception messages', async () => {
+  for(const [error,code] of [[new TypeError('private-secret'),'provider_transport_failed'],
+    [new SyntaxError('private-secret'),'invalid_response'],[new Error('private-secret'),'provider_unavailable']]) {
+    const response=await handle(request(),await environment(),{clock,fetchProvider:async()=>{throw error;}});
+    assert.equal(response.status,502);
+    assert.deepEqual(await response.json(),{error:code});
+  }
+});
+
+test('default provider fetch preserves its native global receiver', async () => {
+  const original=globalThis.fetch;
+  let calls=0;
+  globalThis.fetch=async function(url,init) {
+    assert.equal(this,globalThis);
+    assert.equal(url,'https://api.groq.com/openai/v1/chat/completions');
+    assert.equal(init.redirect,'manual');
+    calls++;
+    return upstream();
+  };
+  try {
+    const response=await handle(request(),await environment(),{clock});
+    assert.equal(response.status,200);
+    assert.deepEqual(await response.json(),answer());
+    assert.equal(calls,1);
+  } finally { globalThis.fetch=original; }
+});
+
+test('provider redirects never forward authorization or prompt to their destination', async () => {
+  for(const status of [301,302,303,307,308]) {
+    let calls=0;
+    const response=await handle(request(),await environment(),{clock,fetchProvider:async(url,init)=>{
+      calls++; assert.equal(url,'https://api.groq.com/openai/v1/chat/completions');
+      assert.equal(init.redirect,'manual');
+      return new Response('private-secret',{status,headers:{Location:'https://untrusted.test/secret'}});
+    }});
+    assert.equal(response.status,502);
+    assert.deepEqual(await response.json(),{error:'provider_redirect_rejected'});
+    assert.equal(response.headers.has('Location'),false);
+    assert.equal(calls,1);
+  }
+});
+
+test('a valid model plan cannot claim Calendar changes or present unverified times', async () => {
+  const response=await handle(request(),await environment(),{clock,fetchProvider:async()=>upstream({
+    ...answer(),reply:'Ho spostato e salvato tutto nel Calendario alle 18:00.'
+  })});
+  assert.equal(response.status,200);
+  assert.deepEqual(await response.json(),answer());
+});
+
+test('provider key whitespace is normalized and invalid header characters fail before provider calls', async () => {
+  const env=await environment(); env.GROQ_API_KEY=`  ${env.GROQ_API_KEY}\n`;
+  const response=await handle(request(),env,{clock,fetchProvider:async(_,init)=>{
+    assert.equal(init.headers.Authorization,'Bearer synthetic-provider-secret'); return upstream();
+  }});
+  assert.equal(response.status,200);
+  for(const key of ['short','synthetic secret with spaces','private\r\nsecret-value-rejected']) {
+    env.GROQ_API_KEY=key;
+    const rejected=await handle(request(),env,{clock,fetchProvider:forbidden});
+    assert.equal(rejected.status,503);
+    assert.deepEqual(await rejected.json(),{error:'provider_key_format_invalid'});
+  }
 });

@@ -1,0 +1,29 @@
+# Configurazione locale cifrata e candidata 0.8.0 (21)
+
+L'utente ha richiesto di proseguire fino alla consegna senza ulteriori «vai», salvo domande necessarie. Questo blocco prepara la prima candidata con il collegamento Groq/Workers gratuito già configurato, non il completamento dell'intera Serie 8.
+
+## Configurazione senza segreti in chat o iCloud
+
+Il token personale Pivot esiste nel portachiavi Windows. La chiave Groq resta soltanto come secret su Cloudflare. Nessuno dei due viene incorporato nell'IPA. Gli strumenti locali risiedono fuori dal repository e da iCloud, nella cartella tecnica privata della chat.
+
+Il generatore locale mostra un QR con `pivot://coach-setup`, versione 2, endpoint, istante di emissione e capsula cifrata: non contiene il token in chiaro. Usa AES-256-GCM, salt casuale 16 byte, nonce casuale 12 byte e codice casuale Base32 di 10 caratteri; derivazione standard PBKDF2-HMAC-SHA256, 100.000 iterazioni, chiave 32 byte. Endpoint e emissione sono autenticati come AAD. Un vettore Node.js indipendente, passato localmente, è incluso nelle nuove prove Core Swift per verificarne l'interoperabilità su macOS: queste ultime non sono ancora eseguite. Non si implementa una primitiva crittografica proprietaria: si usano Node crypto, CryptoKit e CommonCrypto.
+
+Il viewer ascolta soltanto su 127.0.0.1 con porta temporanea, niente connessioni esterne, log di segreti o file di credenziali. QR e codice vengono mostrati in pagine separate. No-store, CSP senza script, esclusione iframe, controllo Host/Origin/Referer e percorso casuale. Il codice viene letto dall'utente e inserito nel campo protetto di Pivot, non nella chat. Due prove Node locali su token sintetico sono passate: vettore cifrato/assenza token e separazione delle pagine/limiti d'origine.
+
+Scadenza dell'importazione: cinque minuti, con massimo 60 secondi di tolleranza per un orologio anticipato. Non revoca il token permanente. Non fotografare o condividere QR e codice; se entrambi vengono divulgati occorre revocare il token. Non promettere sicurezza assoluta o protezione di un telefono/computer già compromesso. La pagina reale va aperta soltanto dopo l'installazione della nuova app: non generarla mentre si attende la compilazione e non acquisirne screenshot o clipboard.
+
+## Comportamento sull'iPhone
+
+Il QR apre una revisione in Pivot, anche dopo avvio a freddo/caricamento o sblocco. Non vengono effettuate richieste o scritture di credenziali alla sola scansione. Il codice sblocca la capsula localmente fuori dal MainActor. Consenso sempre disattivato, campi endpoint/token non modificabili nell'importazione QR; salvataggio esplicito nel Keychain WhenUnlockedThisDeviceOnly, non sincronizzato. Codice errato, QR scaduto, endpoint/istante/ciphertext alterati o formato non previsto non abilitano nulla. Le versioni QR in chiaro sono rifiutate.
+
+Quando l'app diventa inattiva o la schermata si chiude, il codice e il token in ingresso vengono rimossi dalla UI e il completamento tardivo della decrittazione non può salvarli. La configurazione già salvata nel Keychain resta invariata se si annulla. I test UI hanno spazio Keychain dedicato per UUID solo in Debug simulatore: mai le credenziali dell'app reale.
+
+## Collaudo e consegna
+
+Nuove prove da verificare su macOS: 9 Core per formato, scadenza, vettore interoperabile, codice errato e autenticazione delle alterazioni; 4 UI per consenso/annullamento, sblocco/salvataggio/riavvio, codice errato e QR scaduto. Due Core aggiuntivi eliminano gli alias interni nei chiarimenti utilizzando soltanto categorie/orari già presenti nel DTO, senza introdurre titoli privati nello storico inviato al provider. Le istruzioni del gateway dichiarano i limiti del primo blocco e chiedono il nome dell'attività anziché e1/e2.
+
+Il precedente run 38618565592 ha concluso **29/31 UI**, tutte le 3 nuove prove online passate. Fallimenti: riapertura della conversazione (riga724) e controllo immediato della scomparsa del timer (riga201). Artefatti hash verificati: log 59a0dbe5ee93bf0f2b11812a1c3e3e80562497f69aeb13cacfd353452d58637d; anteprime e25a9767cfa17a4b4ddda35d745d9b2ecf4bd345475c9ce57e5bcfe459d94c1d. Non dedurre dal primo assert staticText che il messaggio sia già stato salvato: può essere testo del compositore. Ora la chat attende flush prima di svuotare il compositore; il test richiede testo esatto nella bolla utente, svuotamento e fine pianificazione prima di terminare. Il controllo timer attende la scomparsa entro 8 secondi dopo il vero tocco/animazione, senza saltare le serie finali. Queste modifiche richiedono regressione completa, non sono ancora un risultato passato.
+
+La pipeline genera l'IPA soltanto dopo Core, gateway, compilazione Release e intera suite UI. Firma ad-hoc dei framework, widget e app; verifica profilo HealthKit/background delivery, identificativi, versione/build e schema URL. Manifest con hash SHA256 e commit. Nessuna pubblicazione release o promozione della baseline. Runner macOS Intel standard, timeout180 minuti, artefatti temporanei di un giorno senza video: nessun larger runner, upgrade o cache pagata. La 0.7.6 rimane intatta fino a consegna verificata; in quel momento sarà conservata nell'archivio iCloud.
+
+Fonti delle API: https://developer.apple.com/documentation/cryptokit/aes/gcm ; https://github.com/apple-oss-distributions/CommonCrypto/blob/main/include/CommonKeyDerivation.h ; https://nodejs.org/api/crypto.html ; https://docs.github.com/en/billing/concepts/product-billing/github-actions .
