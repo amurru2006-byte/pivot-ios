@@ -1,51 +1,55 @@
 # Verifica Serie 7
 
-Ultimo esito effettivo: run 38453108141 su 119b4c9, 255 Core senza fallimenti, Release/packaging riusciti; 26 UI, due fallimenti nei flussi segnalazioni, tutti i precedenti 24 passati, compresa correzione della cronologia. Fine chiude la tastiera e i collegamenti sono raggiungibili. Gli screenshot dopo il tocco del secondo switch lo mostrano ancora spento, e solo il primo movimento ha l'avviso; la verifica dati rifiuta correttamente il salvataggio con un collegamento solo. Nessuna asserzione è stata rimossa per nascondere l'errore.
+## Esito conclusivo simulatore e pacchetto
 
-Riparazione successiva: collegamenti resi pulsanti a piena riga con checkmark e stato accessibile Collegato/Non collegato; test richiede entrambi collegati prima del salvataggio. Per lo switch Non più presente il test tocca il controllo sul bordo destro, non il centro dell'etichetta, e attende il nuovo valore. Fasi, progressione e rank ora nel prossimo collaudo combinato: attesi 299 Core e 28 UI, ancora non eseguiti su questa revisione. Timeout CI portato a 70 minuti per le due build e la regressione ampliata, senza saltare test.
+Run GitHub Actions 38548362555, tentativo 2, job 115855660448, sorgente remota `5e319695607503b808a9854abcf0b62875818ad4`: **successo**.
 
-Artefatti verificati fuori dal clone in ../qa/serie7-ci/concerns-119b4c9/: logs.zip SHA256 2efabad0f4c118ff4d2745fdc8fd169ec8605108e57f0a4add4e8a360ba8e92b; previews.zip SHA256 25c6652135e69119353c37189fcff5e99e4c964877ab2d05f3e49154c0f1bb98. Nessun IPA caricato dal run fallito. Dopo il prossimo esito: ispezione di tutti i rank, segnalazioni/fasi/progressi e PDF UIKit realmente generati, integrità IPA/entitlements; poi consegna distinta dal collaudo hardware.
+- Core: 303 eseguiti, 0 fallimenti.
+- UI: 28 eseguiti, 0 fallimenti.
+- Release: compilazione riuscita.
+- IPA: confezionamento e caricamento riusciti.
+- Anteprime/log: caricamento riuscito.
 
-## Evidenze cronologiche precedenti
+Il primo tentativo della stessa revisione aveva superato 303 Core e 27 UI su 28; l'unico errore era un timeout dell'automazione mentre leggeva la gerarchia prima di eseguire il vecchio flusso Calendario/allievo. Un solo nuovo tentativo identico ha eseguito anche quel test fino in fondo. Nessun requisito o controllo è stato rimosso.
 
-Baseline 0.7.5 preservata. Commit del primo blocco: f0922919bd80df787c94e67ec8a4f0005e423ca5. Correzione percorso artefatti: 3a70c2059a91ab1aa80a5bffbe280cd277d634bd.
+## Artefatti del tentativo riuscito
 
-CI del primo blocco 37797210284: riuscita, 198 Core e 15 UI senza fallimenti.
+- IPA ZIP, ID 11900877834: SHA256 `2065B2AE6BEFCC5A9189A7F087331C4CB62F616DD2C56C0734985B58D9ADE748`.
+- Anteprime, ID 11900613383: SHA256 `F7F1948F2E6405DEB0DA174834E0E4BC7AECD70E3F0E5BF5381A3E00BAC55E2A`.
+- Log/PDF, ID 11900403423: SHA256 `9CEC738ACE2DF86EB5840B9D1CDF9908566EF76D76D5485407A99EDAABC2E168`.
 
-CI intermedia 37831664233 sul commit 55a94b2c: 210 Core, build Release e packaging passati; 18 UI con due fallimenti nei test popup PR/rank.
+Gli ID e le date distinguono questi artefatti da quelli del primo tentativo, che GitHub conserva sotto gli stessi nomi.
 
-CI finale osservata 37836724126 sul commit ceba9f0c: 210 Core, build Release e packaging passati; 18 UI con un solo fallimento. I test popup PR e rank sono passati. Il fallimento effettivo è `testCompactTrainingRowsProtectPlanAndDeleteExtraSets` alla riga 122: dopo l'importazione della scheda di prova non viene trovato `exercise-statistics-test-squat` nella pagina Palestra. Artefatti recuperati e verificati il 12 ottobre 2026; log e anteprime sono conservati fuori dal clone in `../qa/serie7-ci/ceba9f0c/`.
+## Integrità IPA
 
-Checkpoint Calendario, CI 38340745732: 216 Core, build Release, confezionamento IPA e tutti i 18 UI passati.
+File `Pivot-0.7.6-20-Serie7-5e31969.ipa`, 16.336.565 byte, SHA256 `55E40F57BDDAC02CD4FEDBCA16F764359E35CCFE6D6794FA8102FCF03A9BAE6A`.
 
-Checkpoint Salute, CI 38379904044, commit remoto 30c9816ac759a30e4f38ccca38cb3e88311c4f18, albero 5e3ce36cca4a39e67fdac881c2650f025fcf0934: 218 Core, build Release, confezionamento IPA e tutti i 18 UI passati. Il residuo del test galleria è chiuso; gli swipe dopo l'importazione ora tornano verso la galleria, che si trova sopra il controllo di importazione.
+Controlli read-only superati: CRC ZIP; bundle `app.pivot.personal`; estensione `app.pivot.personal.workout`; versione 0.7.6 build 20; configurazione Live Activity e descrizione lettura Salute; CodeResources per app ed estensione; entitlement confezionati HealthKit e background delivery. La firma è ad-hoc: `iphone_resigning_verified` è false finché AltStore non rifirma e installa sul dispositivo.
 
-13 ottobre: aggiunti sei test Core per contesto serie/recupero e conservazione del tempo effettivo, un test UI per recupero all'ottavo esercizio/ultima serie/persistenza e un test UI per altezza e pulsanti della Live Activity condivisa. Verifica completa del nuovo blocco da concludere.
+## Ispezione visuale
 
-Nessuna release stabile sostituita. La candidata 0.7.6 (20) richiede ancora il collaudo hardware prima di essere promossa.
+Esaminati gli artefatti più recenti associandoli tramite il manifest del risultato UI:
 
-Blocco chiusura/PDF del 13 ottobre: aggiunti sei test Core per fine automatica/manuale, idempotenza, orari invalidi, nessuna serie inventata e identità del report. Due flussi UI nuovi controllano chiusura dal fondo, anteprima automatica, file persistente da dati salvati, riapertura/fine invariata e riprova dopo un errore PDF sintetico (solo Debug simulatore). Il test importazione/salvataggio ora richiede l'anteprima e il comando di condivisione. Il PDF sintetico finale viene conservato negli artefatti del collaudo. Esito completo da verificare.
+- recupero al Cable Crunch/ottavo esercizio, ultima serie, barra persistente e controlli grandi;
+- anteprima layout Live Activity per pesi, isometria bilaterale e recupero;
+- finalizzazione e anteprima automatica del PDF;
+- cronologia, eliminazione e correzione di un carico concluso a 50 kg senza timer nuovo;
+- segnalazione collegata a due movimenti, avviso su entrambi, risoluzione e persistenza;
+- fase della scheda, override della giornata, nuova sessione e storico con fase precedente invariata;
+- Obiettivo e andamento sopra l'immagine, serie confermate, confronto +6 e avviso ancora presente;
+- galleria completa dei rank 1-7, con titoli e stemmi interi e leggibili.
 
-Blocco cronologia del 13 ottobre: dodici test Core e due UI aggiunti. Verificano appartenenza planID/dayID, legacy e revisioni senza ambiguità, oltre 20 sessioni, eliminazioni atomiche e conferme obsolete, conservazione del diario/Calendario, riconciliazione di PR/rank, progressi e carichi successivi. I flussi UI controllano correzione di una sessione terminata senza recupero, Annulla, conferma con serie svolte, rimozione degli avvii vuoti e persistenza dopo riavvio. Test Debug isolati, nessuno storico personale. Esito completo da verificare.
+Non sono emersi tagli o controlli essenziali coperti. Le immagini Live Activity sono una preview condivisa e non sostituiscono il blocco schermo reale.
 
-Collaudo combinato 38419922992 (41c3f7f5, albero 4876571387258c3f6c51845361cd303713dc468d): 242 Core, zero fallimenti; Release e packaging riusciti. 24 UI eseguiti, 3 fallimenti: pulsanti `history-open`/`history-delete` non trovati e altezza 43,999992 contro 44 nel layout Live Activity. Nessun artefatto IPA candidato caricato a causa degli UI falliti. Recupero e finalizzazione/PDF, compreso errore e riprova, passati. Artefatti in `../qa/serie7-ci/history-41c3f7f5/`; PDF finale sintetico di tre pagine ispezionato visivamente senza tagli/sovrapposizioni. Screenshot del recupero conferma barra visibile dal fondo.
+## PDF reali prodotti dall'app
 
-Correzione in attesa di nuovo collaudo: rimosso l'identificatore del contenitore cronologia per non propagare un ID alle azioni; contenimento accessibile e descrizioni delle azioni con data/ora. Aggiunte schermata e gerarchia accessibile all'apertura della cronologia, con manifest degli allegati conservato dalla CI. Il test delle dimensioni ammette solo arrotondamento di 0,01 punti, senza modificare le aree di tocco reali da 44 punti. Non dichiarare il collaudo concluso prima dell'esito.
+Sette pagine renderizzate e viste individualmente:
 
-Riparazione verificata: CI 38427261328, remoto 89c127fd, locale 98c60927, albero 978ccd816b38c017498d63b063997334cf9b1f0c. Esito riuscito: 242 Core e 24 UI senza fallimenti, Release, packaging e caricamento IPA. Artefatti in ../qa/serie7-ci/history-89c127fd; hash ZIP e IPA conservati nel checkpoint esterno. Verifica read-only del pacchetto riuscita: CRC, bundle app/widget, 0.7.6 (20), configurazione Live Activity e risorse firma/entitlement HealthKit ad-hoc. Schermate cronologia elenco/conferma/correzione e PDF finale sintetico di tre pagine ispezionati senza tagli/sovrapposizioni. Questo chiude la verifica simulatore dei blocchi recupero, chiusura/PDF e cronologia, non quella hardware né la promozione a baseline.
+- riepilogo settimanale, 4 pagine/52.850 byte: fasi Carico e Scarico, tipi serie, cedimento, superserie, isometrie per lato, recuperi, stato e note lunghe correttamente paginate;
+- report di finalizzazione, 3 pagine/43.561 byte: otto esercizi, una serie Cable Crunch svolta, serie residue, orari, recupero previsto/effettivo e fine automatica.
 
-Segnalazioni del 13 ottobre: aggiunti 13 Core per backup vecchi/nuovi, valori invalidi, identità e variante, più movimenti, assenza di deduzioni anatomiche, risoluzione/riattivazione, scritture atomiche e conflitti, indipendenza da allenamenti eliminati ed esclusione dai report. Due UI nuovi aprono il menu esercizio, annullano o salvano dolore/infortunio riferito, collegano due movimenti, verificano avvisi, storico e riavvio. La fixture conferma che non sia stato avviato un allenamento e che scheda/traguardi non siano cambiati. Dati sintetici in archivio Debug isolato; screenshot conservati per il controllo visivo. Windows senza Swift/Xcode: controlli locali statici, verifica macOS/simulatore ancora da concludere.
+Nessun clipping, sovrapposizione, glifo rotto o intestazione orfana. I marcatori sanitari sintetici privati non compaiono nel testo dei PDF.
 
-Prima CI segnalazioni 38444209752, remoto 84442726: Core compilato, 255 test eseguiti, un fallimento in testOldBackupWithoutConcernsStillDecodes. La fixture usava updatedAt = Date() con frazioni di secondo, mentre BackupCodec usa ISO 8601 a secondi interi: il confronto dell'intera sessione differiva soltanto nella precisione della data. Impostato updatedAt al clock fisso sintetico, conservando l'asserzione completa. Nessun cambiamento al codec o ai dati reali. Release/UI non eseguiti perché il primo step è fallito; nuovo collaudo necessario.
+## Collaudo non sostituibile
 
-CI di correzione segnalazioni 38444835357, remoto dbdfd02f, locale e0006362, albero 624d5c6856b9c67adea0a8960094329061ad2b43: 255 Core senza fallimenti, Release e packaging riusciti. 26 UI eseguiti, 23 passati e tre fallimenti; nessun IPA candidato caricato. Nei due test segnalazioni il campo zona è compilato, ma la tastiera resta aperta: il collegamento a quota 636 è coperto dalla tastiera che inizia a 561, mentre gli swipe globali partono a 554 e non scorrono il modulo. Aggiunti focus esplicito ai campi e pulsante Fine nella barra della tastiera; i test verificano la chiusura della tastiera prima di selezionare i collegamenti e scorrono dal centro superiore. Non eliminata alcuna asserzione funzionale.
-
-Il terzo fallimento riguarda l'apertura della cronologia nel test correzione: il tocco non porta alla destinazione Cronologia; la gerarchia resta Allenamento. Il test eliminazione cronologia passa. Non è dimostrata una perdita di dati. La destinazione della cronologia usa ora un valore stabile WorkoutRoute.history nello stesso NavigationStack degli allenamenti, invece di una destinazione locale collegata a una vista soggetta ad autosalvataggi/aggiornamenti. Il test attende Allenamento, verifica che il collegamento sia raggiungibile e conserva la gerarchia nell'errore. Efficacia della riparazione da confermare in un nuovo collaudo, senza retry del tocco o modifiche del dato atteso.
-
-Artefatti recuperati in ../qa/serie7-ci/concerns-dbdfd02f: SHA256 logs.zip 2e24aef48c1ff4571a6732ae3ecee2883ad2d4a75cf2bf9a00c4fc1c5fe7270c, previews.zip 912e7bf7e6bacac06d0f849b5ad17add902d918093661f9496ebc033a7d714b4. Verifica completa ancora aperta; baseline e ultimo candidato interamente verificato invariati.
-
-Fasi preparate localmente: quindici Core per compatibilità, ereditarietà/override, snapshot, revisioni/ripristino, finalizzazione/sostituzione, conservazione di carichi e metriche, indipendenza dagli avvisi ed export del solo contesto registrato; un UI per editor, nuova sessione, cambi manuali prima/dopo l'avvio, vecchio storico, verifica sintetica dei dati e riavvio. Fixture PDF con due fasi esplicite, esclusione delle segnalazioni private e stress delle tabelle con tutte e tre le fasi. Header PDF misurato dal testo effettivo con gli stessi font/wrapping del renderer, non una riserva fissa; controllo visivo nuovo ancora necessario. Nessun nuovo test eseguito su macOS; aggiornamento del ramo dopo la CI segnalazioni per non annullarla. Controlli statici locali senza Swift/Xcode.
-
-Riparazione UI isolata sul remoto 119b4c97892bc4e9562f957e022ac5b12fbeded5, albero 91286c0e75891ddefb5bbd3febe3433260f2d67e verificato identico con indice Git locale separato. CI 38453108141 in corso: Core, Release e packaging riusciti; UI ancora da verificare nell'ultima osservazione. Non contiene fasi né nuova lettura delle ripetizioni. Preparato fasi corretto de4f61f25684ea0c9668adbd48b57e9795da2500, parent 119b4c9, albero 7efde90bf5e80d96b2f1a000cbf9ea42c0f2f0ea; NON sul ramo.
-
-Lettura ripetizioni preparata localmente dopo le fasi: 25 Core e un UI nuovi, ancora non eseguiti. Filtri su conferma, serie prescritte, target originale, variante, fase e struttura/carichi; confronto solo numerico senza aumenti inventati, avvisi indipendenti dal risultato. Grafici della schermata filtrati per la stessa variante. Fixture separata Debug/simulatore, verifica risultato/confronto e conservazione dei dati, screenshot serie7-rep-goal. Totali futuri attesi 295 Core/28 UI dopo il blocco fasi 270/27. Windows senza Swift/Xcode: solo controlli statici; nuovo collaudo da avviare dopo i blocchi precedenti, non durante il run attuale.
+Questa verifica chiude codice, regressione, interfaccia simulata, PDF e pacchetto. Non dimostra rifirma AltStore HK Test, permessi HealthKit, scrittura EventKit, ActivityKit/blocco schermo, notifiche/background o conservazione dei dati sul dispositivo reale. Baseline 0.7.5 (19) invariata fino al collaudo descritto in `Docs/SERIE7-COLLAUDO-IPHONE.md`.
