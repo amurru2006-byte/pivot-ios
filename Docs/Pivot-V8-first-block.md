@@ -1,12 +1,12 @@
 # V8.1 — contratto del primo blocco
 
-Baseline: 0.7.5 / 930d17fd292310cc3161bdd0a556619f1c0a43b6. Budget aggiuntivo: 0 euro. Questo blocco prepara comprensione remota e anteprima locale; non cambia ancora la schermata Coach e non pubblica una nuova IPA.
+Baseline: 0.7.5 / 930d17fd292310cc3161bdd0a556619f1c0a43b6. Budget aggiuntivo: 0 euro. Questo documento descrive il contratto ristretto della prima fondazione. Il successivo collegamento alla schermata Coach è ora implementato sul ramo V8: stato aggiornato in `V8-ONLINE-PRIVACY-E-QUOTE.md`. Nessuna nuova IPA viene pubblicata da questo blocco.
 
 ## Caso e flusso
 
 L'utente comunica prima che si è svegliato a mezzogiorno, poi chiede pranzo seguito da palestra. Il servizio vede la conversazione pertinente e una fotografia della giornata. Restituisce un messaggio e, per una proposta, gli ID temporanei delle attività nell'ordine richiesto. Non restituisce orari, durate, dati Salute o azioni da eseguire.
 
-`CoachV8Snapshot.make` -> richiesta JSON -> gateway autenticato -> risposta strutturata -> `CoachV8Planner.preview` -> `Planner.recover` -> `CoachPlanner.validate` -> `CoachOption` da mostrare. L'anteprima non modifica AppData. Il successivo collegamento alla UI riuserà le conferme esistenti, con verifica specifica delle proposte che contengono più eventi.
+`CoachV8Snapshot.make` -> richiesta JSON -> gateway autenticato -> risposta strutturata -> `CoachV8Planner.preview` -> `Planner.recover` -> `CoachPlanner.validate` -> `CoachOption` da mostrare. L'anteprima non modifica AppData. Il collegamento alla UI riusa le conferme esistenti; la conferma unica dell'intera catena multi-evento resta da completare.
 
 ## Contratto e privacy
 

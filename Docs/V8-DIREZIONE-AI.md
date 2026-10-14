@@ -1,6 +1,6 @@
 # Direzione AI di Pivot - proposta del 14 ottobre 2026
 
-Questo documento è una proposta per discuterne con l'utente, non una scelta definitiva del provider. Budget aggiuntivo attuale: zero euro. L'utente richiede alternative, motivazione comprensibile, notifica e conferma prima di scrivere nel Calendario.
+Questo documento conserva le strade valutate. Successivamente l'utente ha autorizzato l'approccio misto proposto; primo provider scelto per il collegamento: Groq con GPT-OSS 120B e gateway personale Cloudflare Workers. Qualità e disponibilità reali restano da verificare, non sono dimostrate dai test sintetici. Stato corrente in `V8-ONLINE-PRIVACY-E-QUOTE.md`. Budget aggiuntivo attuale: zero euro. L'utente richiede alternative, motivazione comprensibile, notifica e conferma prima di scrivere nel Calendario.
 
 ## Proposta principale
 
