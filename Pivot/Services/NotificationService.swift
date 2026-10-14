@@ -57,13 +57,13 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
         }
         let pending = await center.pendingNotificationRequests()
         guard token == generation else { return }
-        let reserved = pending.filter { $0.identifier.hasPrefix("income-") || $0.identifier.hasPrefix("workout-rest-") }.count
+        let reserved = pending.filter { $0.identifier.hasPrefix("income-") || $0.identifier.hasPrefix("workout-rest-") || $0.identifier == "pivot-online-coach-retry" }.count
         let requests = await Task.detached(priority: .utility) {
             NotificationPlan.requestsFromPlanned(events: events, data: data, now: Date(), capacity: min(57, max(0, 60 - reserved)))
         }.value
         guard token == generation else { return }
         let wanted = Set(requests.map(\.id))
-        center.removePendingNotificationRequests(withIdentifiers: pending.filter { !$0.identifier.hasPrefix("income-") && !$0.identifier.hasPrefix("workout-rest-") && !$0.identifier.hasPrefix("lesson-place-") && !wanted.contains($0.identifier) }.map(\.identifier))
+        center.removePendingNotificationRequests(withIdentifiers: pending.filter { !$0.identifier.hasPrefix("income-") && !$0.identifier.hasPrefix("workout-rest-") && !$0.identifier.hasPrefix("lesson-place-") && $0.identifier != "pivot-online-coach-retry" && !wanted.contains($0.identifier) }.map(\.identifier))
         let existing = Dictionary(pending.map { ($0.identifier, $0) }, uniquingKeysWith: { _, newer in newer })
         var count = 0
         for request in requests {

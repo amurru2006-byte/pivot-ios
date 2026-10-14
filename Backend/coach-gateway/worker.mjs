@@ -10,6 +10,51 @@ const reply = (status, code) => Response.json({ error: code }, {
   status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }
 });
 
+const MAX_WAIT_SECONDS = 7 * 86400;
+function durationSeconds(value) {
+  if (typeof value !== 'string' || value.length > 80) return null;
+  if (/^\d+(?:\.\d+)?$/.test(value)) {
+    const seconds = Number(value);
+    return seconds > 0 && seconds <= MAX_WAIT_SECONDS ? Math.ceil(seconds) : null;
+  }
+  const scales = { ms:0.001, s:1, m:60, h:3600, d:86400 };
+  const parts = [...value.matchAll(/(\d+(?:\.\d+)?)(ms|s|m|h|d)/g)];
+  if (!parts.length || parts.map(x => x[0]).join('') !== value) return null;
+  const seconds = parts.reduce((sum, x) => sum + Number(x[1]) * scales[x[2]], 0);
+  return seconds > 0 && seconds <= MAX_WAIT_SECONDS ? Math.ceil(seconds) : null;
+}
+
+export function quotaRetrySeconds(headers, now) {
+  const waits = [];
+  const retry = headers.get('retry-after');
+  if (retry) {
+    let seconds = durationSeconds(retry);
+    if (seconds === null && /^\w{3}, \d{2} \w{3} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(retry)) {
+      const date = Date.parse(retry);
+      const difference = (date - now) / 1000;
+      if (Number.isFinite(date) && difference > 0 && difference <= MAX_WAIT_SECONDS) seconds = Math.ceil(difference);
+    }
+    if (seconds !== null) waits.push(seconds);
+  }
+  // A reset of a bucket with quota left is NOT a reason to wait for that bucket.
+  for (const bucket of ['requests','tokens']) {
+    const remaining = headers.get(`x-ratelimit-remaining-${bucket}`);
+    if (remaining !== null && /^\d+(?:\.\d+)?$/.test(remaining) && Number(remaining) === 0) {
+      const seconds = durationSeconds(headers.get(`x-ratelimit-reset-${bucket}`));
+      if (seconds !== null) waits.push(seconds);
+    }
+  }
+  return waits.length ? Math.max(...waits) : null;
+}
+
+function quotaReply(code, seconds, now) {
+  return Response.json({ error:code, retryAfterSeconds:seconds,
+    retryAt:seconds === null ? null : new Date(now + seconds * 1000).toISOString() }, {
+    status:429, headers:{ 'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff',
+      ...(seconds === null ? {} : {'Retry-After':String(seconds)}) }
+  });
+}
+
 export async function tokenDigest(token) {
   const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
   return [...new Uint8Array(hash)].map(x => x.toString(16).padStart(2, '0')).join('');
@@ -111,27 +156,34 @@ export async function handle(request, env, dependencies = {}) {
   if (!validRequest(body,clock())) return reply(400,'invalid_request');
   try {
     const { success } = await env.PIVOT_RATE_LIMITER.limit({ key:env.PIVOT_CLIENT_TOKEN_SHA256 });
-    if (!success) return reply(429,'rate_limited');
+    // The configured one-minute limiter permits a safe retry after one full window.
+    if (!success) return quotaReply('rate_limited',60,clock());
   } catch { return reply(503,'temporarily_unavailable'); }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(),25_000);
   try {
     // Fixed provider/model: clients cannot inject a URL, model, key or unrestricted tool.
     const upstream = await fetchProvider('https://api.groq.com/openai/v1/chat/completions', {
-      method:'POST', signal:controller.signal,
+      method:'POST', signal:controller.signal, redirect:'error',
       headers:{ Authorization:`Bearer ${env.GROQ_API_KEY}`, 'Content-Type':'application/json' },
       body:JSON.stringify({ model:MODEL, stream:false, max_completion_tokens:1200, reasoning_effort:'low',
         messages:[{ role:'system', content:INSTRUCTIONS }, { role:'user',content:JSON.stringify(body) }],
         response_format:{ type:'json_schema',json_schema:{ name:'pivot_coach_v1',strict:true,schema:schema(body) } }
       })
     });
-    if (!upstream.ok) { await upstream.body?.cancel(); return reply(upstream.status === 429 ? 429 : 502,upstream.status === 429 ? 'quota_unavailable' : 'provider_unavailable'); }
+    if (!upstream.ok) {
+      const limited = upstream.status === 429;
+      const receivedAt = clock();
+      const seconds = limited ? quotaRetrySeconds(upstream.headers,receivedAt) : null;
+      await upstream.body?.cancel();
+      return limited ? quotaReply('quota_unavailable',seconds,receivedAt) : reply(502,'provider_unavailable');
+    }
     const payload = JSON.parse(await readLimited(upstream.body,32_000));
     if (payload.choices?.[0]?.finish_reason !== 'stop') return reply(502,'invalid_response');
     const result = JSON.parse(payload.choices[0].message.content);
     if (!validResponse(result,body)) return reply(502,'invalid_response');
     return Response.json(result,{ headers:{ 'Cache-Control':'no-store','X-Content-Type-Options':'nosniff' } });
-  } catch { return reply(502,'provider_unavailable'); }
+  } catch { return reply(502,controller.signal.aborted ? 'provider_timeout' : 'provider_unavailable'); }
   finally { clearTimeout(timeout); }
 }
 export default { fetch:handle };
