@@ -1,4 +1,4 @@
-name: Verifica fondazione calendario V8
+name: Verifica calendario e AI online V8
 on:
   push:
     branches: ['codex/pivot-v8-calendar']
@@ -11,7 +11,7 @@ concurrency:
 jobs:
   core:
     runs-on: macos-15-intel
-    timeout-minutes: 25
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
       - name: Seleziona strumenti
@@ -24,9 +24,49 @@ jobs:
           set -o pipefail
           mkdir -p build
           PIVOT_TEST_EXPORT_PATH=build/export-validation.xlsx swift test 2>&1 | tee build/v8-calendar-tests.log
+      - name: Sicurezza e quote gateway senza rete
+        run: node --test Backend/coach-gateway/worker.test.mjs
+      - name: Installa generatore progetto
+        run: brew install xcodegen
+      - name: Genera progetto
+        run: xcodegen generate
+      - name: Autorizza il componente AI approvato
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          approved = json.loads(Path('Scripts/trusted-macros.json').read_text())
+          assert len(approved) == 1
+          assert approved[0]['targetName'] == 'LLMMacrosImplementation'
+          assert approved[0]['packageIdentity'] == 'llm.swift'
+          assert ('revision: ' + approved[0]['fingerprint']) in Path('project.yml').read_text()
+          security = Path.home() / 'Library/org.swift.swiftpm/security'
+          security.mkdir(parents=True, exist_ok=True)
+          (security / 'macros.json').write_text(json.dumps(approved, indent=2))
+          PY
+      - name: Compila app senza firma
+        run: |
+          set -o pipefail
+          xcodebuild -project Pivot.xcodeproj -scheme Pivot -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tee build/build.log
+      - name: Regressione UI completa su iPhone simulato
+        run: bash Scripts/preview-ui.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: Pivot-V8-calendar-core
-          path: build/v8-calendar-tests.log
+          path: |
+            build/v8-calendar-tests.log
+            build/build.log
+            build/preview-build.log
+            build/interaction-tests.log
           retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Pivot-V8-online-previews
+          path: build/Previews/
+          retention-days: 14
+          if-no-files-found: ignore

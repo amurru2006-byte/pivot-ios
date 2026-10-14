@@ -17,6 +17,8 @@ struct CoachView: View {
     @State private var responseRecord: EventRecord?
     @State private var returnHomeAfterResponse = false
     @StateObject private var dictation = DictationService()
+    @StateObject private var onlineCoach = OnlineCoachService()
+    @State private var useLocal = false
     @Environment(\.scenePhase) private var scenePhase
     @State private var dictationComposer = DictationTextComposer()
     private var reviews: [WorkoutReview] { (store.data.workoutReviews ?? []).filter { !$0.dismissed && !$0.resolved } }
@@ -33,6 +35,7 @@ struct CoachView: View {
     var body: some View {
         PivotScreen {
             PivotHeader(title: "Parla con Pivot", subtitle: "Racconta cosa è cambiato. Decidi tu cosa applicare.")
+            onlineStatusCard
             if store.data.actualWorkoutDraft != nil { WorkoutChatCard() }
             ForEach(reviews) { review in
                 PivotCard(tint: PivotTheme.blue) {
@@ -178,8 +181,11 @@ struct CoachView: View {
             // Permission dialogs temporarily make the scene inactive. Let the
             // request finish; actual backgrounding or leaving still cancels it.
             if phase == .background || (phase == .inactive && dictation.isListening) { dictation.stop() }
+            if phase == .background { onlineCoach.cancel() }
         }
-        .onDisappear { dictation.stop(); coachModel.pauseAndUnload() }
+        .onAppear { onlineCoach.reload() }
+        .onReceive(NotificationCenter.default.publisher(for: OnlineCoachService.settingsChanged)) { _ in onlineCoach.cancel(); onlineCoach.reload() }
+        .onDisappear { dictation.stop(); coachModel.pauseAndUnload(); onlineCoach.cancel() }
         .toolbar { Button { Task { await calendar.refresh(settings: store.data.settings) } } label: { Image(systemName: "arrow.clockwise") } }
         .sheet(item: $responseRecord, onDismiss: {
             if returnHomeAfterResponse { returnHomeAfterResponse = false; dismiss() }
@@ -191,6 +197,37 @@ struct CoachView: View {
                 let key = PivotDate.key(historyDay)
                 store.change { data in var coach = data.coachState; coach.messages.removeAll { $0.dayKey == key }; data.coachState = coach }
             }
+        }
+    }
+
+    private var onlineStatusCard: some View {
+        PivotCard(tint: PivotTheme.blue) {
+            Label(onlineCoach.isConfigured && !useLocal ? "AI online" : "Base locale", systemImage: onlineCoach.isConfigured && !useLocal ? "network" : "iphone")
+                .font(.headline).accessibilityIdentifier("coach-online-mode")
+            if let failure = onlineCoach.failure {
+                Text(failure.errorDescription ?? "AI online non disponibile").font(.subheadline)
+                    .accessibilityIdentifier("coach-online-error")
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    if let label = failure.timingLabel(at: context.date) {
+                        Text(label).font(.subheadline.monospacedDigit()).accessibilityIdentifier("coach-online-countdown")
+                    }
+                }
+                if let retryAt = failure.retryAt, retryAt > Date() {
+                    Text("Orario per riprovare: " + DisplayDate.label(retryAt, format: "d MMM · HH:mm"))
+                        .font(.caption).foregroundStyle(PivotTheme.muted)
+                    Button("Avvisami quando posso riprovare") { Task { await onlineCoach.notifyWhenRetryIsPossible() } }
+                        .buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("coach-online-notify")
+                }
+            }
+            if onlineCoach.isConfigured {
+                Button(useLocal ? "Usa AI online" : "Continua con la base locale") { useLocal.toggle(); if useLocal { onlineCoach.cancel() } }
+                    .buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("coach-online-local-toggle")
+                Text("La base locale usa le regole di pianificazione disponibili; non ha la stessa comprensione della conversazione online.")
+                    .font(.caption).foregroundStyle(PivotTheme.muted)
+            }
+            NavigationLink { OnlineCoachSettingsView() } label: { Label("AI online e privacy", systemImage: "lock.shield") }
+                .accessibilityIdentifier("coach-online-settings")
+            if let status = onlineCoach.configurationMessage { Text(status).font(.caption).foregroundStyle(PivotTheme.muted) }
         }
     }
 
@@ -296,6 +333,10 @@ struct CoachView: View {
             message = "Ci sono più allenamenti, nessun evento palestra oppure una conferma già aperta. Completa la proposta o apri l’attività precisa: non ne scelgo una a caso."
             return
         }
+        if onlineCoach.isConfigured && !useLocal && targetID == nil && contextEventID == nil {
+            await sendOnline(clean, now: now)
+            return
+        }
         var verified: CoachTurnResult?
         let target = targetID ?? contextEventID
         let started = ProcessInfo.processInfo.systemUptime
@@ -334,6 +375,38 @@ struct CoachView: View {
         }
         input = ""
         message = result.options.isEmpty ? "Nessuna modifica è stata preparata." : nil
+    }
+
+    private func sendOnline(_ clean: String, now: Date) async {
+        do {
+            await calendar.refresh(settings: store.data.settings)
+            let snapshotData = store.data, events = calendar.events
+            let snapshot = try await Task.detached(priority: .userInitiated) {
+                try CoachV8Snapshot.make(message: clean, events: events, data: snapshotData, now: now)
+            }.value
+            let response = try await onlineCoach.ask(snapshot)
+            guard !store.locked, !store.isRestoring, !Task.isCancelled else { return }
+            let currentData = store.data, currentEvents = calendar.events, currentTime = Date()
+            let result = try await Task.detached(priority: .userInitiated) {
+                try CoachV8Planner.preview(response, snapshot: snapshot, events: currentEvents, data: currentData, now: currentTime)
+            }.value
+            guard snapshot.isCurrent(events: calendar.events, data: store.data, now: Date()) else { throw CoachV8Error.staleContext }
+            guard store.change({ data in
+                var coach = data.coachState
+                coach.messages.append(.init(dayKey: PivotDate.key(now), role: .user, text: clean, createdAt: now))
+                coach.messages.append(.init(dayKey: PivotDate.key(now), role: .coach, text: result.reply))
+                coach.options = result.options
+                data.coachState = coach
+            }) else { message = "Non riesco a salvare la conversazione. Il messaggio resta qui."; return }
+            input = ""; message = result.options.isEmpty ? "Nessuna modifica è stata preparata." : nil
+        } catch let failure as CoachOnlineFailure {
+            // Keep the composer intact; retries are manual and never queued invisibly.
+            message = failure.errorDescription
+        } catch let problem as CoachV8Error {
+            message = problem.errorDescription
+        } catch {
+            message = "L'AI online non è disponibile. Il messaggio resta qui; puoi continuare con la base locale."
+        }
     }
 
     private func prepareActual(_ event: CalendarItem, workout: HealthWorkoutSummary?, start: Date) {

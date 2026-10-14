@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { handle, tokenDigest, validRequest } from './worker.mjs';
+import { handle, tokenDigest, validRequest, quotaRetrySeconds } from './worker.mjs';
 
 // Synthetic data and fake provider: these tests do not prove model quality.
 const token = 'a'.repeat(43);
@@ -34,6 +34,7 @@ test('authenticated request uses fixed provider/model, strict schema and no-stor
     const sent = JSON.parse(init.body);
     assert.equal(sent.model,'openai/gpt-oss-120b');
     assert.equal(sent.stream,false);
+    assert.equal(init.redirect,'error');
     assert.equal(sent.response_format.json_schema.strict,true);
     assert.equal(sent.response_format.json_schema.schema.additionalProperties,false);
     assert.equal(JSON.parse(sent.messages[1].content).history[0].text,fixture().history[0].text);
@@ -126,4 +127,46 @@ test('Rome day key handles midnight and daylight saving independently of server 
   assert.equal(validRequest(body,Date.parse(body.now)),true);
   body.dayKey='2026-10-07';
   assert.equal(validRequest(body,Date.parse(body.now)),false);
+});
+
+test('provider quota preserves a five-hour timer without returning its private error body', async () => {
+  let calls = 0;
+  const response = await handle(request(),await environment(),{clock,fetchProvider:async () => {
+    calls++; return new Response('private calendar and secret key',{status:429,headers:{'Retry-After':'18000'}});
+  }});
+  assert.equal(response.status,429);
+  assert.deepEqual(await response.json(),{error:'quota_unavailable',retryAfterSeconds:18000,retryAt:new Date(now+18_000_000).toISOString()});
+  assert.equal(response.headers.get('Retry-After'),'18000'); assert.equal(calls,1);
+});
+test('only exhausted buckets affect the reported wait and compound reset values are supported', () => {
+  assert.equal(quotaRetrySeconds(new Headers({'x-ratelimit-remaining-requests':'100','x-ratelimit-reset-requests':'23h',
+    'x-ratelimit-remaining-tokens':'0','x-ratelimit-reset-tokens':'7m6.5s'}),now),427);
+  assert.equal(quotaRetrySeconds(new Headers({'retry-after':'5','x-ratelimit-remaining-requests':'0','x-ratelimit-reset-requests':'2h30m',
+    'x-ratelimit-remaining-tokens':'0','x-ratelimit-reset-tokens':'45s'}),now),9000);
+});
+test('missing or malformed timing stays unknown rather than inventing a reset time', async () => {
+  for(const headers of [{},{'retry-after':'later'},{'retry-after':'Infinity'},{'retry-after':'-10'},
+    {'retry-after':'9999999999'},{'x-ratelimit-reset-requests':'24h'},
+    {'x-ratelimit-remaining-tokens':'0','x-ratelimit-reset-tokens':'10minutes'}]) {
+    assert.equal(quotaRetrySeconds(new Headers(headers),now),null);
+  }
+  const response = await handle(request(),await environment(),{clock,fetchProvider:async () => new Response('secret',{status:429})});
+  assert.deepEqual(await response.json(),{error:'quota_unavailable',retryAfterSeconds:null,retryAt:null});
+  assert.equal(response.headers.has('Retry-After'),false);
+});
+test('HTTP date Retry-After is bounded and expired dates are not new credits', () => {
+  assert.equal(quotaRetrySeconds(new Headers({'retry-after':new Date(now+60_000).toUTCString()}),now),60);
+  assert.equal(quotaRetrySeconds(new Headers({'retry-after':new Date(now-60_000).toUTCString()}),now),null);
+});
+test('local limiter provides its own retry window without calling the AI provider', async () => {
+  const env=await environment(); env.PIVOT_RATE_LIMITER.limit=async () => ({success:false});
+  const response=await handle(request(),env,{clock,fetchProvider:forbidden});
+  assert.deepEqual(await response.json(),{error:'rate_limited',retryAfterSeconds:60,retryAt:new Date(now+60_000).toISOString()});
+});
+test('response and request diagnostics never expose provider secrets or raw exceptions', async () => {
+  const response=await handle(request(),await environment(),{clock,fetchProvider:async () => {
+    throw new Error('provider-secret-private-input');
+  }});
+  assert.deepEqual(await response.json(),{error:'provider_unavailable'});
+  assert.equal(response.headers.get('Cache-Control'),'no-store');
 });

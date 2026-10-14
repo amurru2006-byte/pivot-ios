@@ -27,7 +27,11 @@ actor FilePersistence {
         let previous = try lastBytes ?? (FileManager.default.fileExists(atPath: file.path) ? Data(contentsOf: file) : nil)
         if let previous {
             let name = restoring ? "before-restore-\(UUID().uuidString).json" : "previous.json"
+            #if os(iOS)
+            try previous.write(to: directory.appendingPathComponent(name), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            #else
             try previous.write(to: directory.appendingPathComponent(name), options: .atomic)
+            #endif
         }
         #if os(iOS)
         try bytes.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])

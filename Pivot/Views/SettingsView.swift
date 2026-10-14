@@ -27,6 +27,7 @@ struct SettingsView: View {
                     settingsLink("Salute e Apple Watch", subtitle: "Sonno e allenamenti", icon: "heart.text.square.fill") { healthSettings }
                     settingsLink("Notifiche", subtitle: "Quando e come avvisarti", icon: "bell.fill") { notificationSettings }
                     settingsLink("Backup e privacy", subtitle: "Proteggi il tuo storico", icon: "externaldrive.fill") { backupSettings }
+                    settingsLink("AI online e privacy", subtitle: "Collegamento protetto e limiti", icon: "lock.shield") { OnlineCoachSettingsView() }
                     settingsLink("Studio ed esami", subtitle: "Priorità e recuperi", icon: "graduationcap.fill") { studySettings }
                     settingsLink("Energia e riferimenti", subtitle: "Obiettivi dei valori da 0 a 10", icon: "chart.dots.scatter") { ratingSettings }
                     settingsLink("Prestazioni e salvataggio", subtitle: "Tempi di caricamento e stato dei dati", icon: "speedometer") { PerformanceView() }
