@@ -9,6 +9,11 @@ build/
 *.key
 *.pem
 *.env
+*.env.*
+.dev.vars*
+.wrangler/
+node_modules/
+.pnpm-store/
 *Backup*.json
 *backup*.json
 *pivot-data*.json
