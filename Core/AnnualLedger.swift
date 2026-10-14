@@ -34,8 +34,12 @@ enum TutoringLedger {
         }
         record.tutoringAnswered = true
         guard amountCents > 0 else { return nil }
-        let entry = IncomeEntry(clientID: client.id, clientName: client.name, date: record.actualEnd ?? event.end, minutes: max(1, record.activeMinutes > 0 ? record.activeMinutes : event.durationMinutes), amountCents: amountCents, paidCents: collectedCents, notes: record.notes, calendarEventID: event.id, paymentTiming: timing, promisedPaymentDate: promisedDate)
-        if !data.clients.contains(where: { $0.id == client.id }) { data.clients.append(client) }
+        let knownID = data.clients.first { $0.id == client.id }
+        let recognized = StudentRecognition.recognize(title: client.name, clients: data.clients)
+        guard knownID != nil || !recognized.ambiguous else { record.tutoringAnswered = false; return nil }
+        let resolved = knownID ?? recognized.client ?? client
+        let entry = IncomeEntry(clientID: resolved.id, clientName: resolved.name, date: record.actualEnd ?? event.end, minutes: max(1, record.activeMinutes > 0 ? record.activeMinutes : event.durationMinutes), amountCents: amountCents, paidCents: collectedCents, notes: record.notes, calendarEventID: event.id, paymentTiming: timing, promisedPaymentDate: promisedDate)
+        if !data.clients.contains(where: { $0.id == resolved.id }) { data.clients.append(resolved) }
         data.income.append(entry)
         if collectedCents > 0 { data.payments.append(.init(incomeID: entry.id, clientName: client.name, date: paymentDate, amountCents: collectedCents)) }
         record.incomeID = entry.id
