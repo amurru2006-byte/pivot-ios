@@ -8,9 +8,9 @@ Prima della connessione reale:
 
 1. Account Groq Free; attivare e verificare Zero Data Retention, senza abilitare batch/fine-tuning. La semplice variabile del gateway non verifica l'account da sola.
 2. Account Cloudflare Workers Free. Verificare che rate limiting binding e CPU del gateway rientrino nel piano. I limiti del binding sono locali al datacenter, non un contatore globale; le quote Groq restano il limite globale. Nessuna garanzia di servizio gratuito perpetuo/illimitato.
-3. Generare un token client casuale di almeno 32 byte (base64url), conservarlo nel Keychain nell'integrazione iOS successiva; mettere sul server soltanto il digest SHA256. Non incollare segreti in chat, commit, backup o schermate.
+3. Generare un token client casuale di almeno 32 byte (base64url), conservarlo nel Keychain tramite la schermata iOS «AI online e privacy» già implementata; mettere sul server soltanto il digest SHA256. Non incollare segreti in chat, commit, backup o schermate.
 4. Configurare GROQ_API_KEY e PIVOT_CLIENT_TOKEN_SHA256 come secrets, PRIVACY_READY=zdr-confirmed dopo la verifica. Se qualcosa manca, l'endpoint restituisce 503 senza contattare il provider.
-5. Distribuire e verificare con payload sintetico; poi collegare il Coach e provare dati reali minimizzati. Non pubblicare l'app commerciale usando questo token personale condiviso.
+5. Distribuire e verificare con payload sintetico; poi collegare il Coach e provare dati reali minimizzati dopo le verifiche privacy e il consenso. Non pubblicare l'app commerciale usando questo token personale condiviso. La procedura per l'utente è in `Docs/V8-ATTIVAZIONE-GUIDATA.md`.
 
 Il gateway non archivia cronologia, non contiene console.log e non riflette i messaggi di errore del provider. Il provider elabora i dati del prompt; il trasporto cifrato non li rende invisibili al provider. La richiesta contiene messaggi e memorie forniti dall'utente, che possono essere personali. Nessun titolo libero, nota, indirizzo o identificativo calendario nel DTO.
 
