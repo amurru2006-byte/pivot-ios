@@ -411,8 +411,18 @@ final class PivotInteractionTests: XCTestCase {
         for _ in 0..<15 { if button.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(button.isHittable); button.tap()
         let message = app.staticTexts["training-message"]
-        XCTAssertTrue(message.waitForExistence(timeout: 15))
-        XCTAssertEqual(message.label, "Controlli allenamento verificati")
+        if !message.waitForExistence(timeout: 10) {
+            // The fixture inserts a plan, gallery and session above this
+            // footer. The recorded failure had the new data but the message
+            // below the viewport: seek the exact result, not a generic row.
+            for _ in 0..<24 {
+                if message.exists { break }
+                let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+                start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -150)))
+            }
+        }
+        XCTAssertTrue(message.exists, app.debugDescription)
+        XCTAssertEqual(message.label, "Controlli allenamento verificati", app.debugDescription)
     }
     func testTrainingPDFUsesActualRendererAndSyntheticWeeklyData() {
         continueAfterFailure = false
