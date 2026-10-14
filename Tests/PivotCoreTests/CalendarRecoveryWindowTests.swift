@@ -78,4 +78,23 @@ final class CalendarRecoveryWindowTests: XCTestCase {
         XCTAssertFalse(find(gym, events, data).isEmpty)
         XCTAssertEqual(events[0].start, gym.start); XCTAssertEqual(bytes, try BackupCodec.encode(data))
     }
+    func testAnotherLongerEstimatedWorkoutReservesItsFullDuration() {
+        let gym = event("gym", start: -7200), other = event("other-workout", start: 5400, duration: 3600)
+        var data = state(gym)
+        data.rules[other.id] = .init(flexibility: .movable, minimumMinutes: 60, travelConfirmed: true)
+        let own = CalendarTimeBudget.confirmed(activityMinutes: 75, rule: data.rules[gym.id]!, preparationMinutes: 10)!
+        let another = CalendarTimeBudget.confirmed(activityMinutes: 90, rule: data.rules[other.id]!, preparationMinutes: 0)!
+        let result = CalendarRecoveryWindows.find(target: gym, budget: own, events: [gym, other], data: data,
+            otherBudgets: [other.id: another], now: now, days: 1)
+        XCTAssertEqual(result.first?.occupiedStart, other.start.addingTimeInterval(5400))
+    }
+    func testAdjacentDayReturnTravelStillBlocksMorning() throws {
+        let gym = event("gym", start: -7200)
+        let morning = ISO8601DateFormatter().date(from: "2026-10-15T08:00:00+02:00")!
+        let late = event("late", start: 10 * 3600, duration: 90 * 60)
+        var data = state(gym)
+        data.rules[late.id] = .init(flexibility: .fixed, minimumMinutes: 90, travelAfterMinutes: 600, travelConfirmed: true)
+        let result = find(gym, [gym, late], data, now: morning)
+        XCTAssertEqual(result.first?.occupiedStart, late.end.addingTimeInterval(600 * 60))
+    }
 }

@@ -59,4 +59,12 @@ final class DayRecoveryReviewTests: XCTestCase {
         XCTAssertEqual(first, DayRecoveryReview.make(events: [recent, old], data: data, preferences: [:], now: now))
         XCTAssertEqual(before, try BackupCodec.encode(data))
     }
+    func testStalePendingMoveDoesNotHideTheCurrentOccurrence() {
+        let original = event("same")
+        var current = original; current.title = "Titolo modificato"
+        var data = AppData()
+        data.moves = [.init(source: original, proposedStart: now.addingTimeInterval(3600), proposedEnd: now.addingTimeInterval(7200))]
+        let result = DayRecoveryReview.make(events: [current], data: data, preferences: [:], now: now)
+        XCTAssertFalse(result[0].hasPendingMove); XCTAssertEqual(result[0].state, .needsReview)
+    }
 }

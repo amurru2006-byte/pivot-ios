@@ -54,7 +54,10 @@ enum DayRecoveryReview {
         }.sorted { $0.start == $1.start ? $0.id < $1.id : $0.start < $1.start }.map { event in
             let preference = preferences[event.id]
             let status = data.records[event.id]?.status ?? .pending
-            let pendingMove = data.moves.contains { !$0.syncedToCalendar && $0.source.id == event.id }
+            let pendingMove = data.moves.contains { move in
+                !move.syncedToCalendar && move.source.id == event.id
+                    && events.contains { $0.id == event.id && CoachPlanner.matchesPlanSnapshot(move.source, $0) }
+            }
             let state: DayRecoveryItem.State
             switch status {
             case .completed: state = .completed

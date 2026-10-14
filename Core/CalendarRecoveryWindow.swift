@@ -44,17 +44,19 @@ enum CalendarRecoveryWindows {
                 guard event.end > event.start,
                       (0...1440).contains(other.travelBeforeMinutes), (0...1440).contains(other.travelAfterMinutes),
                       event.location.isEmpty || other.travelConfirmed else { unavailable = true; return nil }
-                let before: Int, after: Int
+                let before: Int, after: Int, activityEnd: Date
                 if let otherBudget = otherBudgets[event.id] {
                     guard otherBudget == CalendarTimeBudget.confirmed(activityMinutes: otherBudget.activityMinutes,
                         rule: other, preparationMinutes: otherBudget.preparationMinutes, marginMinutes: otherBudget.marginMinutes) else {
                         unavailable = true; return nil
                     }
                     before = otherBudget.beforeMinutes; after = otherBudget.afterMinutes
+                    activityEnd = event.start.addingTimeInterval(Double(otherBudget.activityMinutes) * 60)
                 } else {
                     before = other.travelBeforeMinutes; after = other.travelAfterMinutes
+                    activityEnd = event.end
                 }
-                return (event.start.addingTimeInterval(-Double(before) * 60), event.end.addingTimeInterval(Double(after) * 60))
+                return (event.start.addingTimeInterval(-Double(before) * 60), activityEnd.addingTimeInterval(Double(after) * 60))
             }.filter { $0.0 < end && $0.1 > cursor }.sorted { $0.0 < $1.0 }
             if unavailable { continue }
             for block in blocks + [(end, end)] {
