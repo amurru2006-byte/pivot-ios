@@ -14,6 +14,8 @@ struct CoachView: View {
     @State private var message: String?
     @State private var applyingID: UUID?
     @State private var isPlanning = false
+    @State private var turnTask: Task<Void, Never>?
+    @State private var turnGeneration = 0
     @State private var responseRecord: EventRecord?
     @State private var returnHomeAfterResponse = false
     @StateObject private var dictation = DictationService()
@@ -137,7 +139,7 @@ struct CoachView: View {
                     .accessibilityIdentifier("coach-send")
                     .buttonStyle(PivotPrimaryButton()).disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.locked || coachModel.isGenerating || isPlanning)
                 }
-                if isPlanning { ProgressView("Controllo il programma…") }
+                if isPlanning { ProgressView("Controllo il programma…").accessibilityIdentifier("coach-planning-progress") }
                 if dictation.isListening { Text("Dettatura attiva · continua anche dopo una pausa; controlla il testo prima di inviare").font(.caption).foregroundStyle(PivotTheme.accent) }
                 if let status = dictation.message { Text(status).font(.caption).foregroundStyle(PivotTheme.amber) }
                 if coachModel.isGenerating {
@@ -181,11 +183,11 @@ struct CoachView: View {
             // Permission dialogs temporarily make the scene inactive. Let the
             // request finish; actual backgrounding or leaving still cancels it.
             if phase == .background || (phase == .inactive && dictation.isListening) { dictation.stop() }
-            if phase == .background { onlineCoach.cancel() }
+            if phase == .background { cancelTurn() }
         }
         .onAppear { onlineCoach.reload() }
-        .onReceive(NotificationCenter.default.publisher(for: OnlineCoachService.settingsChanged)) { _ in onlineCoach.cancel(); onlineCoach.reload() }
-        .onDisappear { dictation.stop(); coachModel.pauseAndUnload(); onlineCoach.cancel() }
+        .onReceive(NotificationCenter.default.publisher(for: OnlineCoachService.settingsChanged)) { _ in cancelTurn(); onlineCoach.reload() }
+        .onDisappear { dictation.stop(); coachModel.pauseAndUnload(); cancelTurn() }
         .toolbar { Button { Task { await calendar.refresh(settings: store.data.settings) } } label: { Image(systemName: "arrow.clockwise") } }
         .sheet(item: $responseRecord, onDismiss: {
             if returnHomeAfterResponse { returnHomeAfterResponse = false; dismiss() }
@@ -220,9 +222,12 @@ struct CoachView: View {
                 }
             }
             if onlineCoach.isConfigured {
-                Button(useLocal ? "Usa AI online" : "Continua con la base locale") { useLocal.toggle(); if useLocal { onlineCoach.cancel() } }
+                Button(useLocal ? "Usa AI online" : "Continua con la base locale") { useLocal.toggle(); cancelTurn() }
                     .buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("coach-online-local-toggle")
                 Text("La base locale usa le regole di pianificazione disponibili; non ha la stessa comprensione della conversazione online.")
+                    .font(.caption).foregroundStyle(PivotTheme.muted)
+            } else {
+                Text("L'AI online non è ancora collegata. Puoi usare le regole locali; configura il collegamento qui sotto per attivare la conversazione online.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
             }
             NavigationLink { OnlineCoachSettingsView() } label: { Label("AI online e privacy", systemImage: "lock.shield") }
@@ -315,12 +320,23 @@ struct CoachView: View {
 
     private func send(_ text: String, targetID: String? = nil) {
         guard !isPlanning else { return }
+        turnGeneration += 1
+        let generation = turnGeneration
         isPlanning = true
-        Task { await sendInBackground(text, targetID: targetID); isPlanning = false }
+        turnTask = Task {
+            await sendInBackground(text, targetID: targetID)
+            guard generation == turnGeneration else { return }
+            isPlanning = false; turnTask = nil
+        }
+    }
+    private func cancelTurn() {
+        turnGeneration += 1
+        turnTask?.cancel(); turnTask = nil; isPlanning = false
+        onlineCoach.cancel()
     }
     private func sendInBackground(_ text: String, targetID: String?) async {
         let clean = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(3000))
-        guard !clean.isEmpty, !store.locked, !coachModel.isGenerating else { return }
+        guard !clean.isEmpty, !store.locked, !coachModel.isGenerating, !Task.isCancelled else { return }
         let now = Date()
         historyDay = now
         if let start = WorkoutContext.statedStart(clean, now: now) {
@@ -379,17 +395,26 @@ struct CoachView: View {
 
     private func sendOnline(_ clean: String, now: Date) async {
         do {
+            try Task.checkCancellation()
             await calendar.refresh(settings: store.data.settings)
+            #if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.arguments.contains("--online-coach-preflight-test") {
+                try await Task.sleep(nanoseconds: 30_000_000_000)
+            }
+            #endif
+            try Task.checkCancellation()
             let snapshotData = store.data, events = calendar.events
             let snapshot = try await Task.detached(priority: .userInitiated) {
                 try CoachV8Snapshot.make(message: clean, events: events, data: snapshotData, now: now)
             }.value
+            try Task.checkCancellation()
             let response = try await onlineCoach.ask(snapshot)
             guard !store.locked, !store.isRestoring, !Task.isCancelled else { return }
             let currentData = store.data, currentEvents = calendar.events, currentTime = Date()
             let result = try await Task.detached(priority: .userInitiated) {
                 try CoachV8Planner.preview(response, snapshot: snapshot, events: currentEvents, data: currentData, now: currentTime)
             }.value
+            try Task.checkCancellation()
             guard snapshot.isCurrent(events: calendar.events, data: store.data, now: Date()) else { throw CoachV8Error.staleContext }
             guard store.change({ data in
                 var coach = data.coachState
@@ -398,13 +423,17 @@ struct CoachView: View {
                 coach.options = result.options
                 data.coachState = coach
             }) else { message = "Non riesco a salvare la conversazione. Il messaggio resta qui."; return }
-            input = ""; message = result.options.isEmpty ? "Nessuna modifica è stata preparata." : nil
+            if input.trimmingCharacters(in: .whitespacesAndNewlines) == clean { input = "" }
+            message = result.options.isEmpty ? "Nessuna modifica è stata preparata." : nil
         } catch let failure as CoachOnlineFailure {
+            guard !Task.isCancelled else { return }
             // Keep the composer intact; retries are manual and never queued invisibly.
             message = failure.errorDescription
         } catch let problem as CoachV8Error {
+            guard !Task.isCancelled else { return }
             message = problem.errorDescription
         } catch {
+            guard !Task.isCancelled else { return }
             message = "L'AI online non è disponibile. Il messaggio resta qui; puoi continuare con la base locale."
         }
     }

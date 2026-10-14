@@ -58,11 +58,13 @@ final class OnlineCoachService: ObservableObject {
     private let quotaNotificationID = "pivot-online-coach-retry"
     #if DEBUG && targetEnvironment(simulator)
     private var quotaFixture: Bool { ProcessInfo.processInfo.arguments.contains("--online-coach-quota-test") }
+    private var preflightFixture: Bool { ProcessInfo.processInfo.arguments.contains("--online-coach-preflight-test") }
     #endif
 
     init() { reload() }
     func reload() {
         #if DEBUG && targetEnvironment(simulator)
+        if preflightFixture { isConfigured = true; return }
         if quotaFixture {
             isConfigured = true
             if failure == nil { failure = .init(kind: .quota, receivedAt: Date(), retryAt: Date().addingTimeInterval(5 * 3600)) }
@@ -111,8 +113,14 @@ final class OnlineCoachService: ObservableObject {
         generation += 1; session?.invalidateAndCancel(); session = nil; isRequesting = false
     }
     func ask(_ snapshot: CoachV8Snapshot) async throws -> CoachV8Response {
+        try Task.checkCancellation()
         if let failure, let seconds = failure.remaining(at: Date()), seconds > 0 { throw failure }
         #if DEBUG && targetEnvironment(simulator)
+        if preflightFixture {
+            // A cancelled preflight must never reach this synthetic provider failure.
+            let value = CoachOnlineFailure(kind: .invalidResponse, receivedAt: Date())
+            failure = value; throw value
+        }
         if quotaFixture {
             let value = CoachOnlineFailure(kind: .quota, receivedAt: Date(), retryAt: Date().addingTimeInterval(5 * 3600))
             failure = value; throw value
@@ -153,7 +161,7 @@ final class OnlineCoachService: ObservableObject {
                 guard body.count < 8192 else { throw CoachOnlineFailure(kind: .invalidResponse, receivedAt: Date()) }
                 body.append(byte)
             }
-            guard generation == currentGeneration else { throw CancellationError() }
+            guard generation == currentGeneration, !Task.isCancelled else { throw CancellationError() }
             if http.statusCode != 200 { throw CoachOnlineFailure.parse(status: http.statusCode, bytes: body, receivedAt: Date()) }
             let value = try CoachV8Response.decode(body, for: snapshot.request)
             failure = nil; try? OnlineCoachKeychain.remove(account: "cooldown")

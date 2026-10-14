@@ -1,6 +1,34 @@
 import XCTest
 
 final class OnlineCoachInteractionTests: XCTestCase {
+    func testSwitchingToLocalCancelsPreflightWithoutSendingOrLosingComposer() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--interaction-test", "--online-coach-preflight-test"]
+        app.launch()
+        XCTAssertTrue(app.buttons["open-pivot-coach"].waitForExistence(timeout: 15)); app.buttons["open-pivot-coach"].tap()
+        let input = app.descendants(matching: .any)["coach-message-input"]
+        for _ in 0..<12 { if input.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(input.isHittable); input.tap(); input.typeText("Preferisco studiare con esercizi brevi")
+        let done = app.buttons["Fine"]
+        if done.waitForExistence(timeout: 3) { done.tap() }
+        let send = app.buttons["coach-send"]
+        for _ in 0..<5 { if send.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(send.isHittable); send.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["coach-planning-progress"].waitForExistence(timeout: 8))
+        let local = app.buttons["coach-online-local-toggle"]
+        for _ in 0..<10 { if local.isHittable { break }; app.swipeDown() }
+        XCTAssertTrue(local.isHittable); local.tap()
+        XCTAssertEqual(app.staticTexts["coach-online-mode"].label, "Base locale")
+        XCTAssertFalse(app.staticTexts["coach-online-error"].exists)
+        for _ in 0..<12 { if input.isHittable { break }; app.swipeUp() }
+        XCTAssertEqual(input.value as? String, "Preferisco studiare con esercizi brevi")
+        XCTAssertFalse(app.descendants(matching: .any)["coach-planning-progress"].exists)
+        for _ in 0..<5 { if send.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(send.isEnabled); send.tap()
+        XCTAssertTrue(app.staticTexts["Preferisco studiare con esercizi brevi"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.staticTexts["coach-online-error"].exists)
+    }
     func testQuotaCountdownKeepsComposerAndLocalConversationInsidePivot() {
         continueAfterFailure = false
         let app = XCUIApplication()
