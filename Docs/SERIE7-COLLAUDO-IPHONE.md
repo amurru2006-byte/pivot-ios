@@ -1,23 +1,40 @@
-# Serie 7 — collaudo sul vero iPhone
+# Serie 7 - collaudo sul vero iPhone
 
-Candidato 0.7.6 (20), distinto dalla baseline 0.7.5 (19). Prima dell'installazione esportare un backup dall'app stabile; conservarlo e non usare dati di prova per sovrascrivere lo storico personale. Le fixture di test sono limitate al simulatore Debug.
+Candidato Pivot 0.7.6 (20), distinto dalla baseline 0.7.5 (19). I controlli automatici sono conclusi: 303 Core e 28 UI, zero fallimenti. Questa lista riguarda soltanto ciò che simulatore e pacchetto non possono provare.
 
-1. Aprire una scheda esistente, verificare che lo storico sia ancora presente. Avviare un allenamento: i controlli di blocco schermo devono partire automaticamente se Attività live è abilitata in iOS. Se disabilitata, l'allenamento e il timer in app devono continuare a funzionare; provare il ripristino esplicito dopo averla abilitata.
-2. Bloccare l'iPhone: nome, carico/ripetizioni e target devono essere leggibili. Provare anche isometria con due lati e zavorra. Verificare che la scheda non venga tagliata; testare la vista compatta/espansa della Dynamic Island, se disponibile.
-3. Usare +/− e conferma serie. Il recupero deve partire solo per lavoro svolto; provare pausa, reset e prossima serie. Toccare la scheda due volte, anche dopo aver chiuso l'app: si deve aprire la pagina allenamento, senza nuova sheet o pagine duplicate. Il ritorno deve riportare a Palestra.
-4. Dal menu di un esercizio vuoto scegliere “Esercizio non svolto”, con o senza motivo. Nessun dato fittizio necessario. Su un esercizio parzialmente fatto scegliere “Salta serie rimanenti”: le serie vere devono restare. Riprendere l'esercizio e verificare che i valori inseriti non siano cancellati.
-5. Registrare un plank a 0 s: la serie deve essere “Non svolta”, senza recupero e senza volume/record. Per due lati, 0+0 è non svolta; 0+durata positiva conserva il lavoro effettivo. Campo vuoto resta dato assente, non zero. Chiudere e riaprire per verificare la persistenza.
-6. Esportare il singolo allenamento e il riepilogo settimanale: controllare tutte le note e regolazioni, serie warm-up/working/extra/cedimento, carichi o secondi per lato, recuperi previsti/effettivi, orari, serie non svolte e paginazione. Il profilo Salute non deve comparire nel PDF.
-7. Completare una serie Working valida che superi il precedente massimale stimato dello stesso esercizio. La medaglia deve comparire al centro per circa 4,5 s; X deve chiuderla subito. Il valore è stimato, non un carico da provare. Prima registrazione, warm-up, assistenza, isometria e serie saltate non devono creare PR falsi. Annullare/rifare la stessa serie: nessun duplicato.
-8. Aprire “Rank e profilo forza”. I campi sono facoltativi per l'app; il rank necessita di età/peso/categoria delle norme e di una prestazione valida. Provare manuale, Annulla e Salva. Nessuna età inventata se la data non è stata scelta.
-9. Premere esplicitamente “Importa età, peso e altezza” da Salute. Controllare i permessi, dati disponibili e mancanti; rifiutare uno o tutti i permessi deve permettere la compilazione manuale. Verificare data del peso, conferma prima del salvataggio e assenza di richieste automatiche all'avvio. Una firma ad-hoc da sola non abilita HealthKit: l'installatore deve mantenere capability e profilo compatibili.
-10. Verificare rank di panca/squat/stacco con bilanciere, rapporto al peso e prossima soglia stimata. Macchine non equivalenti rimangono non valutate. Primo e secondo stemma: Schiavo della gravità e Patto col ferro; altri cinque spazi riservati senza nomi inventati.
-11. Completare una serie che oltrepassa una nuova soglia: popup rank con lo stemma disponibile, chiusura automatica/X e nessuna ripetizione alla riapertura. Se completata dal widget, il traguardo deve comparire tornando alla pagina allenamento. Interrompere l'app e verificare salvataggio/backup del profilo e dei traguardi.
-12. Scorrere al Cable Crunch/ottavo esercizio: dopo la conferma della serie, countdown ed esercizio devono restare visibili in basso, sopra la barra di navigazione. Provare pausa, reset, tastiera, caratteri grandi e rotazione senza coprire le righe; “Prossima” deve portare alla serie indicata, non al primo esercizio. Anche l'ultima serie conserva il recupero con “Chiudi recupero”. Confermare direttamente una nuova serie deve conservare il tempo effettivo della precedente.
-13. Aprire Salute: controllare ultima lettura, provenienza e resoconto delle modifiche; scegliere un abbinamento incerto senza chat. “Usa questi orari anche nel Calendario” deve modificare soltanto l'occorrenza confermata. Rifiutare i permessi o scegliere un calendario non scrivibile non deve perdere i dati inseriti.
-14. Dal fondo della scheda premere “Termina e salva allenamento”: deve impostare la fine, chiudere recupero/Live Activity/avvisi e aprire automaticamente “Report per il PT”. “Condividi PDF” deve permettere di inviarlo o salvarlo in File. Chiudere l'anteprima e riaprire la sessione: nessun timer residuo. Correggere un dato e usare “Salva modifiche e apri PDF”: PDF aggiornato, stessa fine. Se un'ora di fine è stata inserita manualmente, non deve essere sovrascritta. Un problema del Calendario non deve impedire il PDF né perdere la sessione.
+## Prima di installare
 
-15. Aprire Squat, poi “Cronologia di Squat”: verificare che Bench/Deadlift e schede diverse non siano mescolate. Aprire una sessione terminata, correggere carico/reps/durata, note e date; nessun recupero o popup retroattivo. Tornare e riaprire dopo riavvio: valori conservati. “Salva modifiche e apri PDF” deve mostrare i valori corretti e la fine precedente salvo correzione esplicita.
-16. Usare una sessione di prova avviata per errore (mai uno storico reale senza backup): premere Elimina, prima Annulla, poi confermare. Con serie svolte deve mostrare quante ne perderesti. Sessione eliminata anche dopo riavvio, controlli live/avvisi chiusi, scheda del personal invariata; rank, progressi e prossimi carichi basati sui dati rimasti. Evento esterno nel Calendario conservato; note/riflessioni manuali del diario non cancellate. Un vecchio PDF già condiviso resta esterno a Pivot.
+1. Esportare da Pivot un backup completo in una cartella iCloud Drive fuori da Pivot. Verificarne la presenza e non sovrascrivere copie precedenti.
+2. Non disinstallare Pivot. Installare `Pivot-0.7.6-20-Serie7-5e31969.ipa` sopra l'app esistente usando lo stesso AltStore HK Test e lo stesso account Apple.
+3. Dopo l'apertura, controllare subito schede, cronologia, impostazioni e profilo. Se manca qualcosa, fermarsi e non ripristinare né cancellare dati senza analisi.
 
-I test automatici non sostituiscono questo controllo di ActivityKit e dei permessi/firma Salute sul dispositivo reale. Non promuovere il candidato a nuova baseline stabile senza esito di questo collaudo.
+## Controlli senza esercizio
+
+4. Aprire Rank e profilo forza. Verificare tutti i livelli 1-7 con nomi, stemmi e titoli originali; nessuna immagine deve essere tagliata.
+5. Aprire una giornata senza avviare l'allenamento. Il menu ⋯ deve mostrare Cambia esercizio, Segnala dolore e Segnala infortunio.
+6. Usare una segnalazione chiaramente TEST, collegare due movimenti, verificare entrambi gli avvisi, segnare Non più presente e controllare che lo storico resti. Non inserire sintomi fittizi come reali.
+7. Impostare una fase sulla scheda e un override sulla giornata. Nessun carico deve cambiare e nessun vecchio allenamento deve essere riscritto o avviato.
+8. In Cronologia e progressi verificare Obiettivo e andamento in alto. Deve usare serie confermate, conservare gli avvisi e dichiarare che i carichi restano manuali.
+
+## Prossimo allenamento abituale
+
+Non aumentare carichi, non fare massimali e non eseguire movimenti che provocano fastidio soltanto per collaudare Pivot.
+
+9. Avviare una normale sessione. Se Attività live è autorizzata, deve partire automaticamente; se iOS la nega, l'allenamento in app deve continuare.
+10. Sul blocco schermo controllare nome, serie, carico/ripetizioni o secondi, target, recupero e pulsanti. Se disponibile, verificare Dynamic Island compatta/espansa.
+11. Al Cable Crunch/ottavo esercizio, dopo una serie il recupero deve restare visibile in fondo. Provare pausa, reset e prossima serie; all'ultima usare Chiudi recupero. Una nuova serie confermata deve conservare il recupero effettivo precedente.
+12. Toccare la Live Activity anche dopo aver chiuso Pivot: deve aprire direttamente l'allenamento corretto senza una pagina duplicata.
+13. Usare esercizio non svolto o salta serie rimanenti solo quando serve davvero. Le serie già fatte devono restare. Una isometria 0+0 deve essere non svolta; campo vuoto resta assente.
+14. Premere Termina e salva allenamento dal fondo: fine, salvataggio, stop recupero/Live Activity e anteprima PDF devono essere un unico flusso. Una fine manuale valida non deve cambiare.
+15. Dalla cronologia della giornata riaprire il lavoro, correggere un dato reale se necessario e verificare che non parta un timer né un popup retroattivo. Non eliminare uno storico reale per fare una prova.
+
+## Calendario e Salute
+
+16. Creare un evento Calendario chiamato chiaramente TEST. Eliminarlo nell'app Calendario, tornare in Pivot e aggiornare la Home: non deve restare pendente. Lo storico con dati reali, se presente, deve essere conservato come Rimosso dal Calendario.
+17. Su un'altra occorrenza TEST salvare inizio/fine reali: deve essere aggiornata soltanto quell'occorrenza, senza cambiare titolo, note o serie ricorrente. Non usare una lezione reale come prova.
+18. In Salute e Apple Watch premere Aggiorna dati da Salute. Controllare ultima lettura, conteggi, provenienza e modifiche applicate. Abbinamenti incerti richiedono una scelta; nessuna scrittura deve comparire nell'app Salute.
+19. Verificare che AltStore abbia conservato i permessi HealthKit. La sola presenza degli entitlement nel pacchetto non lo dimostra. Controllare inoltre notifiche e Live Activity dopo blocco/sblocco e ritorno in primo piano.
+
+## Esito
+
+Comunicare: dati precedenti presenti o no; recupero in fondo; blocco schermo; Calendario TEST; Salute; eventuale messaggio esatto. Allegare screenshot senza dati personali quando possibile. La candidata non diventa nuova baseline finché questi controlli hardware non hanno esito positivo.

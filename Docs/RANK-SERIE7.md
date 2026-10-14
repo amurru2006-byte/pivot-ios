@@ -1,19 +1,29 @@
 # Rank Serie 7
 
-Sette posizioni persistenti, indici 0...6: **Schiavo della gravità**, **Patto col ferro**, **Sfidante della fisica**, **Distruttore di ego**, **Mutante**, **Forza primordiale**, **Onnipotente del carico**. Tutti i nomi, stemmi e titoli originali sono ora integrati localmente, ancora da compilare e controllare nel collaudo completo. La galleria offre ogni coppia in grande, con nome testuale accessibile; popup e rank correnti condividono gli stessi nomi/stemmi. Nessuna soglia o logica PR/rank modificata.
+Sette livelli completi e verificati:
 
-Fonti: email "Pivot - ranked" dell'8 ottobre (rank 1 e stemma rank 2 conservati) e bozza "Pivot" del 9 ottobre con le sei coppie rank 2–7. JPEG originali in `../qa/rank-email-2026-10-09/`; titolo rank 1 recuperato dalla prima email in `../qa/rank-email-2026-10-08/`. Copiate negli asset dodici immagini byte-per-byte con SHA256 identici alle fonti: cinque stemmi superiori e sette titoli. Nessun ritaglio, conversione, rimozione dello sfondo o generazione. La sequenza superiore segue le coppie in successione nelle foto.
+1. Schiavo della gravità
+2. Patto col ferro
+3. Sfidante della fisica
+4. Distruttore di ego
+5. Mutante
+6. Forza primordiale
+7. Onnipotente del carico
 
-Quattro nuovi test Core per nomi/ordine, mapping completo degli asset, limiti degli indici e soglie invariate. Il test UI già esistente dei sette livelli ora apre tutte le coppie, verifica i nomi e conserva sette screenshot, oltre alla prova del profilo manuale. Totale combinato atteso 299 Core e 28 UI, non ancora eseguito in questa revisione.
+Ogni livello ha stemma e titolo originali apribili in grande dalla galleria, con nome testuale accessibile. Le quattordici immagini sono mostrate con `scaledToFit`: ali e bordi restano interi. Gli asset ricevuti dall'utente sono stati copiati byte per byte, senza ritaglio, conversione, generazione o rimozione dello sfondo. I metadata esaminati non contengono GPS.
 
-Fonte dei valori: van den Hoek et al., *Normative data for the squat, bench press and deadlift exercises in powerlifting*, JSAMS 27 (2024), 734–742, DOI <https://doi.org/10.1016/j.jsams.2024.07.005>. Tabelle 3 (femminile) e 4 (maschile), licenza CC BY 4.0; fonte universitaria <https://ro.ecu.edu.au/ecuworks2022-2026/4617/>. Rapporti 1RM/peso corporeo per età 12–17, 18–35, 36–59, 60–79, 80+. I nove decili P10...P90 sono trascritti senza interpolazioni. Per panca maschile 18–35 P90 si usa 1,96 della Tabella 4 (l'abstract riporta 1,95).
+Fonti: email dell'8 ottobre per il rank 1 e materiale già conservato del rank 2; bozza Pivot del 9 ottobre per le coppie 2-7. Non manca più alcun livello.
 
-Le sette fasce motivazionali di Pivot sono sotto P10, da P10, P30, P50, P70, P80, P90. La scelta delle fasce e i nomi sono presentazione del prodotto, non categorie scientifiche. Il confronto usa massimale **stimato** Epley su serie valide da 1 a 10 ripetizioni, non un massimale di gara misurato. Riscaldamenti, isometrie, serie saltate e trazioni assistite non generano record. Nessuna norma viene applicata a macchine o esercizi non equivalenti.
+## Calcolo e limiti
 
-Limiti: campione di powerlifter agonisti, non popolazione generale; norme marginali per età, senza inventare un aggiustamento congiunto per classe di peso. Il rapporto al peso favorisce alcuni pesi corporei: ai pesi estremi il confronto va interpretato con cautela. Panca/squat/stacco sono indicatori dei movimenti, non una misurazione universale di tutto un gruppo muscolare. L'altezza è registrabile ma non modifica le soglie perché non compare nel modello pubblicato. Nessun invio di dati a calcolatori esterni.
+Fonte dei valori: van den Hoek et al., *Normative data for the squat, bench press and deadlift exercises in powerlifting*, JSAMS 27 (2024), 734-742, DOI <https://doi.org/10.1016/j.jsams.2024.07.005>. Tabelle 3 e 4, licenza CC BY 4.0; riferimento universitario <https://ro.ecu.edu.au/ecuworks2022-2026/4617/>.
 
-Profilo facoltativo compilabile manualmente, oppure importazione esplicita in sola lettura da Salute (data di nascita, ultima misura peso/altezza). Importazione nel modulo da controllare e salvare; nessun nuovo permesso richiesto automaticamente all'avvio. Date mancanti non diventano età inventate. La data della misura del peso è visibile. Dati protetti dalla persistenza esistente e inclusi nel backup personale, esclusi dal PDF PT.
+Pivot confronta il rapporto 1RM/peso con fasce per età e categoria delle norme. Le sette fasce motivazionali usano sotto P10, P10, P30, P50, P70, P80 e P90. Sono una presentazione di prodotto, non categorie cliniche. Per panca maschile 18-35 viene usato P90 1,96 della tabella.
 
-Traguardi persistenti nel medesimo salvataggio del workout, anche per App Intent del widget. PR solo su completamento nuovo di una serie di un allenamento in corso e miglioramento del record storico. La prima misura stabilisce un riferimento senza falsa celebrazione PR; un primo rank valutabile può essere annunciato. Le correzioni a workout vecchi confrontano anche record più recenti. Identificativi stabili evitano duplicati dopo annullamento/ripristino. Rank massimi restano conservati anche quando lo storico PR è limitato a 500 eventi complessivi. Popup di 4,5 s, X da 44 pt, solo pagina allenamento attiva; traguardi da widget vengono mostrati aprendo la pagina. Traguardi invalidati da correzioni non vengono mostrati.
+Il massimale è stimato con Epley su serie valide da 1 a 10 ripetizioni. Sono esclusi warm-up, isometrie, serie saltate e assistenza. Solo panca, squat e stacco con bilanciere riconosciuti sono valutati; macchine e movimenti non equivalenti restano fuori. Il campione è composto da powerlifter agonisti e non rappresenta universalmente la popolazione. Altezza, rank o PR non autorizzano aumenti o rientri.
 
-Implementazione candidata 0.7.6 (20), distinta dalla baseline stabile 0.7.5 (19). Verifiche Core, build e UI richieste prima di consegnare la nuova IPA.
+Il profilo è facoltativo e manuale; nascita, peso e altezza possono essere importati esplicitamente da Salute in sola lettura, poi controllati prima del salvataggio. Non viene inventata un'età. I dati restano nel backup personale e fuori dal PDF PT.
+
+Traguardi e record sono persistenti e condivisi con il widget. Prima misura valida crea il riferimento senza falso PR; correzioni o eliminazioni ricalcolano i risultati. Il popup resta visibile 8 secondi, ha X da almeno 44 punti e non si ripete dopo la riapertura.
+
+Il run finale 38548362555 ha superato quattro test Core dedicati e il flusso UI che apre e fotografa tutti i sette livelli. Tutte le immagini risultano leggibili e non tagliate. Soglie e logica PR non sono state cambiate dall'integrazione degli asset.
