@@ -1,0 +1,32 @@
+name: Verifica fondazione calendario V8
+on:
+  push:
+    branches: ['codex/pivot-v8-calendar']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pivot-v8-calendar-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core:
+    runs-on: macos-15-intel
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Seleziona strumenti
+        run: |
+          PIVOT_XCODE=$(find /Applications -maxdepth 1 -name 'Xcode_*.app' | sort -V | tail -n 1)
+          if [ -n "$PIVOT_XCODE" ]; then sudo xcode-select -s "$PIVOT_XCODE/Contents/Developer"; fi
+          swift --version
+      - name: Regressione Core completa
+        run: |
+          set -o pipefail
+          mkdir -p build
+          PIVOT_TEST_EXPORT_PATH=build/export-validation.xlsx swift test 2>&1 | tee build/v8-calendar-tests.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Pivot-V8-calendar-core
+          path: build/v8-calendar-tests.log
+          retention-days: 14
