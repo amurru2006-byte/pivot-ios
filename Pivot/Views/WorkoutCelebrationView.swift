@@ -45,7 +45,9 @@ struct WorkoutCelebrationOverlay: View {
         .onAppear { refresh() }
         .task(id: canPresent ? presenting?.id : nil) {
             guard canPresent, let id = presenting?.id else { return }
-            do { try await Task.sleep(nanoseconds: 4_500_000_000) }
+            // Leave time to read the result and reach the 44-point close
+            // control; automatic dismissal still prevents a blocking popup.
+            do { try await Task.sleep(nanoseconds: 8_000_000_000) }
             catch { return }
             if presenting?.id == id && canPresent { await dismissAchievement() }
         }
