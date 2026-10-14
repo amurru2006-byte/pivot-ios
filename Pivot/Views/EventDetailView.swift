@@ -423,9 +423,9 @@ struct EventDetailView: View {
         if let start = record.actualStart, let end = record.actualEnd { record.activeMinutes = max(0, Int(end.timeIntervalSince(start) / 60)) }
     }
     private func recognizeStudent() {
-        guard [.tutoring, .work].contains(event.kind), selectedClientID == nil,
-              studentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        let title = record.logistics.flatMap { $0.isConfirmed(for: event) ? $0.studentName : nil } ?? event.title
+        guard [.tutoring, .work].contains(event.kind), selectedClientID == nil else { return }
+        let title = studentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? (record.logistics.flatMap { $0.isConfirmed(for: event) ? $0.studentName : nil } ?? event.title) : studentName
         let result = StudentRecognition.recognize(title: title, clients: store.data.clients)
         ambiguousStudent = result.ambiguous
         guard !result.ambiguous else { return }
@@ -457,7 +457,9 @@ struct EventDetailView: View {
             let name = selectedClient?.name ?? studentName.trimmingCharacters(in: .whitespacesAndNewlines)
             guard amount == 0 || !name.isEmpty else { message = "Indica lo studente per registrare il guadagno."; return false }
             guard amount == 0 || !ambiguousStudent || selectedClient != nil || !studentName.isEmpty else { message = "Scegli lo studente per questa lezione."; return false }
-            client = selectedClient ?? StudentRecognition.existingClient(named: name, clients: store.data.clients) ?? Client(name: name, rateCents: 0)
+            let recognition = StudentRecognition.recognize(title: name, clients: store.data.clients)
+            guard selectedClient != nil || !recognition.ambiguous else { message = "Ci sono più profili con questo nome: scegli quello giusto o unisci i doppioni da Entrate."; return false }
+            client = selectedClient ?? recognition.client ?? Client(name: name, rateCents: 0)
             if received {
                 let balance = client.map { StudentPayments.balance(clientID: $0.id, data: store.data) } ?? 0
                 guard let paid = Money.cents(from: receivedAmount), paid > 0, paid <= amount + balance else { message = "L'incasso deve essere positivo e non superiore al saldo di questo studente, inclusa questa lezione."; return false }

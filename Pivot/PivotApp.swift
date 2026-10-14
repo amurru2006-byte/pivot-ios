@@ -49,6 +49,8 @@ struct RootView: View {
     @State private var refreshGate = RefreshGate()
     @State private var notificationGate = RefreshGate()
     @State private var workoutLink: WorkoutDeepLink?
+    @State private var coachSetup: CoachOnlineSetupLink?
+    @State private var pendingCoachSetup: CoachOnlineSetupLink?
     @State private var workoutPath: [WorkoutRoute] = []
     // EventKit normally pushes changes immediately. This short safety refresh
     // also catches delayed iCloud deletions/moves without blocking the UI.
@@ -113,12 +115,23 @@ struct RootView: View {
         }
         .onReceive(refreshClock) { _ in if scene == .active { requestRefresh(); rebuildAgenda() } }
         .onOpenURL { url in
+            if let setup = CoachOnlineSetupLink.parse(url, now: Date()) {
+                pendingCoachSetup = setup
+                openPendingCoachSetup()
+                return
+            }
+            if url.scheme == "pivot", url.host == "coach-setup" {
+                store.error = "Il QR non è valido o è scaduto. Richiedine uno nuovo sul computer."
+                return
+            }
             if let link = WorkoutDeepLink.parse(url) { workoutLink = link; openPendingWorkout() }
         }
+        .sheet(item: $coachSetup) { setup in NavigationStack { OnlineCoachSettingsView(setup: setup) } }
         .onChange(of: scene) { _, value in
-            if value == .active { requestRefresh(force: true) }
+            if value == .active { requestRefresh(force: true); openPendingCoachSetup() }
             else { coachModel.pauseAndUnload() }
             if value == .background { store.saveBeforeBackground() }
+            if value == .background { coachSetup = nil; pendingCoachSetup = nil }
         }
         .onReceive(NotificationCenter.default.publisher(for: ProcessInfo.thermalStateDidChangeNotification)) { _ in
             if ProcessInfo.processInfo.thermalState == .serious || ProcessInfo.processInfo.thermalState == .critical { coachModel.pauseAndUnload() }
@@ -144,10 +157,12 @@ struct RootView: View {
                 }
                 requestRefresh(); rebuildAgenda()
                 openPendingWorkout()
+                openPendingCoachSetup()
             }
         }
-        .onChange(of: store.isRestoring) { _, restoring in if !restoring { requestRefresh(); rebuildAgenda(); openPendingWorkout() } }
-        .onChange(of: store.locked) { _, locked in if !locked { openPendingWorkout() } }
+        .onChange(of: store.isRestoring) { _, restoring in if !restoring { requestRefresh(); rebuildAgenda(); openPendingWorkout(); openPendingCoachSetup() } }
+        .onChange(of: store.locked) { _, locked in if !locked { openPendingWorkout(); openPendingCoachSetup() } else { coachSetup = nil } }
+        .onChange(of: notifications.route?.id) { _, _ in openPendingCoachSetup() }
         .onChange(of: store.data.updatedAt) { _, _ in rebuildAgenda(); openPendingWorkout() }
         .onChange(of: store.data.settings) { old, new in
             if old.excludedCalendarIDs != new.excludedCalendarIDs || old.excludedCalendarTitles != new.excludedCalendarTitles || old.excludeHolidays != new.excludeHolidays { requestRefresh(force: true) }
@@ -204,6 +219,16 @@ struct RootView: View {
         }
         .toolbarBackground(PivotTheme.surface, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
+    }
+    private func openPendingCoachSetup() {
+        guard let setup = pendingCoachSetup, scene == .active, !store.isLoading, !store.isRestoring,
+              !store.locked, notifications.route == nil else { return }
+        pendingCoachSetup = nil
+        guard setup.isCurrent(at: Date()) else {
+            store.error = "Il QR è scaduto. Richiedine uno nuovo sul computer."
+            return
+        }
+        coachSetup = setup
     }
     private func openPendingWorkout() {
         guard let link = workoutLink, !store.isLoading, !store.isRestoring, !store.locked else { return }

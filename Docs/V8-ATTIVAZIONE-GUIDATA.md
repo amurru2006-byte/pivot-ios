@@ -1,6 +1,6 @@
 # Attivazione iniziale dell'AI di Pivot
 
-Stato al 14 ottobre 2026: l'utente non ha ancora account Groq e Cloudflare. Non sono stati creati account, chiavi reali, servizi remoti o abbonamenti. La procedura va accompagnata un passo alla volta: non richiede competenze informatiche.
+Stato al 14 ottobre 2026: l'utente ha creato gli account Groq e Cloudflare. Entrambi i piani sono stati verificati nella UI autenticata: Free, $0, Current Plan. Su Groq Global ZDR e Inference APIs ZDR sono attivi; Batch e Fine-tuning/LoRA sono disattivati. Il solo gateway `pivot-coach` è pubblicato su Workers Free dopo consenso specifico, senza upgrade. L'utente ha inserito direttamente la chiave Groq come secret; il token Pivot è generato e conservato nel portachiavi Windows, solo il suo digest è sul server. Flag privacy configurato dopo nuova verifica ZDR. Quattro controlli di accesso e due casi italiani sintetici passati sul servizio reale. Nessun valore della chiave Groq letto o passato in chat, nessun calendario reale trasmesso, nessuna nuova IPA consegnata. La procedura va accompagnata un passo alla volta: non richiede competenze informatiche.
 
 ## A cosa servono questi due account
 
@@ -8,18 +8,18 @@ Groq fornisce il modello che interpreta i messaggi. Cloudflare ospita il piccolo
 
 Si usa soltanto il piano gratuito. Le quote esistono e possono cambiare; non sono una promessa di uso illimitato. Nessuna carta o attivazione a pagamento deve essere richiesta per proseguire questa procedura. Se compare una richiesta del genere, fermarsi e verificare la schermata.
 
-## Primo passo: solo l'accesso a Groq
+## Accesso a Groq (già completato)
 
 1. Aprire https://console.groq.com.
 2. Creare l'account con il metodo di accesso che si preferisce, oppure accedere se l'account esiste già. Password, codici di verifica e accettazione delle condizioni sono operazioni dell'utente.
 3. Una volta entrati, riferire cosa appare nella schermata principale. Si può mostrare una foto con email e altri dati personali oscurati.
 
-Non creare ancora una chiave e non incollarne una nella conversazione. Non occorre attivare Cloudflare nello stesso momento.
+Non incollare chiavi nella conversazione. Account, pubblicazione e segreti server sono già configurati: non ripetere login, creazione account, chiave Groq o Deploy. Restano il collaudo dell'app e il trasferimento protetto del distinto token Pivot all'iPhone. La versione 0.7.6 consegnata non contiene questo nuovo collegamento.
 
 ## Passi successivi, da accompagnare dopo l'accesso
 
 - Verificare il piano Groq e le quote dell'account reale. Nelle impostazioni Data Controls verificare e abilitare Zero Data Retention per l'inferenza; disabilitare funzioni che conservano contenuti. Non basta impostare una variabile nel codice. Groq continua a elaborare il testo e a conservare metadati d'uso: ZDR non significa che il provider non vede il messaggio.
-- Creare l'account Cloudflare, controllare Workers Free e predisporre il collegamento solo dopo la verifica privacy. Non serve acquistare un dominio. La configurazione del limite richieste richiede gli strumenti di sviluppo: non chiedere all'utente di cercare un controllo del binding che la documentazione indica come non disponibile nella dashboard.
+- Account Cloudflare, Workers Free e pubblicazione iniziale sono completati. La configurazione del limite richieste è stata verificata durante il deploy: 3 richieste/60 secondi, locale al datacenter. Non serve acquistare un dominio o pubblicare l'intero repository iOS dal wizard GitHub.
 - Creare la chiave Groq soltanto quando è pronto il suo inserimento diretto tra i segreti del collegamento. Non passarla in chat, screenshot, repository, iCloud o backup. Il token personale Pivot è un segreto diverso: sul server resta soltanto il suo digest; sull'iPhone viene conservato nel portachiavi non sincronizzato.
 - Distribuire il collegamento personale, verificarne autenticazione, quota e risposta con dati sintetici. Nessun invio del calendario reale finché privacy, consenso e verifiche non sono completati.
 - Collegare Pivot dalla schermata «AI online e privacy», inserendo indirizzo e token Pivot nel campo protetto, e confermare il consenso. Non inserire nell'app la chiave Groq.

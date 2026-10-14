@@ -198,12 +198,15 @@ final class PivotInteractionTests: XCTestCase {
         app.buttons["workout-rest-reset"].tap()
         XCTAssertTrue(app.staticTexts["Recupero"].exists)
         app.buttons["workout-next-set"].tap()
-        XCTAssertFalse(timer.exists)
+        let restClosed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: timer)
+        XCTAssertEqual(XCTWaiter.wait(for: [restClosed], timeout: 8), .completed)
         let last = app.buttons["set-done-recovery-8-1"]
         XCTAssertTrue(last.isHittable); last.tap()
         XCTAssertTrue(timer.waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["workout-next-set"].label.contains("Chiudi recupero"))
-        app.buttons["workout-next-set"].tap(); XCTAssertFalse(timer.exists)
+        app.buttons["workout-next-set"].tap()
+        let finalRestClosed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: timer)
+        XCTAssertEqual(XCTWaiter.wait(for: [finalRestClosed], timeout: 8), .completed)
         XCTAssertTrue(app.staticTexts["Serie registrate"].exists)
     }
     func testSerie7RankPopupUsesTheReceivedSecondCrestAndDoesNotRepeat() {
@@ -691,12 +694,21 @@ final class PivotInteractionTests: XCTestCase {
         XCTAssertTrue(input.isHittable)
         let text = "Preferisco studiare con esercizi brevi: prova persistenza Coach."
         input.tap(); input.typeText(text)
+        XCTAssertEqual(input.value as? String, text)
         let done = app.buttons["Fine"]
         if done.waitForExistence(timeout: 3) { done.tap() }
         let send = app.buttons["coach-send"]
         for _ in 0..<5 { if send.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(send.isHittable); send.tap()
-        XCTAssertTrue(app.staticTexts[text].waitForExistence(timeout: 5))
+        let savedMessage = app.staticTexts.matching(identifier: "coach-user-message").matching(NSPredicate(format: "label == %@", text)).firstMatch
+        XCTAssertTrue(savedMessage.waitForExistence(timeout: 8))
+        // The composer clears only after the durable write. An exact message
+        // inside a TextField is not proof that the conversation was saved.
+        let persisted = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            let value = input.value as? String ?? ""
+            return !value.contains(text) && !app.descendants(matching: .any)["coach-planning-progress"].exists
+        }, object: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [persisted], timeout: 12), .completed)
         app.terminate(); app.launch()
         XCTAssertTrue(app.descendants(matching: .any)["calendar-updated"].waitForExistence(timeout: 15))
         let reopened = app.buttons["open-pivot-coach"]

@@ -198,6 +198,8 @@ struct Client: Codable, Identifiable {
     var name: String
     var rateCents: Int
     var paymentCadence: PaymentCadence? = nil
+    // Explicitly confirmed calendar names, never AI-inferred identities.
+    var calendarAliases: [String]? = nil
 }
 
 struct IncomeEntry: Codable, Identifiable {
@@ -327,6 +329,7 @@ struct AppData: Codable {
     var workoutReviews: [WorkoutReview]? = nil
     var actualWorkoutDraft: ActualWorkoutDraft? = nil
     var strengthProfile: StrengthProfile? = nil
+    var incomeEdits: [IncomeEdit]? = nil
 }
 
 struct ActivityDraft: Codable {

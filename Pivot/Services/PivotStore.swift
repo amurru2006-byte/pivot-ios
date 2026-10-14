@@ -58,6 +58,8 @@ final class PivotStore: ObservableObject {
         if ProcessInfo.processInfo.arguments.contains("--training-phase-test") { storageName = "PivotTrainingPhaseTests" }
         if ProcessInfo.processInfo.arguments.contains("--training-progression-test") { storageName = "PivotTrainingProgressionTests" }
         if ProcessInfo.processInfo.arguments.contains("--report-test") { storageName = "PivotTrainingReportTests" }
+        if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--financial-corrections-test"),
+           let value = ProcessInfo.processInfo.environment["PIVOT_QA_FINANCE_ID"], let id = UUID(uuidString: value) { storageName = "PivotFinanceQA-" + id.uuidString }
         #endif
         directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(storageName, isDirectory: true)
         file = directory.appendingPathComponent("pivot-data.json")
@@ -82,6 +84,17 @@ final class PivotStore: ObservableObject {
             diagnostics.record("Caricamento storico", seconds: ProcessInfo.processInfo.systemUptime - started)
             if !locked { applyInitialSettings() }
             #if DEBUG && targetEnvironment(simulator)
+            if !locked, ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--financial-corrections-test"),
+               UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_FINANCE_ID"] ?? "") != nil, data.clients.isEmpty {
+                let client = Client(id: UUID(uuidString: "55555555-5555-4555-8555-555555555551")!, name: "Marta Test", rateCents: 1500)
+                let duplicate = Client(id: UUID(uuidString: "55555555-5555-4555-8555-555555555552")!, name: "Marta Test", rateCents: 0)
+                let entry = IncomeEntry(id: UUID(uuidString: "55555555-5555-4555-8555-555555555553")!, clientID: duplicate.id, clientName: duplicate.name,
+                                        date: Date(), minutes: 60, amountCents: 2000, paidCents: 1500)
+                change { data in
+                    data.clients = [client, duplicate]; data.income = [entry]
+                    data.payments = [Payment(id: UUID(uuidString: "55555555-5555-4555-8555-555555555554")!, incomeID: entry.id, clientName: entry.clientName, date: entry.date, amountCents: 1500)]
+                }
+            }
             if !locked, ProcessInfo.processInfo.arguments.contains("--student-recognition-test"), data.clients.isEmpty {
                 change { $0.clients = [Client(name: "Giulia Rossi", rateCents: 1800)] }
             }

@@ -5,7 +5,16 @@ import UserNotifications
 
 /// Credentials and cooldown never enter AppData, exported backups or diagnostics.
 private enum OnlineCoachKeychain {
-    private static let service = "app.pivot.personal.online-coach.v1"
+    private static var service: String {
+        let base = "app.pivot.personal.online-coach.v1"
+        #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--interaction-test"),
+           let id = ProcessInfo.processInfo.environment["PIVOT_QA_KEYCHAIN_ID"], UUID(uuidString: id) != nil {
+            return base + ".qa." + id
+        }
+        #endif
+        return base
+    }
     static func read<T: Decodable>(_ type: T.Type, account: String) throws -> T? {
         let query: [String: Any] = [kSecClass as String:kSecClassGenericPassword,
             kSecAttrService as String:service, kSecAttrAccount as String:account,
