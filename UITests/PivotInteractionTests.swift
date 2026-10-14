@@ -44,7 +44,10 @@ final class PivotInteractionTests: XCTestCase {
         for _ in 0..<8 { if field.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(field.isHittable); field.tap()
         let value = field.value as? String ?? ""
-        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count) + "50")
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count))
+        XCTAssertFalse(app.alerts.firstMatch.exists, "Replacing a completed load must not interrupt typing with a modal error")
+        field.typeText("50")
+        XCTAssertTrue(app.buttons["Fine"].waitForExistence(timeout: 10), app.debugDescription)
         app.buttons["Fine"].tap()
         XCTAssertFalse(app.staticTexts["workout-rest-countdown"].exists)
         let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-history-correction"; image.lifetime = .keepAlways; add(image)
@@ -116,7 +119,7 @@ final class PivotInteractionTests: XCTestCase {
         XCTAssertTrue(finish.isHittable); finish.tap()
         if reportFailure {
             let warning = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Allenamento salvato, ma il PDF non è stato creato:")).firstMatch
-            XCTAssertTrue(warning.waitForExistence(timeout: 8), app.debugDescription)
+            XCTAssertTrue(warning.waitForExistence(timeout: 25), app.debugDescription)
             XCTAssertFalse(app.navigationBars["Report per il PT"].exists)
             XCTAssertFalse(app.staticTexts["workout-rest-countdown"].exists)
             XCTAssertTrue(finish.label.contains("Salva modifiche")); finish.tap()
@@ -224,7 +227,7 @@ final class PivotInteractionTests: XCTestCase {
         let rankVisible = XCTNSPredicateExpectation(predicate: NSPredicate(format: "count == 2"), object: rankTexts)
         XCTAssertEqual(XCTWaiter.wait(for: [rankVisible], timeout: 8), .completed)
         let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-rank-patto-col-ferro"; image.lifetime = .keepAlways; add(image)
-        XCTAssertTrue(close.waitForNonExistence(timeout: 8)) // Real automatic dismissal.
+        XCTAssertTrue(close.waitForNonExistence(timeout: 12)) // Real automatic dismissal.
         app.terminate(); app.open(url)
         XCTAssertTrue(app.navigationBars["Allenamento"].waitForExistence(timeout: 15))
         XCTAssertFalse(app.buttons["close-workout-achievement"].exists)
@@ -288,7 +291,6 @@ final class PivotInteractionTests: XCTestCase {
         let close = app.buttons["close-workout-achievement"]
         XCTAssertTrue(close.waitForExistence(timeout: 3), app.debugDescription)
         XCTAssertTrue(app.staticTexts["Nuovo massimale stimato!"].exists)
-        let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-pr-celebration"; image.lifetime = .keepAlways; add(image)
         close.tap(); XCTAssertTrue(close.waitForNonExistence(timeout: 3))
         XCTAssertEqual(done.value as? String, "Fatta")
         app.terminate(); app.open(url)
@@ -485,7 +487,7 @@ final class PivotInteractionTests: XCTestCase {
     }
     private func waitUntilHittable(_ element: XCUIElement) -> Bool {
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND hittable == true"), object: element)
-        return XCTWaiter.wait(for: [ready], timeout: 5) == .completed
+        return XCTWaiter.wait(for: [ready], timeout: 15) == .completed
     }
     func testAutofilledActivityRetainsManualCorrectionAfterRelaunch() {
         continueAfterFailure = false

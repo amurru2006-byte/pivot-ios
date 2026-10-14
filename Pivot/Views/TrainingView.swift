@@ -957,6 +957,10 @@ struct TrainingSessionView: View {
             }
         }
         if let end = session.end, end < session.start { message = "La fine deve essere successiva all'inizio."; return false }
+        guard TrainingDraftValidation.canAutosave(session) else {
+            message = "Completa i dati delle serie prima di salvare. L’ultima copia valida resta conservata."
+            return false
+        }
         session.updatedAt = Date()
         let ok = store.saveTraining(session, tips: tips, event: event, historicalEdit: historicalEdit)
         if ok {
