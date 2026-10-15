@@ -5,11 +5,29 @@ import UserNotifications
 
 /// Credentials and cooldown never enter AppData, exported backups or diagnostics.
 private enum OnlineCoachKeychain {
+    // Opening an external URL can relaunch the simulator app without XCTest's
+    // launch environment. Persist only the non-secret QA UUID before that hop;
+    // do not accidentally write fixtures into the normal Keychain namespace.
+    static func prepareInteractionNamespace() {
+        #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--interaction-test"),
+           let value = ProcessInfo.processInfo.environment["PIVOT_QA_KEYCHAIN_ID"], let id = UUID(uuidString: value) {
+            UserDefaults.standard.set(id.uuidString, forKey: "pivot-online-coach-qa-namespace")
+        }
+        #endif
+    }
+    static var interactionNamespace: String? {
+        #if DEBUG && targetEnvironment(simulator)
+        prepareInteractionNamespace()
+        return UserDefaults.standard.string(forKey: "pivot-online-coach-qa-namespace").flatMap { UUID(uuidString: $0)?.uuidString }
+        #else
+        return nil
+        #endif
+    }
     private static var service: String {
         let base = "app.pivot.personal.online-coach.v1"
         #if DEBUG && targetEnvironment(simulator)
-        if ProcessInfo.processInfo.arguments.contains("--interaction-test"),
-           let id = ProcessInfo.processInfo.environment["PIVOT_QA_KEYCHAIN_ID"], UUID(uuidString: id) != nil {
+        if let id = interactionNamespace {
             return base + ".qa." + id
         }
         #endif
@@ -55,6 +73,10 @@ private final class OnlineCoachSessionDelegate: NSObject, URLSessionTaskDelegate
 
 @MainActor
 final class OnlineCoachService: ObservableObject {
+    #if DEBUG && targetEnvironment(simulator)
+    static func prepareInteractionTestNamespace() { OnlineCoachKeychain.prepareInteractionNamespace() }
+    static var interactionTestNamespace: String? { OnlineCoachKeychain.interactionNamespace }
+    #endif
     static let settingsChanged = Notification.Name("pivot-online-coach-settings-changed")
     @Published private(set) var isConfigured = false
     @Published private(set) var isRequesting = false

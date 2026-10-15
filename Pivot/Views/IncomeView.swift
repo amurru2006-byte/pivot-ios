@@ -104,7 +104,8 @@ struct IncomeView: View {
                                     Spacer()
                                     Text("+ \(Money.display(payment.amountCents))").font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.accent)
                                     Image(systemName: "chevron.right").font(.caption).foregroundStyle(PivotTheme.muted)
-                                }}.buttonStyle(.plain).accessibilityIdentifier("receipt-detail-" + payment.id.uuidString)
+                                }.frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+                                }.buttonStyle(.plain).accessibilityIdentifier("receipt-detail-" + payment.id.uuidString)
                                 if payment.id != monthPayments.last?.id { Divider().overlay(.white.opacity(0.05)) }
                             }
                         }

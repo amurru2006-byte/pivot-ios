@@ -4,6 +4,9 @@ import UIKit
 
 final class PivotAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        OnlineCoachService.prepareInteractionTestNamespace()
+        #endif
         return true
     }
 }

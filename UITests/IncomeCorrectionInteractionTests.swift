@@ -1,6 +1,16 @@
 import XCTest
 
 final class IncomeCorrectionInteractionTests: XCTestCase {
+    override func tearDownWithError() throws {
+        if (testRun?.failureCount ?? 0) > 0 {
+            let app = XCUIApplication()
+            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            screenshot.name = "financial-correction-failure"; screenshot.lifetime = .keepAlways; add(screenshot)
+            let tree = XCTAttachment(string: app.debugDescription)
+            tree.name = "financial-correction-accessibility"; tree.lifetime = .keepAlways; add(tree)
+        }
+        try super.tearDownWithError()
+    }
     private func launch() -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
@@ -56,6 +66,7 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
         let app = launch()
         let receipt = app.buttons["receipt-detail-55555555-5555-4555-8555-555555555554"]
         reveal(receipt, app: app); receipt.tap()
+        XCTAssertTrue(app.navigationBars["Pagamento"].waitForExistence(timeout: 10))
         let compensation = app.buttons["income-edit-compensation"]
         reveal(compensation, app: app); compensation.tap()
         replace(app.textFields["income-corrected-amount"], with: "25", app: app)
@@ -67,13 +78,16 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "income-edit-receipt-")).count, 1)
         XCUIDevice.shared.press(.home); app.activate(); app.terminate(); app.launch(); app.tabBars.buttons["Entrate"].tap()
         reveal(receipt, app: app); receipt.tap()
+        XCTAssertTrue(app.navigationBars["Pagamento"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Totale 25")).firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Ricevuto 10")).firstMatch.exists)
         let audit = app.buttons["Correzioni registrate (2)"]; reveal(audit, app: app); XCTAssertTrue(audit.exists)
     }
     func testCompensationBelowReceivedShowsErrorAndCanBeCancelled() {
         let app = launch(); let receipt = app.buttons["receipt-detail-55555555-5555-4555-8555-555555555554"]
-        reveal(receipt, app: app); receipt.tap(); reveal(app.buttons["income-edit-compensation"], app: app); app.buttons["income-edit-compensation"].tap()
+        reveal(receipt, app: app); receipt.tap()
+        XCTAssertTrue(app.navigationBars["Pagamento"].waitForExistence(timeout: 10))
+        reveal(app.buttons["income-edit-compensation"], app: app); app.buttons["income-edit-compensation"].tap()
         replace(app.textFields["income-corrected-amount"], with: "10", app: app)
         reveal(app.buttons["income-correction-save"], app: app); app.buttons["income-correction-save"].tap()
         XCTAssertTrue(app.staticTexts["income-correction-error"].waitForExistence(timeout: 5)); app.buttons["Annulla"].tap()

@@ -3,6 +3,16 @@ import CryptoKit
 import CommonCrypto
 
 final class OnlineCoachSetupInteractionTests: XCTestCase {
+    override func tearDownWithError() throws {
+        if (testRun?.failureCount ?? 0) > 0 {
+            let app = XCUIApplication()
+            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            screenshot.name = "synthetic-qr-setup-failure"; screenshot.lifetime = .keepAlways; add(screenshot)
+            let tree = XCTAttachment(string: app.debugDescription)
+            tree.name = "synthetic-qr-setup-accessibility"; tree.lifetime = .keepAlways; add(tree)
+        }
+        try super.tearDownWithError()
+    }
     private func app() -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
@@ -54,6 +64,9 @@ final class OnlineCoachSetupInteractionTests: XCTestCase {
         let app = app()
         app.open(link())
         unlock(app)
+        let namespace = app.staticTexts["online-coach-qa-namespace"]
+        XCTAssertTrue(namespace.waitForExistence(timeout: 5))
+        XCTAssertEqual(namespace.label, "Contenitore QA: " + app.launchEnvironment["PIVOT_QA_KEYCHAIN_ID"]!)
         let consent = app.switches["online-coach-consent"]
         XCTAssertTrue(consent.waitForExistence(timeout: 10))
         for _ in 0..<8 { if consent.isHittable { break }; app.swipeUp() }
@@ -62,6 +75,10 @@ final class OnlineCoachSetupInteractionTests: XCTestCase {
         for _ in 0..<5 { if save.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(save.isEnabled); save.tap()
         XCTAssertTrue(app.buttons["open-pivot-coach"].waitForExistence(timeout: 8))
+        app.buttons["open-pivot-coach"].tap()
+        XCTAssertTrue(app.staticTexts["coach-online-mode"].waitForExistence(timeout: 8))
+        XCTAssertEqual(app.staticTexts["coach-online-mode"].label, "AI online")
+        app.navigationBars.buttons.firstMatch.tap()
         app.terminate(); app.launch()
         XCTAssertTrue(app.buttons["open-pivot-coach"].waitForExistence(timeout: 15)); app.buttons["open-pivot-coach"].tap()
         XCTAssertTrue(app.staticTexts["coach-online-mode"].waitForExistence(timeout: 8))
