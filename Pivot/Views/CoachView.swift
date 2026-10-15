@@ -428,8 +428,10 @@ struct CoachView: View {
             guard snapshot.isCurrent(events: calendar.events, data: store.data, now: Date()) else { throw CoachV8Error.staleContext }
             guard store.change({ data in
                 var coach = data.coachState
-                coach.messages.append(.init(dayKey: PivotDate.key(now), role: .user, text: clean, createdAt: now))
-                coach.messages.append(.init(dayKey: PivotDate.key(now), role: .coach, text: result.reply))
+                coach.messages.append(.init(dayKey: PivotDate.key(now), role: .user, text: clean, createdAt: now, onlineHistoryEligible: true))
+                // Plan validation may mention a private local event title. Only
+                // provider conversation/clarification prose is safe for history.
+                coach.messages.append(.init(dayKey: PivotDate.key(now), role: .coach, text: result.reply, onlineHistoryEligible: response.mode != .plan))
                 coach.options = result.options
                 data.coachState = coach
             }) else { message = "Non riesco a salvare la conversazione. Il messaggio resta qui."; return }

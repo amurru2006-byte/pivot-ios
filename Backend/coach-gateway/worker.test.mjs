@@ -20,10 +20,32 @@ function request(body = fixture(), headers = {}, url = 'https://example.test/v1/
   return new Request(url, {method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',...headers},
     body: typeof body === 'string' ? body : JSON.stringify(body)});
 }
-function upstream(value = answer(), finish = 'stop') {
+const providerAnswer = () => ({mode:answer().mode,eventIDs:answer().eventIDs,reply:answer().reply});
+function upstream(value = providerAnswer(), finish = 'stop') {
   return Response.json({choices:[{finish_reason:finish,message:{content:JSON.stringify(value)}}]});
 }
 const forbidden = async () => { throw new Error('provider should not be called'); };
+
+test('bounded rejected-request diagnostics return only allowlisted machine classes, never prompts', async () => {
+  for (const [code,expected] of [['json_validate_failed','provider_output_schema_rejected'],
+                               ['context_length_exceeded','provider_context_rejected'],['private-code-sentinel',null]]) {
+    let calls=0;
+    const response=await handle(request(),await environment(),{clock,fetchProvider:async()=>{
+      calls++; return Response.json({error:{code,message:'private-key-sentinel',failed_generation:'private-prompt-sentinel'}},{status:400});
+    }});
+    assert.equal(response.status,502); assert.equal(calls,1);
+    assert.equal(response.headers.get('X-Pivot-Failure-Class'),expected);
+    assert.deepEqual(await response.json(),{error:'provider_request_rejected'});
+    assert.equal(JSON.stringify([...response.headers]).includes('sentinel'),false);
+  }
+});
+test('oversized or malformed rejected-request error bodies cannot escape the fixed error response', async () => {
+  for (const body of ['x'.repeat(8193),'{malformed']) {
+    const response=await handle(request(),await environment(),{clock,fetchProvider:async()=>new Response(body,{status:400})});
+    assert.equal(response.status,502); assert.equal(response.headers.get('X-Pivot-Failure-Class'),null);
+    assert.deepEqual(await response.json(),{error:'provider_request_rejected'});
+  }
+});
 
 test('authenticated request uses fixed provider/model, strict schema and no-store', async () => {
   let calls=0;
@@ -35,9 +57,12 @@ test('authenticated request uses fixed provider/model, strict schema and no-stor
     const sent = JSON.parse(init.body);
     assert.equal(sent.model,'openai/gpt-oss-120b');
     assert.equal(sent.stream,false);
+    assert.equal(sent.temperature,0);
     assert.equal(init.redirect,'manual');
     assert.equal(sent.response_format.json_schema.strict,true);
     assert.equal(sent.response_format.json_schema.schema.additionalProperties,false);
+    assert.deepEqual(sent.response_format.json_schema.schema.required,['mode','eventIDs','reply']);
+    assert.equal(Object.hasOwn(JSON.parse(sent.messages[1].content),'requestID'),false);
     assert.equal(JSON.parse(sent.messages[1].content).history[0].text,fixture().history[0].text);
     assert.equal(Object.hasOwn(sent,'tools'),false);
     return upstream();
@@ -103,17 +128,17 @@ test('unknown IDs, duplicate IDs, extra fields, wrong request ID and truncated r
     {eventIDs:['e99']},{eventIDs:['e0','e0']},{mode:'conversation'},{requestID:'old'},
     {version:true},{reply:' '},{proposedStart:'18:00'}
   ]) {
-    const response = await handle(request(),await environment(),{clock,fetchProvider:async () => upstream({...answer(),...change})});
+    const response = await handle(request(),await environment(),{clock,fetchProvider:async () => upstream({...providerAnswer(),...change})});
     assert.equal(response.status,502);
   }
-  assert.equal((await handle(request(),await environment(),{clock,fetchProvider:async () => upstream(answer(),'length')})).status,502);
+  assert.equal((await handle(request(),await environment(),{clock,fetchProvider:async () => upstream(providerAnswer(),'length')})).status,502);
   assert.equal((await handle(request(),await environment(),{clock,fetchProvider:async () => new Response('x'.repeat(32_001))})).status,502);
 });
 test('non-eligible event cannot become a plan; conversation needs no activity', async () => {
   const body = fixture(); body.events[0].category='other';
   assert.equal((await handle(request(body),await environment(),{clock,fetchProvider:async () => upstream()})).status,502);
   body.events=[];
-  const value = {...answer(),mode:'conversation',eventIDs:[]};
+  const value = {...providerAnswer(),mode:'conversation',eventIDs:[]};
   const response = await handle(request(body),await environment(),{clock,fetchProvider:async () => upstream(value)});
   assert.equal(response.status,200);
 });
@@ -231,7 +256,7 @@ test('provider redirects never forward authorization or prompt to their destinat
 
 test('a valid model plan cannot claim Calendar changes or present unverified times', async () => {
   const response=await handle(request(),await environment(),{clock,fetchProvider:async()=>upstream({
-    ...answer(),reply:'Ho spostato e salvato tutto nel Calendario alle 18:00.'
+    ...providerAnswer(),reply:'Ho spostato e salvato tutto nel Calendario alle 18:00.'
   })});
   assert.equal(response.status,200);
   assert.deepEqual(await response.json(),answer());
@@ -248,5 +273,15 @@ test('provider key whitespace is normalized and invalid header characters fail b
     const rejected=await handle(request(),env,{clock,fetchProvider:forbidden});
     assert.equal(rejected.status,503);
     assert.deepEqual(await rejected.json(),{error:'provider_key_format_invalid'});
+  }
+});
+
+test('server binds each response identity and rejects provider-authored identity fields', async () => {
+  const body=fixture(); body.requestID='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const response=await handle(request(body),await environment(),{clock,fetchProvider:async()=>upstream()});
+  assert.equal(response.status,200); assert.equal((await response.json()).requestID,body.requestID);
+  for(const extra of [{requestID:body.requestID},{version:1}]) {
+    const rejected=await handle(request(body),await environment(),{clock,fetchProvider:async()=>upstream({...providerAnswer(),...extra})});
+    assert.equal(rejected.status,502); assert.equal(rejected.headers.get('X-Pivot-Failure-Class'),'response_fields');
   }
 });

@@ -248,6 +248,8 @@ struct CoachMessage: Codable, Identifiable, Equatable {
     var text: String
     var createdAt = Date()
     var healthDerived: Bool? = nil
+    // Nil (including legacy/local messages) is NOT permission to retransmit.
+    var onlineHistoryEligible: Bool? = nil
 }
 
 struct CoachOption: Codable, Identifiable {
