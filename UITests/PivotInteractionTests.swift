@@ -591,8 +591,17 @@ final class PivotInteractionTests: XCTestCase {
         XCTAssertTrue(day.isHittable); day.tap()
         XCTAssertTrue(app.buttons["Inizia allenamento"].waitForExistence(timeout: 5)); app.buttons["Inizia allenamento"].tap()
         let extra = app.buttons["add-workout-exercise"]
-        for _ in 0..<12 { if extra.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(extra.isHittable); extra.tap()
+        let recoveryBar = app.descendants(matching: .any)["workout-recovery-bar"].firstMatch
+        // XCTest can call a partly visible button hittable while its centre
+        // is behind the persistent recovery bar. Scroll its entire target
+        // into the visible viewport, then perform the ordinary button tap.
+        for _ in 0..<12 {
+            if extra.isHittable && (!recoveryBar.exists || extra.frame.maxY < recoveryBar.frame.minY - 8) { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(extra.isHittable)
+        if recoveryBar.exists { XCTAssertLessThan(extra.frame.maxY, recoveryBar.frame.minY - 8) }
+        extra.tap()
         XCTAssertTrue(app.navigationBars["Scegli esercizio"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "876")).firstMatch.waitForExistence(timeout: 8))
     }
@@ -662,8 +671,8 @@ final class PivotInteractionTests: XCTestCase {
         for _ in 0..<8 { if app.staticTexts["Giulia Rossi"].firstMatch.exists { break }; app.swipeUp() }
         XCTAssertTrue(app.staticTexts["Giulia Rossi"].firstMatch.exists)
     }
-    func testAlarmProbeIsExplicitAndDoesNotStartOnOpening() throws {
-        guard #available(iOS 26.0, *) else { throw XCTSkip("AlarmKit requires iOS 26 or later") }
+    func testAlarmProbeIsExplicitAndDoesNotStartOnOpening() {
+        guard #available(iOS 26.0, *) else { XCTFail("The candidate CI must select iOS 26 or later to exercise AlarmKit"); return }
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test"]; app.launch()
         XCTAssertTrue(app.tabBars.buttons["Impostazioni"].waitForExistence(timeout: 10)); app.tabBars.buttons["Impostazioni"].tap()

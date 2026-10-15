@@ -26,8 +26,8 @@ jobs:
           PIVOT_TEST_EXPORT_PATH=build/export-validation.xlsx swift test 2>&1 | tee build/v8-calendar-tests.log
       - name: Sicurezza e quote gateway senza rete
         run: node --test Backend/coach-gateway/worker.test.mjs
-      - name: Verifica lettore entitlements simulatore senza rete
-        run: python3 -m unittest discover -s Scripts -p 'test_simulator_entitlements.py'
+      - name: Verifica strumenti simulatore senza rete
+        run: python3 -m unittest discover -s Scripts -p 'test_*.py'
       - name: Installa generatore progetto
         run: brew install xcodegen
       - name: Genera progetto
@@ -50,6 +50,11 @@ jobs:
         env:
           PIVOT_UI_ONLY_TESTING: PivotUITests/OnlineCoachSetupInteractionTests
         run: bash Scripts/preview-ui.sh
+      # Keep consecutive Debug simulator builds together: switching to
+      # iphoneos Release first rebuilt the full native dependency twice.
+      # No regression is skipped; Release still gates packaging below.
+      - name: Regressione UI completa su iPhone simulato
+        run: bash Scripts/preview-ui.sh
       - name: Compila app senza firma
         run: |
           set -o pipefail
@@ -57,8 +62,6 @@ jobs:
             -sdk iphoneos -destination 'generic/platform=iOS' \
             -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tee build/build.log
-      - name: Regressione UI completa su iPhone simulato
-        run: bash Scripts/preview-ui.sh
       - name: Prepara candidata V8 solo dopo tutte le verifiche
         run: bash Scripts/package-v8-candidate.sh
       - uses: actions/upload-artifact@v4
@@ -83,6 +86,8 @@ jobs:
             build/qr-preflight-tests.log
             build/simulator-entitlements.plist
             build/qr-preflight-simulator-entitlements.plist
+            build/selected-simulator.json
+            build/devices.json
           retention-days: 1
       - uses: actions/upload-artifact@v4
         if: always()

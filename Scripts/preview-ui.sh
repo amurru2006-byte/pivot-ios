@@ -18,6 +18,11 @@ case "$PIVOT_UI_ONLY_TESTING" in
   *) printf '%s\n' 'Unsupported PIVOT_UI_ONLY_TESTING; refusing to skip arbitrary regressions.' >&2; exit 2 ;;
 esac
 mkdir -p "$PIVOT_PREVIEW_OUTPUT"
+# Resolve the OS before the expensive build. A matching model name can exist
+# on iOS 18 and 26: the former silently skipped the AlarmKit test.
+xcrun simctl list devices available -j > build/devices.json
+PIVOT_SIMULATOR=$(python3 Scripts/select_simulator.py build/devices.json --metadata-out build/selected-simulator.json)
+cat build/selected-simulator.json
 # The simulator still uses the real Security framework for the protected-QR
 # persistence test. Unsigned builds have no private Keychain access group.
 # Use a deliberately synthetic, per-bundle identity only in these Debug
@@ -35,15 +40,6 @@ codesign --verify --deep --strict "$PIVOT_SIM_APP"
 # Simulator entitlements are linked into __TEXT,__entitlements; its ad-hoc
 # code-signature entitlement dictionary can legitimately be empty.
 python3 Scripts/verify_simulator_entitlements.py "$PIVOT_SIM_APP" "$PIVOT_SIM_ENTITLEMENTS"
-xcrun simctl list devices available -j > build/devices.json
-PIVOT_SIMULATOR=$(python3 - <<'PY'
-import json
-with open('build/devices.json') as f: data=json.load(f)
-phones=[x for values in data['devices'].values() for x in values if x['name'].startswith('iPhone') and x['isAvailable']]
-preferred=next((x for x in phones if x['name']=='iPhone 16'), phones[0])
-print(preferred['udid'])
-PY
-)
 xcrun simctl boot "$PIVOT_SIMULATOR" || true
 xcrun simctl bootstatus "$PIVOT_SIMULATOR" -b
 xcrun simctl status_bar "$PIVOT_SIMULATOR" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
