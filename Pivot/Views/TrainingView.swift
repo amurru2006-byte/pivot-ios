@@ -659,6 +659,10 @@ struct TrainingSessionView: View {
         let set = session.exercises[exerciseIndex].sets[setIndex]
         let canRemove = canRemoveSet(exerciseIndex: exerciseIndex, setIndex: setIndex)
         let isRevealed = revealedSetID == set.id
+        let isRecord = (store.data.training?.achievements ?? []).contains {
+            $0.kind == .personalRecord && $0.sessionID == session.id && $0.setID == set.id
+                && TrainingRecords.isCurrent($0, library: store.data.training ?? .init())
+        }
         return ZStack(alignment: .trailing) {
             if canRemove && isRevealed {
                 Button(role: .destructive) {
@@ -717,7 +721,7 @@ struct TrainingSessionView: View {
                 .accessibilityIdentifier("set-options-\(exercise.id)-\(setIndex)")
             }
             .padding(.horizontal, 6).padding(.vertical, 4)
-            .background(set.done ? Color.green.opacity(0.07) : PivotTheme.raised)
+            .background(isRecord ? PivotTheme.amber.opacity(0.15) : set.done ? Color.green.opacity(0.07) : PivotTheme.raised)
             .contentShape(Rectangle())
             .simultaneousGesture(DragGesture(minimumDistance: 22).onEnded { value in
                 guard canRemove, abs(value.translation.width) > abs(value.translation.height) else { return }
@@ -731,6 +735,7 @@ struct TrainingSessionView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .id(set.id).accessibilityElement(children: .contain)
         .accessibilityIdentifier("set-row-\(exercise.id)-\(setIndex)")
+        .accessibilityValue(isRecord ? "Record personale" : "")
     }
     private func toggleSetCompletion(exerciseIndex: Int, setIndex: Int, exercise: TrainingExercise) {
         let outcome = TrainingCompletion.toggle(in: &session, exerciseIndex: exerciseIndex, setIndex: setIndex)

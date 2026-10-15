@@ -11,6 +11,23 @@ struct WorkoutCelebrationOverlay: View {
     var body: some View {
         ZStack {
             if canPresent, let achievement = presenting {
+                if achievement.kind == .personalRecord {
+                    HStack(spacing: 10) {
+                        Image(systemName: "chart.line.uptrend.xyaxis").font(.title3).foregroundStyle(PivotTheme.amber)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Nuovo massimale stimato!").font(.subheadline.bold())
+                            Text(achievement.exercise + " · " + StrengthRankPresentation.kg(achievement.value))
+                                .font(.caption).foregroundStyle(PivotTheme.muted).lineLimit(2)
+                        }
+                        Spacer(minLength: 0)
+                        Button { Task { await dismissAchievement() } } label: {
+                            Image(systemName: "xmark").font(.headline).frame(width: 44, height: 44)
+                        }.accessibilityLabel("Chiudi traguardo").accessibilityIdentifier("close-workout-achievement")
+                    }.padding(12).frame(maxWidth: 360)
+                        .background(PivotTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+                        .padding(12).frame(maxHeight: .infinity, alignment: .top)
+                    // No dimming layer: other rows and recovery controls remain usable.
+                } else {
                 Color.black.opacity(0.4).ignoresSafeArea()
                 VStack(spacing: 12) {
                     HStack {
@@ -38,6 +55,7 @@ struct WorkoutCelebrationOverlay: View {
                     .frame(maxWidth: 320).background(PivotTheme.surface, in: RoundedRectangle(cornerRadius: 24))
                     .padding(24)
                     .accessibilityElement(children: .contain)
+                }
             }
         }
         .onChange(of: store.data.updatedAt) { _, _ in refresh() }

@@ -1,4 +1,20 @@
-# Configurazione locale cifrata e candidata 0.8.0 (21)
+# Configurazione locale cifrata e candidata 0.8.0 (22)
+
+## Nuovo blocco palestra, distinto dal collaudo della build 21
+
+La build 22 aggiunge i dati della prossima serie accanto al recupero nella Live
+Activity, barra in-app minimizzabile senza modificare il timer, record con
+sfondo riga leggermente dorato e avviso compatto. Le verifiche UI esistenti sono
+rafforzate, non sostituite da screenshot. Aggiunge anche una **prova audio
+facoltativa separata**, descritta in [Workout-audio-probe.md](Workout-audio-probe.md):
+non è ancora la funzione definitiva altoparlante/bip automatico e non viene
+avviata dagli allenamenti. Quattro nuove prove Core verificano il WAV e una UI
+verifica l'ingresso senza avvio automatico. Tutto richiede il nuovo collaudo;
+non attribuire alla build 22 i risultati della build 21 ancora in corso.
+
+Il ramo di collaudo separato permette di verificare queste aggiunte senza
+cancellare la regressione AI/QR già avviata. Stesso runner standard gratuito,
+nessuna nuova pubblicazione del servizio, nessuna promozione su main.
 
 ## Correzione del verificatore del simulatore dopo run38680239472
 
