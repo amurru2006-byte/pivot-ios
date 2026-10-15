@@ -19,7 +19,7 @@ struct OnlineCoachSettingsView: View {
             PivotCard {
                 Label(online.isConfigured ? "Collegamento configurato" : "Collegamento da configurare", systemImage: "lock.shield")
                     .font(.headline).accessibilityIdentifier("online-coach-configuration-status")
-                Text("Quando usi l'AI online, invii il messaggio, fino a sei messaggi recenti di oggi e le ultime quattro preferenze esplicite. Il calendario viene riassunto con categorie e orari: titoli, indirizzi, note, nominativi e dati Salute non vengono aggiunti automaticamente.")
+                Text("Quando usi l'AI online, invii il messaggio, fino a sei messaggi recenti della chat online di oggi e le ultime quattro preferenze esplicite. Messaggi della base locale, vecchie conversazioni e risposte preparate dai dati locali restano esclusi. Il calendario viene riassunto con categorie e orari: titoli, indirizzi, note, nominativi e dati Salute non vengono aggiunti automaticamente.")
                     .font(.subheadline)
                 Text("Il testo che scrivi può contenere informazioni personali. Il servizio AI deve leggerlo per rispondere: HTTPS protegge il trasporto, ma non lo rende invisibile al servizio. La configurazione richiede verifica della mancata conservazione dei contenuti nell'account del servizio.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)

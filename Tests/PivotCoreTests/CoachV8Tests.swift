@@ -29,8 +29,8 @@ final class CoachV8Tests: XCTestCase {
         var data = state(events)
         let key = PivotDate.key(now)
         data.coachState.messages = [
-            .init(dayKey: key, role: .user, text: "Mi sono svegliato a mezzogiorno"),
-            .init(dayKey: key, role: .coach, text: "Da cosa vuoi iniziare?"),
+            .init(dayKey: key, role: .user, text: "Mi sono svegliato a mezzogiorno", onlineHistoryEligible: true),
+            .init(dayKey: key, role: .coach, text: "Da cosa vuoi iniziare?", onlineHistoryEligible: true),
             .init(dayKey: key, role: .system, text: "system-private"),
             .init(dayKey: key, role: .coach, text: "health-private", healthDerived: true),
             .init(dayKey: "2026-10-07", role: .user, text: "yesterday-private")
@@ -45,6 +45,31 @@ final class CoachV8Tests: XCTestCase {
         XCTAssertEqual(snapshot.request.memories.count, 1)
         XCTAssertEqual(snapshot.request.events.count, 2)
         XCTAssertTrue(json.contains("mezzogiorno"))
+    }
+    func testLegacyAndLocallyGeneratedConversationNeverLeaksIntoOnlineHistory() throws {
+        var data = state([lunch, gym]); let key = PivotDate.key(now)
+        data.coachState.messages = [
+            .init(dayKey: key, role: .user, text: "Voglio recuperare Lezione NomePrivato"),
+            .init(dayKey: key, role: .coach, text: "NomePrivato è previsto in ViaPrivata"),
+            .init(dayKey: key, role: .coach, text: "StoricoSanitarioPrivato", healthDerived: true, onlineHistoryEligible: true),
+            .init(dayKey: key, role: .coach, text: "TitoloLocalePrivato", onlineHistoryEligible: false),
+            .init(dayKey: key, role: .user, text: "Messaggio online esplicito", onlineHistoryEligible: true)
+        ]
+        let snapshot = try CoachV8Snapshot.make(message: "Da cosa iniziamo?", events: [lunch, gym], data: data, now: now)
+        XCTAssertEqual(snapshot.request.history.map(\.text), ["Messaggio online esplicito"])
+        let json = String(decoding: try snapshot.request.encoded(), as: UTF8.self)
+        for secret in ["NomePrivato", "ViaPrivata", "StoricoSanitarioPrivato", "TitoloLocalePrivato"] { XCTAssertFalse(json.contains(secret)) }
+        XCTAssertEqual(data.coachState.messages.count, 5)
+        XCTAssertEqual(try BackupCodec.decode(BackupCodec.encodeCompact(data)).coachState.messages.count, 5)
+    }
+    func testOnlineHistoryBoundStillRetainsLatestSixEligibleMessagesOnly() throws {
+        var data = state([lunch]); let key = PivotDate.key(now)
+        data.coachState.messages = (0..<10).flatMap { i in [
+            CoachMessage(dayKey: key, role: .user, text: "online-\(i)", onlineHistoryEligible: true),
+            CoachMessage(dayKey: key, role: .coach, text: "locale-\(i)")
+        ] }
+        let snapshot = try CoachV8Snapshot.make(message: "Pranzo", events: [lunch], data: data, now: now)
+        XCTAssertEqual(snapshot.request.history.map(\.text), (4..<10).map { "online-\($0)" })
     }
     func testClarificationShowsKnownOriginalTimesInsteadOfInternalAliases() throws {
         let events = [lunch, gym], data = state(events)

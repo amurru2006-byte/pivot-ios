@@ -1,5 +1,19 @@
 # AI online in Pivot: quote, dati e collegamento
 
+## Stato corrente — 15 ottobre, prevale sulle verifiche storiche sotto
+
+I bug segnalati via email sono inclusi nella candidata: aggiornamento/unione esplicita profili, correzione separata di compenso e incasso, riconoscimento locale e alias confermati. Dettagli e prove in `V8-STUDENTI-E-CORREZIONI.md`. Il QR cifrato e i9 test Core associati hanno superato la prima suite Core insieme alle correzioni iniziali; il collaudo app/UI e la consegna sono ancora in corso. Nessuna nuova IPA ufficiale consegnata.
+
+La cronologia di rete richiede ora una provenienza esplicita `onlineHistoryEligible == true`. Messaggi locali o legacy, messaggi automatici con titoli/persone/indirizzi e risposte della validazione locale restano sul dispositivo. Lo storico locale non viene cancellato. Solo i messaggi scritti nella chat online e le risposte conversazionali già minimizzate possono essere reinviati; massimo6 di oggi, sempre senza messaggi sanitari automatici. Due nuove prove verificano l'esclusione e il limite. Le preferenze esplicite restano al massimo4. Nessuna migrazione attribuisce consenso ai vecchi messaggi.
+
+Gateway: **25 test Node locali passati; 2 workerd locali passati** con dati finti e rete esterna intercettata. Il provider restituisce solo mode/eventIDs/reply; versione e identità vengono legate dal server alla singola richiesta originale, non generate dal modello. Temperatura0 e schema strict invariato nei controlli. Nessun controllo sugli ID, categorie o modalità allentato. Per errori400/422, lettura limitata8KB del solo codice macchina allowlist; mai esposizione o persistenza di messaggi grezzi, failed_generation, chiavi o prompt.
+
+Prove reali notturne: i tre chiarimenti (altro giorno, palestra assente, palestra ambigua) sono passati sul prompt corretto. Due chiamate successive sono state rifiutate dal provider con codice json_validate_failed; il primo caso prima della semplificazione aveva anche fallito response_mode_ids. Nessun retry automatico o proposta da questi errori. Non inferire una causa certa: la diagnosi stabilisce il rifiuto dello schema, non quale suo elemento lo abbia provocato. Dopo semplificazione del formato, risveglio e richiesta contestuale pranzo/palestra sono passati sullo stesso aggiornamento. Il nuovo prompt conserva esplicitamente il divieto di diagnosi, carichi/guarigioni e identità finanziarie inventate. Ulteriore smoke della versione finale e regressione iPhone restano da completare.
+
+Il precedente run38618565592 ha chiuso29/31 UI, non31/31. Le correzioni di persistenza chat e attesa finita sul vero tap timer sono nel nuovo collaudo; nessuna asserzione rimossa. I run notturni intermedi Core sono passati e sono stati sostituiti per integrazioni contabili/privacy, non per nascondere errori UI. La candidata non viene impacchettata se l'intera regressione non passa.
+
+Fonti tecniche ricontrollate: https://console.groq.com/docs/structured-outputs ; https://console.groq.com/docs/api-reference . I modelli strict sono documentati, ma la documentazione stessa invita a segnalare eventuali errori400: il comportamento reale viene verificato, non garantito dalla sola pagina.
+
 Richiesta autorizzata il 14 ottobre 2026: conversazione interamente dentro Pivot, sistema online/local, messaggio esplicito quando finisce la quota, timer solo quando il servizio comunica un tempo, protezione dei dati personali. Provider scelto: GPT-OSS 120B via Groq, gateway personale Cloudflare Workers sul piano gratuito. Nessun passaggio automatico a pagamento.
 
 ## Comportamento implementato, da collaudare

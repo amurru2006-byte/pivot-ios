@@ -104,7 +104,8 @@ struct CoachV8Snapshot {
                          flexibility: rule.flexibility, travelConfirmed: rule.travelConfirmed)
         }
         let history = data.coachState.messages.filter {
-            $0.dayKey == PivotDate.key(now) && $0.healthDerived != true && ($0.role == .user || $0.role == .coach)
+            $0.dayKey == PivotDate.key(now) && $0.onlineHistoryEligible == true
+                && $0.healthDerived != true && ($0.role == .user || $0.role == .coach)
         }.suffix(6).map { CoachV8Request.Message(role: $0.role == .user ? "user" : "assistant", text: String($0.text.prefix(400))) }
         let request = CoachV8Request(requestID: UUID().uuidString, now: now, dayKey: PivotDate.key(now),
                                      message: clean, events: summaries, history: history,
