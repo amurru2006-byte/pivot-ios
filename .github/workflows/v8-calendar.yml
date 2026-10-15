@@ -11,7 +11,7 @@ concurrency:
 jobs:
   core:
     runs-on: macos-15-intel
-    timeout-minutes: 180
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
       - name: Seleziona strumenti
@@ -50,7 +50,7 @@ jobs:
         env:
           PIVOT_UI_ONLY_TESTING: PivotUITests/OnlineCoachSetupInteractionTests
         run: bash Scripts/preview-ui.sh
-      - name: Verifica anticipata dei quattro percorsi UI su iOS moderno
+      - name: Verifica anticipata dei tre percorsi UI corretti su iOS moderno
         env:
           PIVOT_UI_ONLY_TESTING: v8-modern-regression
         run: bash Scripts/preview-ui.sh

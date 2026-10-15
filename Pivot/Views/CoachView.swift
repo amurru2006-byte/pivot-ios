@@ -409,7 +409,11 @@ struct CoachView: View {
             await calendar.refresh(settings: store.data.settings)
             #if DEBUG && targetEnvironment(simulator)
             if ProcessInfo.processInfo.arguments.contains("--online-coach-preflight-test") {
-                try await Task.sleep(nanoseconds: 30_000_000_000)
+                // This fixture represents a preflight that has NOT finished.
+                // A slow UI runner must not turn it into a provider error while
+                // the test is scrolling to Cancel. Only cancellation releases it.
+                while !Task.isCancelled { try await Task.sleep(nanoseconds: 1_000_000_000) }
+                try Task.checkCancellation()
             }
             #endif
             try Task.checkCancellation()

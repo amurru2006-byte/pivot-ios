@@ -70,6 +70,26 @@ rebuilding for x86_64 tests. Debug build and test now use the SAME selected
 simulator and ONLY_ACTIVE_ARCH=YES. The separately gated iphoneos Release build
 remains unchanged. These harness corrections still need a successful CI run.
 
+Run38790746755 passed383Core,4QR and all four focused regressions. Full UI
+executed39 with36passed,3failed,0skipped; financial and AlarmKit tests passed.
+The cancellation test exceeded its synthetic30s preflight while scrolling on
+the loaded runner; that DEBUG/simulator-only fixture now remains suspended
+until cancellation, rather than becoming a provider error on a wall clock.
+The rank test had not entered Rank (failure hierarchy was still Palestra);
+it now uses the visible-control helper and asserts destination immediately,
+then still verifies ALL seven original emblems/titles and profile persistence.
+The concern-save8s absence wait failed although its later failure hierarchy
+already showed Allenamento without the editor. It now waits up to20s for the
+real return and editor disappearance, keeping all persistence/link assertions
+and never submitting Save twice.
+
+The focused preflight now targets those THREE latest failing paths; the full
+39-test suite remains mandatory. Test start/end/error milestones stream to
+the Actions console while complete logs remain artifacts. The job's own
+timeout is240minutes to leave room for Release after slow iOS26 UI tests,
+on the SAME standard free runner, with no upgrade or account quota change.
+No new successful full-suite or packaged-iPhone result is claimed yet.
+
 The workflow groups consecutive Debug simulator runs before compiling
 iphoneos Release: logs showed a costly second native dependency rebuild when
 switching platforms between simulator passes. This changes order only;

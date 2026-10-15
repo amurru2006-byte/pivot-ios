@@ -79,14 +79,17 @@ PIVOT_UI_TEST_COMMAND=(
 if [ "$PIVOT_UI_ONLY_TESTING" = v8-modern-regression ]; then
   PIVOT_UI_TEST_COMMAND+=(
     -only-testing:PivotUITests/OnlineCoachInteractionTests/testSwitchingToLocalCancelsPreflightWithoutSendingOrLosingComposer
-    -only-testing:PivotUITests/PivotInteractionTests/testRecoveryStaysReachableAtEighthExerciseAndLastSet
-    -only-testing:PivotUITests/PivotInteractionTests/testSerie7DeepLinkReplacesWorkoutPageAndZeroHoldIsSkipped
-    -only-testing:PivotUITests/PivotInteractionTests/testTrainingPDFImportSetLoggingAndPersistence
+    -only-testing:PivotUITests/PivotInteractionTests/testSerie7SevenRankSlotsAndManualProfilePersistWithoutInventedBirthDate
+    -only-testing:PivotUITests/TrainingConcernInteractionTests/testPainLinksTwoMovementsWithoutStartingWorkoutResolvesAndPersists
   )
 elif [ -n "$PIVOT_UI_ONLY_TESTING" ]; then
   PIVOT_UI_TEST_COMMAND+=("-only-testing:$PIVOT_UI_ONLY_TESTING")
 fi
-"${PIVOT_UI_TEST_COMMAND[@]}" > "$PIVOT_UI_LOG" 2>&1 || PIVOT_UI_TEST_STATUS=$?
+# Keep the complete synthetic QA log, but stream just milestones/errors so a
+# long run exposes the current test instead of appearing stalled for hours.
+"${PIVOT_UI_TEST_COMMAND[@]}" 2>&1 | tee "$PIVOT_UI_LOG" | awk '
+  /Test Case|Test Suite|Executed [0-9]+ tests|error:|\*\* (TEST|BUILD)/ { print; fflush() }
+' || PIVOT_UI_TEST_STATUS=$?
 if [ -d "$PIVOT_UI_RESULT" ]; then
   xcrun xcresulttool export attachments --path "$PIVOT_UI_RESULT" --output-path "$PIVOT_PREVIEW_OUTPUT/Interactions" || {
     if [ "$PIVOT_UI_TEST_STATUS" -eq 0 ]; then PIVOT_UI_TEST_STATUS=1; fi
