@@ -16,6 +16,11 @@ struct OnlineCoachSettingsView: View {
     var body: some View {
         PivotScreen {
             PivotHeader(title: "AI online e privacy", subtitle: "Conversazione dentro Pivot, con base locale disponibile")
+            #if DEBUG && targetEnvironment(simulator)
+            if let namespace = OnlineCoachService.interactionTestNamespace {
+                Text("Contenitore QA: " + namespace).font(.caption).accessibilityIdentifier("online-coach-qa-namespace")
+            }
+            #endif
             PivotCard {
                 Label(online.isConfigured ? "Collegamento configurato" : "Collegamento da configurare", systemImage: "lock.shield")
                     .font(.headline).accessibilityIdentifier("online-coach-configuration-status")

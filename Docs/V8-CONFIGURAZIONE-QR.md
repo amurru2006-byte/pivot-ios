@@ -1,5 +1,13 @@
 # Configurazione locale cifrata e candidata 0.8.0 (21)
 
+## Collaudo notturno del 15 ottobre — aggiornamento
+
+Run38657620347: **379 Core passati**, gateway passato, Release iPhone compilata, **35/38 UI passati**. Le31 prove precedenti sono tutte passate, comprese persistenza Coach e recupero sull'ottavo esercizio. Delle nuove prove, unione/modifica tariffa/riavvio passa; due correzioni compenso/incasso non raggiungono il dettaglio dopo il tap sulla riga incasso. Ora tutta la superficie della riga è tappabile con contentShape e altezza minima44; le prove richiedono anche l'apertura effettiva della pagina Pagamento prima di proseguire.
+
+Il QR si apre, si sblocca e salva, ma la prova di riavvio legge Base locale invece di AI online. Il log mostra un nuovo launch durante app.open(URL): l'isolamento QA non deve dipendere soltanto dalle variabili di avvio XCTest che possono mancare nel passaggio esterno. Ora il solo UUID non segreto del contenitore viene inizializzato all'avvio e conservato in UserDefaults esclusivamente Debug simulatore. La lettura Keychain usa lo stesso namespace dopo il deep link e dopo il riavvio. Nessuna modifica al formato o al namespace della versione reale; nessun dato o credenziale reale coinvolto. La prova verifica l'UUID prima del salvataggio e la configurazione prima e dopo il riavvio; la persistenza non viene simulata. Queste correzioni richiedono un nuovo collaudo, non sono ancora un esito passato. Screenshot e gerarchia UI vengono conservati per eventuali nuovi fallimenti sintetici.
+
+Log acquisiti con digest verificato40e45f5c37db2cf2921ba145e6ca599cd3007e002673c1acb90caf75c7da8a57; anteprime14f98e58a7726f7dd9548b13270f3d949e7bc430ac74a5f59e4c68a53194e861. Packaging saltato correttamente quando la UI fallisce: nessuna IPA candidata consegnata. I paragrafi successivi descrivono la preparazione iniziale.
+
 L'utente ha richiesto di proseguire fino alla consegna senza ulteriori «vai», salvo domande necessarie. Questo blocco prepara la prima candidata con il collegamento Groq/Workers gratuito già configurato, non il completamento dell'intera Serie 8.
 
 ## Configurazione senza segreti in chat o iCloud
