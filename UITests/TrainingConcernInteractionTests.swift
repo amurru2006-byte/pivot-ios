@@ -48,7 +48,11 @@ final class TrainingConcernInteractionTests: XCTestCase {
         XCTAssertEqual(first.value as? String, "Collegato", app.debugDescription)
         let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-concern-links"; image.lifetime = .keepAlways; add(image)
         app.buttons["concern-save"].tap()
-        XCTAssertTrue(app.textFields["concern-area"].waitForNonExistence(timeout: 8), app.debugDescription)
+        // Saving flushes to disk before dismissing. On the loaded iOS26 runner,
+        // the old 8s timeout expired although the failure snapshot was already
+        // back in Allenamento. Wait for the real destination, never tap twice.
+        XCTAssertTrue(app.navigationBars["Allenamento"].waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertTrue(app.textFields["concern-area"].waitForNonExistence(timeout: 20), app.debugDescription)
     }
     private func setResolved(_ toggle: XCUIElement, to value: Bool, in app: XCUIApplication) {
         reveal(toggle, in: app)

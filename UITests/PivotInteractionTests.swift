@@ -253,18 +253,13 @@ final class PivotInteractionTests: XCTestCase {
         scrollControlIntoView(fixture, in: app); fixture.tap()
         XCTAssertTrue(app.staticTexts["Serie 7 pronta"].waitForExistence(timeout: 5))
         let ranks = app.buttons["strength-ranks"]
-        for _ in 0..<15 { if ranks.isHittable { break }; app.swipeDown() }
-        XCTAssertTrue(ranks.isHittable); ranks.tap()
+        scrollControlIntoView(ranks, in: app); ranks.tap()
+        XCTAssertTrue(app.navigationBars["Rank"].waitForExistence(timeout: 8), app.debugDescription)
         let names = ["Schiavo della gravità", "Patto col ferro", "Sfidante della fisica", "Distruttore di ego",
                      "Mutante", "Forza primordiale", "Onnipotente del carico"]
         for (index, name) in names.enumerated() {
             let row = app.buttons["strength-rank-level-\(index + 1)"]
-            for _ in 0..<24 {
-                if row.isHittable { break }
-                let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
-                start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -150)))
-            }
-            XCTAssertTrue(row.isHittable, app.debugDescription)
+            scrollControlIntoView(row, in: app)
             XCTAssertTrue(row.label.contains(name), row.label); row.tap()
             XCTAssertTrue(app.navigationBars["Immagini del rank"].waitForExistence(timeout: 5), app.debugDescription)
             XCTAssertTrue(app.staticTexts[name].exists)
@@ -275,8 +270,7 @@ final class PivotInteractionTests: XCTestCase {
             XCTAssertTrue(app.navigationBars["Rank"].waitForExistence(timeout: 5))
         }
         let profile = app.buttons["strength-profile"]
-        for _ in 0..<15 { if profile.isHittable { break }; app.swipeDown() }
-        XCTAssertTrue(profile.isHittable); profile.tap()
+        scrollControlIntoView(profile, in: app); profile.tap()
         XCTAssertTrue(app.navigationBars["Profilo forza"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.datePickers["strength-birth-date"].exists)
         let weight = app.textFields["strength-weight"], height = app.textFields["strength-height"]
