@@ -53,6 +53,23 @@ bar starts701). Its existing normal tap and picker/catalog assertions remain;
 the test now first scrolls the whole target above the actual bar boundary.
 This correction still requires another real UI run.
 
+Run38753578938 used iPhone16/iOS26.2 and passed383Core,4QR preflight,
+and35of39fullUI tests, with no skips. AlarmKit opt-in and all three financial
+tests passed. Four interaction tests failed. AX evidence places the recovery
+fixture at y1190 (offscreen) and the imported day at y43.7–154 (behind the
+navigation bar ending113), despite earlier hittability checks. A shared test
+helper now checks full viewport geometry BEFORE querying hittability, scrolls
+the actual vertical view, and preserves ordinary taps and outcome assertions.
+The local-mode test also waits for its exact mode label after the real tap;
+the application mode-switching logic is not changed without evidence.
+
+The four failing paths are now checked early, before the complete39-test suite;
+they are additional preflight tests, not substitutes for the full suite. Logs
+showed generic simulator builds compiling both arm64 and x86_64 and then
+rebuilding for x86_64 tests. Debug build and test now use the SAME selected
+simulator and ONLY_ACTIVE_ARCH=YES. The separately gated iphoneos Release build
+remains unchanged. These harness corrections still need a successful CI run.
+
 The workflow groups consecutive Debug simulator runs before compiling
 iphoneos Release: logs showed a costly second native dependency rebuild when
 switching platforms between simulator passes. This changes order only;

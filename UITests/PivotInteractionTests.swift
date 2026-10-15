@@ -102,8 +102,7 @@ final class PivotInteractionTests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 15)); app.tabBars.buttons["Palestra"].tap()
         let fixture = app.buttons["recovery-fixture"]
-        for _ in 0..<15 { if fixture.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(fixture.isHittable); fixture.tap()
+        scrollControlIntoView(fixture, in: app); fixture.tap()
         XCTAssertTrue(app.staticTexts["Recupero pronto"].waitForExistence(timeout: 5))
         let url = URL(string: "pivot://workout/11111111-1111-4111-8111-111111111111?set=22222222-2222-4222-8222-222222222222")!
         app.open(url)
@@ -178,8 +177,7 @@ final class PivotInteractionTests: XCTestCase {
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--recovery-test"]; app.launch()
         XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 15)); app.tabBars.buttons["Palestra"].tap()
         let fixture = app.buttons["recovery-fixture"]
-        for _ in 0..<15 { if fixture.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(fixture.isHittable); fixture.tap()
+        scrollControlIntoView(fixture, in: app); fixture.tap()
         XCTAssertTrue(app.staticTexts["Recupero pronto"].waitForExistence(timeout: 5))
         let url = URL(string: "pivot://workout/11111111-1111-4111-8111-111111111111?set=22222222-2222-4222-8222-222222222222")!
         app.open(url)
@@ -252,8 +250,7 @@ final class PivotInteractionTests: XCTestCase {
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--serie7-test"]; app.launch()
         XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 15)); app.tabBars.buttons["Palestra"].tap()
         let fixture = app.buttons["serie7-fixture"]
-        for _ in 0..<15 { if fixture.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(fixture.isHittable); fixture.tap()
+        scrollControlIntoView(fixture, in: app); fixture.tap()
         XCTAssertTrue(app.staticTexts["Serie 7 pronta"].waitForExistence(timeout: 5))
         let ranks = app.buttons["strength-ranks"]
         for _ in 0..<15 { if ranks.isHittable { break }; app.swipeDown() }
@@ -296,8 +293,7 @@ final class PivotInteractionTests: XCTestCase {
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--serie7-test"]; app.launch()
         XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 15)); app.tabBars.buttons["Palestra"].tap()
         let fixture = app.buttons["serie7-fixture"]
-        for _ in 0..<15 { if fixture.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(fixture.isHittable); fixture.tap()
+        scrollControlIntoView(fixture, in: app); fixture.tap()
         XCTAssertTrue(app.staticTexts["Serie 7 pronta"].waitForExistence(timeout: 5))
         let url = URL(string: "pivot://workout/11111111-1111-4111-8111-111111111111?set=22222222-2222-4222-8222-222222222222")!
         app.open(url)
@@ -320,8 +316,7 @@ final class PivotInteractionTests: XCTestCase {
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--serie7-test"]; app.launch()
         XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 15)); app.tabBars.buttons["Palestra"].tap()
         let fixture = app.buttons["serie7-fixture"]
-        for _ in 0..<15 { if fixture.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(fixture.isHittable); fixture.tap()
+        scrollControlIntoView(fixture, in: app); fixture.tap()
         XCTAssertTrue(app.staticTexts["Serie 7 pronta"].waitForExistence(timeout: 5))
         let day = app.buttons["workout-day-s7-day"]
         for _ in 0..<15 { if day.isHittable { break }; app.swipeDown() }
@@ -365,8 +360,7 @@ final class PivotInteractionTests: XCTestCase {
         let photos = XCTAttachment(screenshot: app.screenshot())
         photos.name = "training-restored-073-photos"; photos.lifetime = .keepAlways; add(photos)
         let day = app.buttons["workout-day-test-a"]
-        for _ in 0..<12 { if day.isHittable { break }; app.swipeDown() }
-        XCTAssertTrue(day.isHittable); day.tap()
+        scrollControlIntoView(day, in: app); day.tap()
         XCTAssertTrue(app.buttons["Inizia allenamento"].waitForExistence(timeout: 5)); app.buttons["Inizia allenamento"].tap()
         let addSet = app.buttons["add-set-test-exercise"]
         for _ in 0..<10 { if addSet.isHittable { break }; app.swipeUp() }
@@ -587,8 +581,7 @@ final class PivotInteractionTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Principali: Pettorali"].waitForExistence(timeout: 5))
         app.navigationBars.buttons.firstMatch.tap()
         let day = app.buttons["workout-day-test-a"]
-        for _ in 0..<10 { if day.isHittable { break }; app.swipeDown() }
-        XCTAssertTrue(day.isHittable); day.tap()
+        scrollControlIntoView(day, in: app); day.tap()
         XCTAssertTrue(app.buttons["Inizia allenamento"].waitForExistence(timeout: 5)); app.buttons["Inizia allenamento"].tap()
         let extra = app.buttons["add-workout-exercise"]
         let recoveryBar = app.descendants(matching: .any)["workout-recovery-bar"].firstMatch
@@ -802,8 +795,7 @@ final class PivotInteractionTests: XCTestCase {
         let confirm = app.buttons["Usa questa scheda"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 8)); confirm.tap()
         let day = app.buttons["workout-day-test-a"]
-        for _ in 0..<8 { if day.isHittable { break }; app.swipeDown() }
-        XCTAssertTrue(day.waitForExistence(timeout: 5)); day.tap()
+        scrollControlIntoView(day, in: app); day.tap()
         let start = app.buttons["Inizia allenamento"]
         XCTAssertTrue(start.waitForExistence(timeout: 5)); start.tap()
         let kg = app.textFields["weight-test-exercise-0"]

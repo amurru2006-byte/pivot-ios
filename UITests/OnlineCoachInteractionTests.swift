@@ -17,9 +17,11 @@ final class OnlineCoachInteractionTests: XCTestCase {
         XCTAssertTrue(send.isHittable); send.tap()
         XCTAssertTrue(app.descendants(matching: .any)["coach-planning-progress"].waitForExistence(timeout: 8))
         let local = app.buttons["coach-online-local-toggle"]
-        for _ in 0..<10 { if local.isHittable { break }; app.swipeDown() }
-        XCTAssertTrue(local.isHittable); local.tap()
-        XCTAssertEqual(app.staticTexts["coach-online-mode"].label, "Base locale")
+        scrollControlIntoView(local, in: app); local.tap()
+        let mode = app.staticTexts["coach-online-mode"]
+        let localMode = expectation(for: NSPredicate(format: "label == %@", "Base locale"), evaluatedWith: mode)
+        wait(for: [localMode], timeout: 5)
+        XCTAssertEqual(mode.label, "Base locale")
         XCTAssertFalse(app.staticTexts["coach-online-error"].exists)
         for _ in 0..<12 { if input.isHittable { break }; app.swipeUp() }
         XCTAssertEqual(input.value as? String, "Preferisco studiare con esercizi brevi")
@@ -51,8 +53,7 @@ final class OnlineCoachInteractionTests: XCTestCase {
         XCTAssertEqual(input.value as? String, "Preferisco dopo cena")
         app.swipeDown()
         let local = app.buttons["coach-online-local-toggle"]
-        for _ in 0..<5 { if local.isHittable { break }; app.swipeDown() }
-        XCTAssertTrue(local.isHittable); local.tap()
+        scrollControlIntoView(local, in: app); local.tap()
         XCTAssertEqual(app.staticTexts["coach-online-mode"].label, "Base locale")
         let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "v8-quota-and-local-mode"; screenshot.lifetime = .keepAlways; add(screenshot)
         XCTAssertTrue(app.navigationBars["Coach"].exists)
