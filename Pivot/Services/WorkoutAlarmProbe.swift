@@ -16,6 +16,9 @@ final class WorkoutAlarmProbe: ObservableObject {
 
     func refresh() {
         guard !busy else { return }
+        // Reading the experiment screen is not an authorization workflow.
+        // Don't query the daemon before this app has permission to use it.
+        guard AlarmManager.shared.authorizationState == .authorized else { scheduled = false; return }
         do { scheduled = try AlarmManager.shared.alarms.contains { $0.id == id } }
         catch { message = "Non riesco a verificare lo stato del test. Puoi comunque provare a fermarlo." }
     }
@@ -41,7 +44,7 @@ final class WorkoutAlarmProbe: ObservableObject {
             let library = try FileManager.default.url(for: .libraryDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
             let sounds = library.appendingPathComponent("Sounds", isDirectory: true)
             try FileManager.default.createDirectory(at: sounds, withIntermediateDirectories: true)
-            try cue.write(to: sounds.appendingPathComponent("PivotRestProbe.wav"), options: .atomic)
+            try cue.write(to: sounds.appendingPathComponent("PivotRestProbe.wav"), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             let alert = AlarmPresentation.Alert(title: "Pivot · prova audio", stopButton: AlarmButton(text: "Ferma test", textColor: .white, systemImageName: "stop.fill"))
             let attributes = AlarmAttributes(presentation: AlarmPresentation(alert: alert), metadata: Metadata(), tintColor: Color.mint)
             let configuration = AlarmManager.AlarmConfiguration<Metadata>.alarm(
