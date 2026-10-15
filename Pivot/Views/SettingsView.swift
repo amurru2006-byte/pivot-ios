@@ -185,6 +185,11 @@ struct SettingsView: View {
         Button("Apri impostazioni notifiche di iOS") {
             if let url = URL(string: UIApplication.openNotificationSettingsURLString) { UIApplication.shared.open(url) }
         }.font(.subheadline).foregroundStyle(PivotTheme.accent)
+        if #available(iOS 26.0, *) {
+            NavigationLink { WorkoutAlarmProbeView() } label: {
+                Label("Test avviso a schermo spento", systemImage: "testtube.2").frame(minHeight: 44)
+            }.accessibilityIdentifier("open-alarm-probe")
+        }
         DisclosureGroup("Orari e frequenza") {
             VStack(alignment: .leading, spacing: 16) {
                 Stepper("Mattina: dopo \(settings.morningDelayMinutes) min", value: $settings.morningDelayMinutes, in: 10...120, step: 5)

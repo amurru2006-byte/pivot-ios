@@ -8,7 +8,7 @@ struct WorkoutLiveView: View {
     let state: WorkoutAttributes.ContentState
     private var resting: Bool { state.deadline != nil || state.pausedSeconds != nil }
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(resting ? "Recupero · " + (state.restExercise ?? state.exercise) : state.isDone ? "Serie registrate" : state.exercise)
@@ -33,9 +33,18 @@ struct WorkoutLiveView: View {
                     action(state.deadline == nil ? "play.fill" : "pause.fill", label: state.deadline == nil ? "Riprendi recupero" : "Pausa recupero", value: "pause")
                     action("arrow.counterclockwise", label: "Reset recupero", value: "reset")
                     action("forward.end.fill", label: state.isDone ? "Chiudi recupero" : "Inizia prossima serie", value: "next")
-                }.frame(height: 48)
-                Text(state.deadline == nil ? "In pausa" : state.isDone ? "Poi termina l’allenamento nell’app" : prescription)
-                    .font(.system(size: 14, weight: .medium)).foregroundStyle(.white.opacity(0.8)).lineLimit(1)
+                }.frame(height: 44)
+                if state.isDone {
+                    Text("Poi termina l’allenamento nell’app").font(.system(size: 14, weight: .medium)).lineLimit(1)
+                } else {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(nextValues).font(.system(size: 16, weight: .semibold)).monospacedDigit()
+                            .lineLimit(1).minimumScaleFactor(0.85).accessibilityIdentifier("live-rest-next-values")
+                        Text((state.deadline == nil ? "In pausa · " : "") + prescription)
+                            .font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.8)).lineLimit(1)
+                            .accessibilityIdentifier("live-rest-next-prescription")
+                    }
+                }
             } else if !state.isDone {
                 HStack(spacing: 8) {
                     // Bilateral holds: adjust the two sides. Optional weight
@@ -66,8 +75,20 @@ struct WorkoutLiveView: View {
     }
     private var prescription: String {
         let current = state.kind == "Warm-up" ? "Warm-up \(state.number)" : "Serie \(state.workingNumber ?? state.number)"
+        if state.kind == "Warm-up" { return current }
         guard let sets = state.targetSets, let reps = state.targetReps else { return current }
         return "\(current) di \(sets) · \(reps)\(state.isometric ? "" : " reps")"
+    }
+    private var nextValues: String {
+        let load = state.kg.map { $0.formatted() + " kg" } ?? "— kg"
+        if state.isometric {
+            let hold = state.separateSides
+                ? "SX \(state.left.map(String.init) ?? "—") s · DX \(state.right.map(String.init) ?? "—") s"
+                : (state.seconds.map { "\($0) s" } ?? state.targetReps ?? "— s")
+            return state.weighted ? load + " · " + hold : hold
+        }
+        let reps = state.reps.flatMap { $0 > 0 ? String($0) : nil } ?? state.targetReps ?? "—"
+        return load + " · " + reps + " reps"
     }
     private func duration(_ seconds: Int) -> String { String(format: "%d:%02d", seconds / 60, seconds % 60) }
     private func metric(_ title: String, value: String, minus: String, plus: String) -> some View {

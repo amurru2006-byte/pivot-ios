@@ -154,6 +154,12 @@ final class PivotInteractionTests: XCTestCase {
             XCTAssertTrue(card.waitForExistence(timeout: 15))
             for _ in 0..<6 { if card.isHittable { break }; app.swipeUp() }
             XCTAssertLessThanOrEqual(card.frame.height, 160, id)
+            if id == "rest" || id == "paused" {
+                XCTAssertTrue(card.staticTexts["live-rest-next-values"].exists)
+                XCTAssertTrue(card.staticTexts["live-rest-next-values"].label.contains("70"))
+                XCTAssertTrue(card.staticTexts["live-rest-next-values"].label.contains("6 reps"))
+                XCTAssertTrue(card.staticTexts["live-rest-next-prescription"].exists)
+            }
             for button in card.buttons.allElementsBoundByIndex {
                 // XCTest's converted screen coordinates can report 44 as 43.99999.
                 // Allow only subpixel rounding; the actual layout still requires 44 pt.
@@ -190,6 +196,12 @@ final class PivotInteractionTests: XCTestCase {
         XCTAssertEqual(app.staticTexts["workout-rest-exercise"].label, "Cable Crunch")
         XCTAssertGreaterThanOrEqual(pause.frame.height, 44); XCTAssertGreaterThanOrEqual(pause.frame.width, 44)
         XCTAssertLessThanOrEqual(pause.frame.maxY, app.tabBars.firstMatch.frame.minY)
+        let collapse = app.buttons["workout-rest-collapse"]
+        XCTAssertTrue(collapse.isHittable); collapse.tap()
+        let expand = app.buttons["workout-rest-expand"]
+        XCTAssertTrue(expand.waitForExistence(timeout: 5)); XCTAssertTrue(timer.isHittable)
+        XCTAssertFalse(pause.exists)
+        expand.tap(); XCTAssertTrue(pause.waitForExistence(timeout: 5)); XCTAssertTrue(timer.isHittable)
         pause.tap(); XCTAssertTrue(app.staticTexts["Recupero in pausa"].exists)
         let image = XCTAttachment(screenshot: app.screenshot()); image.name = "serie7-recovery-at-eighth-exercise"; image.lifetime = .keepAlways; add(image)
         app.terminate(); app.open(url)
@@ -296,6 +308,9 @@ final class PivotInteractionTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Nuovo massimale stimato!"].exists)
         close.tap(); XCTAssertTrue(close.waitForNonExistence(timeout: 3))
         XCTAssertEqual(done.value as? String, "Fatta")
+        let recordRow = app.descendants(matching: .any)["set-row-s7-bench-0"].firstMatch
+        XCTAssertEqual(recordRow.value as? String, "Record personale")
+        XCTAssertTrue(app.buttons["set-type-0-0"].label.contains("Serie 1"))
         app.terminate(); app.open(url)
         XCTAssertTrue(app.navigationBars["Allenamento"].waitForExistence(timeout: 15))
         XCTAssertFalse(app.buttons["close-workout-achievement"].exists)
@@ -646,6 +661,30 @@ final class PivotInteractionTests: XCTestCase {
         app.terminate(); app.launch(); app.tabBars.buttons["Entrate"].tap()
         for _ in 0..<8 { if app.staticTexts["Giulia Rossi"].firstMatch.exists { break }; app.swipeUp() }
         XCTAssertTrue(app.staticTexts["Giulia Rossi"].firstMatch.exists)
+    }
+    func testAlarmProbeIsExplicitAndDoesNotStartOnOpening() throws {
+        guard #available(iOS 26.0, *) else { throw XCTSkip("AlarmKit requires iOS 26 or later") }
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test"]; app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Impostazioni"].waitForExistence(timeout: 10)); app.tabBars.buttons["Impostazioni"].tap()
+        let notifications = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Quando e come avvisarti")).firstMatch
+        for _ in 0..<5 { if notifications.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(notifications.isHittable); notifications.tap()
+        let probe = app.buttons["open-alarm-probe"]
+        for _ in 0..<5 { if probe.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(probe.isHittable); probe.tap()
+        XCTAssertTrue(app.staticTexts["Prova tecnica, non recupero"].waitForExistence(timeout: 5))
+        let start = app.buttons["alarm-probe-start"]
+        for _ in 0..<8 { if start.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(start.exists); XCTAssertFalse(start.isEnabled)
+        XCTAssertEqual(app.staticTexts["alarm-probe-status"].label, "Nessun test avviato.")
+        XCTAssertFalse(app.alerts.firstMatch.exists, "Opening the screen must not ask permission or schedule an alarm")
+        let consent = app.switches["alarm-probe-confirm"]
+        for _ in 0..<5 { if consent.isHittable { break }; app.swipeDown() }
+        XCTAssertTrue(consent.isHittable); consent.tap()
+        XCTAssertTrue(start.isEnabled)
+        // Deliberately do not tap Start: a simulator cannot verify Bluetooth
+        // routing, and ordinary CI must never ring a real user's alarm.
     }
     func testSettingsSectionsAndDictationButtonAreReachable() {
         continueAfterFailure = false
