@@ -38,6 +38,26 @@ after two seconds would not prove reliability while the app is suspended.
 
 ## Verification boundaries
 
+Run38732233933 compiled Debug/Release and passed383Core plus the four QR
+preflight tests. Full UI:37passed,1failed,1skipped. All three strengthened
+workout layout/recovery/record tests passed. The AlarmKit UI test was skipped
+because the harness selected an iPhone16 on an older OS, despite a newer
+runtime being installed. Selection now requires an available iOS26+ runtime,
+chooses the newest version before preferring a model name, and records its
+metadata. Six fixture tests cover that selection. The AlarmKit UI test now
+fails instead of silently skipping on an old OS.
+
+The unrelated extra-exercise-picker regression tapped a partially visible
+button whose centre was behind the fixed recovery bar (AX button697.7–743.7,
+bar starts701). Its existing normal tap and picker/catalog assertions remain;
+the test now first scrolls the whole target above the actual bar boundary.
+This correction still requires another real UI run.
+
+The workflow groups consecutive Debug simulator runs before compiling
+iphoneos Release: logs showed a costly second native dependency rebuild when
+switching platforms between simulator passes. This changes order only;
+Core, gateway, QR preflight, full UI, Release and signing all still gate IPA.
+
 Core tests check WAV format, exact duration, invalid gains, sample scaling,
 headroom, three tones, and silent tail. UI regression checks entry, opt-in,
 disabled Start before acknowledgment, and no automatic permission prompt.
