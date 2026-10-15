@@ -26,6 +26,8 @@ jobs:
           PIVOT_TEST_EXPORT_PATH=build/export-validation.xlsx swift test 2>&1 | tee build/v8-calendar-tests.log
       - name: Sicurezza e quote gateway senza rete
         run: node --test Backend/coach-gateway/worker.test.mjs
+      - name: Verifica lettore entitlements simulatore senza rete
+        run: python3 -m unittest discover -s Scripts -p 'test_simulator_entitlements.py'
       - name: Installa generatore progetto
         run: brew install xcodegen
       - name: Genera progetto

@@ -1,5 +1,13 @@
 # Configurazione locale cifrata e candidata 0.8.0 (21)
 
+## Correzione del verificatore del simulatore dopo run38680239472
+
+Run38680239472: Core e gateway passati, build Debug simulatore riuscita. Il preflight si è fermato **prima dei test UI**, sull'asserzione del verificatore «Simulator QA app identity missing». L'artefatto del dizionario letto da codesign è vuoto, mentre il log di compilazione mostra application-identifier e keychain-access-groups sintetici espansi e collegati nella sezione Mach-O `__TEXT,__entitlements`. I simulatori non usano la stessa posizione dei dispositivi per questi entitlement: il controllo del dizionario della firma era sbagliato. Questo fallimento non è un nuovo errore Swift o la prova che il salvataggio QR sia ancora fallito; le quattro prove non sono partite.
+
+Il verificatore ora legge quella sezione dall'eseguibile realmente compilato, in ogni architettura del binario universale, con limiti su header/comandi/sezioni e gruppi attesi. Non si limita a fidarsi della plist sorgente o dei messaggi di build. La verifica codesign dell'integrità del bundle resta separata. Cinque prove sintetiche passate localmente includono architettura non autorizzata, troncamento e offset fuori limite; controllo aggiunto anche alla CI. Il formato e la firma della candidata iPhone restano invariati. Serve ancora il collaudo reale del QR e l'intera UI prima del pacchetto.
+
+Rimossa inoltre l'espansione di un array vuoto con nounset dal percorso UI completo: sulle vecchie versioni Bash può interrompere lo script. Il comando viene costruito da un array sempre non vuoto e il filtro QR è aggiunto solo se presente e già autorizzato. Nessun filtro viene applicato alla suite completa.
+
 ## Aggiornamento dopo il run38668215367 — prevale sulla cronologia sotto
 
 **379 Core passati, gateway passato, Release iPhone compilata,37/38 UI passati.** Tutte e tre le prove finanziarie dell'email passano: unione/tariffa/riavvio, correzione compenso e incasso persistenti, rifiuto compenso sotto il ricevuto. L'unico errore resta nel salvataggio protetto della configurazione QR. Le altre tre prove QR passano, comprese codice errato, scadenza e annullamento. Nessuna IPA prodotta: il packaging resta subordinato all'intera regressione.
