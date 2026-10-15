@@ -1,7 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 PIVOT_UI_ONLY_TESTING=${PIVOT_UI_ONLY_TESTING:-}
-PIVOT_UI_TEST_FILTER=()
 PIVOT_PREVIEW_OUTPUT=build/Previews
 PIVOT_UI_BUILD_LOG=build/preview-build.log
 PIVOT_UI_LOG=build/interaction-tests.log
@@ -10,7 +9,6 @@ PIVOT_SIM_ENTITLEMENTS=build/simulator-entitlements.plist
 case "$PIVOT_UI_ONLY_TESTING" in
   '') ;;
   PivotUITests/OnlineCoachSetupInteractionTests)
-    PIVOT_UI_TEST_FILTER=("-only-testing:$PIVOT_UI_ONLY_TESTING")
     PIVOT_PREVIEW_OUTPUT=build/Previews/QRPreflight
     PIVOT_UI_BUILD_LOG=build/qr-preflight-build.log
     PIVOT_UI_LOG=build/qr-preflight-tests.log
@@ -34,24 +32,9 @@ xcodebuild -project Pivot.xcodeproj -scheme Pivot -configuration Debug \
   -derivedDataPath build/DerivedData "${PIVOT_SIM_SIGNING[@]}" build > "$PIVOT_UI_BUILD_LOG" 2>&1
 PIVOT_SIM_APP=build/DerivedData/Build/Products/Debug-iphonesimulator/Pivot.app
 codesign --verify --deep --strict "$PIVOT_SIM_APP"
-codesign --display --entitlements :- "$PIVOT_SIM_APP" > "$PIVOT_SIM_ENTITLEMENTS" 2>/dev/null
-python3 - "$PIVOT_SIM_ENTITLEMENTS" <<'PY'
-import plistlib
-import sys
-from pathlib import Path
-
-with Path(sys.argv[1]).open('rb') as source:
-    entitlements = plistlib.load(source)
-with Path('build/DerivedData/Build/Products/Debug-iphonesimulator/Pivot.app/Info.plist').open('rb') as source:
-    bundle = plistlib.load(source)['CFBundleIdentifier']
-expected = 'PIVOTSIMQA.' + bundle
-assert entitlements.get('application-identifier') == expected, 'Simulator QA app identity missing'
-assert entitlements.get('keychain-access-groups') == [expected], 'Simulator QA private Keychain group missing'
-assert entitlements.get('get-task-allow') is True, 'Simulator debugging entitlement missing'
-assert entitlements.get('com.apple.developer.healthkit') is True
-assert entitlements.get('com.apple.developer.healthkit.background-delivery') is True
-print('Simulator QA Keychain identity verified (synthetic; not iPhone signing).')
-PY
+# Simulator entitlements are linked into __TEXT,__entitlements; its ad-hoc
+# code-signature entitlement dictionary can legitimately be empty.
+python3 Scripts/verify_simulator_entitlements.py "$PIVOT_SIM_APP" "$PIVOT_SIM_ENTITLEMENTS"
 xcrun simctl list devices available -j > build/devices.json
 PIVOT_SIMULATOR=$(python3 - <<'PY'
 import json
@@ -81,11 +64,18 @@ fi
 # real root refresh path with a deliberately slow background calendar import.
 # Preserve the test result while exporting screenshots on failure as well.
 PIVOT_UI_TEST_STATUS=0
-xcodebuild -project Pivot.xcodeproj -scheme Pivot -configuration Debug \
-  -destination "platform=iOS Simulator,id=$PIVOT_SIMULATOR" \
-  -derivedDataPath build/DerivedData -parallel-testing-enabled NO \
-  -resultBundlePath "$PIVOT_UI_RESULT" "${PIVOT_UI_TEST_FILTER[@]}" \
-  "${PIVOT_SIM_SIGNING[@]}" test > "$PIVOT_UI_LOG" 2>&1 || PIVOT_UI_TEST_STATUS=$?
+# macOS /bin/bash can be 3.2: with nounset, expanding an empty array is fatal.
+# Keep the command nonempty and append the optional, already-whitelisted filter.
+PIVOT_UI_TEST_COMMAND=(
+  xcodebuild -project Pivot.xcodeproj -scheme Pivot -configuration Debug
+  -destination "platform=iOS Simulator,id=$PIVOT_SIMULATOR"
+  -derivedDataPath build/DerivedData -parallel-testing-enabled NO
+  -resultBundlePath "$PIVOT_UI_RESULT" "${PIVOT_SIM_SIGNING[@]}" test
+)
+if [ -n "$PIVOT_UI_ONLY_TESTING" ]; then
+  PIVOT_UI_TEST_COMMAND+=("-only-testing:$PIVOT_UI_ONLY_TESTING")
+fi
+"${PIVOT_UI_TEST_COMMAND[@]}" > "$PIVOT_UI_LOG" 2>&1 || PIVOT_UI_TEST_STATUS=$?
 if [ -d "$PIVOT_UI_RESULT" ]; then
   xcrun xcresulttool export attachments --path "$PIVOT_UI_RESULT" --output-path "$PIVOT_PREVIEW_OUTPUT/Interactions" || {
     if [ "$PIVOT_UI_TEST_STATUS" -eq 0 ]; then PIVOT_UI_TEST_STATUS=1; fi
