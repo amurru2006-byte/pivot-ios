@@ -50,6 +50,10 @@ jobs:
         env:
           PIVOT_UI_ONLY_TESTING: PivotUITests/OnlineCoachSetupInteractionTests
         run: bash Scripts/preview-ui.sh
+      - name: Verifica anticipata dei quattro percorsi UI su iOS moderno
+        env:
+          PIVOT_UI_ONLY_TESTING: v8-modern-regression
+        run: bash Scripts/preview-ui.sh
       # Keep consecutive Debug simulator builds together: switching to
       # iphoneos Release first rebuilt the full native dependency twice.
       # No regression is skipped; Release still gates packaging below.
@@ -84,8 +88,11 @@ jobs:
             build/interaction-tests.log
             build/qr-preflight-build.log
             build/qr-preflight-tests.log
+            build/modern-preflight-build.log
+            build/modern-preflight-tests.log
             build/simulator-entitlements.plist
             build/qr-preflight-simulator-entitlements.plist
+            build/modern-preflight-simulator-entitlements.plist
             build/selected-simulator.json
             build/devices.json
           retention-days: 1

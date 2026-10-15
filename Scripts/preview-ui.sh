@@ -15,6 +15,13 @@ case "$PIVOT_UI_ONLY_TESTING" in
     PIVOT_UI_RESULT=build/qr-preflight-tests.xcresult
     PIVOT_SIM_ENTITLEMENTS=build/qr-preflight-simulator-entitlements.plist
     ;;
+  v8-modern-regression)
+    PIVOT_PREVIEW_OUTPUT=build/Previews/ModernPreflight
+    PIVOT_UI_BUILD_LOG=build/modern-preflight-build.log
+    PIVOT_UI_LOG=build/modern-preflight-tests.log
+    PIVOT_UI_RESULT=build/modern-preflight-tests.xcresult
+    PIVOT_SIM_ENTITLEMENTS=build/modern-preflight-simulator-entitlements.plist
+    ;;
   *) printf '%s\n' 'Unsupported PIVOT_UI_ONLY_TESTING; refusing to skip arbitrary regressions.' >&2; exit 2 ;;
 esac
 mkdir -p "$PIVOT_PREVIEW_OUTPUT"
@@ -33,7 +40,7 @@ PIVOT_SIM_SIGNING=(
   "CODE_SIGN_ENTITLEMENTS=$PWD/Scripts/simulator-keychain.entitlements"
 )
 xcodebuild -project Pivot.xcodeproj -scheme Pivot -configuration Debug \
-  -destination 'generic/platform=iOS Simulator' \
+  -destination "platform=iOS Simulator,id=$PIVOT_SIMULATOR" ONLY_ACTIVE_ARCH=YES \
   -derivedDataPath build/DerivedData "${PIVOT_SIM_SIGNING[@]}" build > "$PIVOT_UI_BUILD_LOG" 2>&1
 PIVOT_SIM_APP=build/DerivedData/Build/Products/Debug-iphonesimulator/Pivot.app
 codesign --verify --deep --strict "$PIVOT_SIM_APP"
@@ -65,10 +72,18 @@ PIVOT_UI_TEST_STATUS=0
 PIVOT_UI_TEST_COMMAND=(
   xcodebuild -project Pivot.xcodeproj -scheme Pivot -configuration Debug
   -destination "platform=iOS Simulator,id=$PIVOT_SIMULATOR"
+  ONLY_ACTIVE_ARCH=YES
   -derivedDataPath build/DerivedData -parallel-testing-enabled NO
   -resultBundlePath "$PIVOT_UI_RESULT" "${PIVOT_SIM_SIGNING[@]}" test
 )
-if [ -n "$PIVOT_UI_ONLY_TESTING" ]; then
+if [ "$PIVOT_UI_ONLY_TESTING" = v8-modern-regression ]; then
+  PIVOT_UI_TEST_COMMAND+=(
+    -only-testing:PivotUITests/OnlineCoachInteractionTests/testSwitchingToLocalCancelsPreflightWithoutSendingOrLosingComposer
+    -only-testing:PivotUITests/PivotInteractionTests/testRecoveryStaysReachableAtEighthExerciseAndLastSet
+    -only-testing:PivotUITests/PivotInteractionTests/testSerie7DeepLinkReplacesWorkoutPageAndZeroHoldIsSkipped
+    -only-testing:PivotUITests/PivotInteractionTests/testTrainingPDFImportSetLoggingAndPersistence
+  )
+elif [ -n "$PIVOT_UI_ONLY_TESTING" ]; then
   PIVOT_UI_TEST_COMMAND+=("-only-testing:$PIVOT_UI_ONLY_TESTING")
 fi
 "${PIVOT_UI_TEST_COMMAND[@]}" > "$PIVOT_UI_LOG" 2>&1 || PIVOT_UI_TEST_STATUS=$?
