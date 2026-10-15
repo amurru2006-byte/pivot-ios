@@ -44,6 +44,10 @@ jobs:
           security.mkdir(parents=True, exist_ok=True)
           (security / 'macros.json').write_text(json.dumps(approved, indent=2))
           PY
+      - name: Verifica anticipata QR e portachiavi del simulatore
+        env:
+          PIVOT_UI_ONLY_TESTING: PivotUITests/OnlineCoachSetupInteractionTests
+        run: bash Scripts/preview-ui.sh
       - name: Compila app senza firma
         run: |
           set -o pipefail
@@ -73,6 +77,10 @@ jobs:
             build/build.log
             build/preview-build.log
             build/interaction-tests.log
+            build/qr-preflight-build.log
+            build/qr-preflight-tests.log
+            build/simulator-entitlements.plist
+            build/qr-preflight-simulator-entitlements.plist
           retention-days: 1
       - uses: actions/upload-artifact@v4
         if: always()

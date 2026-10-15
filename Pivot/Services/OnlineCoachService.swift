@@ -40,7 +40,8 @@ private enum OnlineCoachKeychain {
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         if status == errSecItemNotFound { return nil }
-        guard status == errSecSuccess, let bytes = item as? Data else { throw KeychainFailure.unavailable }
+        guard status == errSecSuccess else { throw KeychainFailure(operation: .read, status: status) }
+        guard let bytes = item as? Data else { throw KeychainFailure(operation: .read, status: errSecDecode) }
         return try JSONDecoder().decode(type, from: bytes)
     }
     static func write<T: Encodable>(_ value: T, account: String) throws {
@@ -51,16 +52,21 @@ private enum OnlineCoachKeychain {
             kSecAttrAccessible as String:kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
         let update = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         if update == errSecItemNotFound {
-            guard SecItemAdd(query.merging(attributes) { _, new in new } as CFDictionary, nil) == errSecSuccess else { throw KeychainFailure.unavailable }
-        } else if update != errSecSuccess { throw KeychainFailure.unavailable }
+            let result = SecItemAdd(query.merging(attributes) { _, new in new } as CFDictionary, nil)
+            guard result == errSecSuccess else { throw KeychainFailure(operation: .add, status: result) }
+        } else if update != errSecSuccess { throw KeychainFailure(operation: .update, status: update) }
     }
     static func remove(account: String) throws {
         let query: [String: Any] = [kSecClass as String:kSecClassGenericPassword,
             kSecAttrService as String:service, kSecAttrAccount as String:account, kSecAttrSynchronizable as String:false]
         let result = SecItemDelete(query as CFDictionary)
-        guard result == errSecSuccess || result == errSecItemNotFound else { throw KeychainFailure.unavailable }
+        guard result == errSecSuccess || result == errSecItemNotFound else { throw KeychainFailure(operation: .remove, status: result) }
     }
-    enum KeychainFailure: Error { case unavailable }
+    struct KeychainFailure: Error {
+        enum Operation: String { case read, update, add, remove }
+        var operation: Operation
+        var status: OSStatus
+    }
 }
 
 private final class OnlineCoachSessionDelegate: NSObject, URLSessionTaskDelegate {
@@ -76,6 +82,8 @@ final class OnlineCoachService: ObservableObject {
     #if DEBUG && targetEnvironment(simulator)
     static func prepareInteractionTestNamespace() { OnlineCoachKeychain.prepareInteractionNamespace() }
     static var interactionTestNamespace: String? { OnlineCoachKeychain.interactionNamespace }
+    // Only a closed operation and numeric OSStatus, never a query, value or raw error.
+    @Published private(set) var keychainTestDiagnostic: String?
     #endif
     static let settingsChanged = Notification.Name("pivot-online-coach-settings-changed")
     @Published private(set) var isConfigured = false
@@ -94,6 +102,7 @@ final class OnlineCoachService: ObservableObject {
 
     init() { reload() }
     func reload() {
+        clearKeychainFailure()
         #if DEBUG && targetEnvironment(simulator)
         if preflightFixture { isConfigured = true; return }
         if quotaFixture {
@@ -109,25 +118,34 @@ final class OnlineCoachService: ObservableObject {
             configurationMessage = nil
         } catch {
             configuration = nil; isConfigured = false
-            configurationMessage = "Non riesco a leggere il collegamento protetto. Sblocca l'iPhone e riprova."
+            recordKeychainFailure(error)
+            configurationMessage = "Non riesco a leggere il collegamento protetto. Il portachiavi non è disponibile; l'AI online resta disattivata."
         }
     }
     func configure(endpoint: String, token: String, consent: Bool) -> Bool {
+        clearKeychainFailure()
         let config = CoachOnlineConfiguration(endpoint: endpoint.trimmingCharacters(in: .whitespacesAndNewlines),
             token: token.trimmingCharacters(in: .whitespacesAndNewlines), consent: consent)
         guard config.valid else { configurationMessage = "Controlla l'indirizzo HTTPS del collegamento, il token e il consenso."; return false }
         do {
             cancel()
-            try OnlineCoachKeychain.write(config, account: "configuration")
+            // Cleanup must succeed before replacing the saved configuration:
+            // a failed save must not silently enable a new token on next launch.
             try OnlineCoachKeychain.remove(account: "cooldown")
+            try OnlineCoachKeychain.write(config, account: "configuration")
             configuration = config; isConfigured = true; failure = nil
             configurationMessage = "Collegamento salvato nel portachiavi di questo iPhone."
             NotificationCenter.default.post(name: Self.settingsChanged, object: nil)
             UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [quotaNotificationID])
             return true
-        } catch { configurationMessage = "Il collegamento non è stato salvato. Riprova dopo aver sbloccato l'iPhone."; return false }
+        } catch {
+            recordKeychainFailure(error)
+            configurationMessage = "Il collegamento non è stato salvato. Il portachiavi non è disponibile: nessun nuovo collegamento è stato attivato."
+            return false
+        }
     }
     func disconnect() -> Bool {
+        clearKeychainFailure()
         cancel()
         configuration = nil; isConfigured = false; failure = nil
         do {
@@ -138,7 +156,23 @@ final class OnlineCoachService: ObservableObject {
             NotificationCenter.default.post(name: Self.settingsChanged, object: nil)
             UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [quotaNotificationID])
             return true
-        } catch { configurationMessage = "Non riesco a rimuovere il collegamento protetto. Riprova dopo aver sbloccato l'iPhone."; return false }
+        } catch {
+            recordKeychainFailure(error)
+            configurationMessage = "Non riesco a rimuovere il collegamento protetto dal portachiavi. Lo scollegamento non è confermato: riprova."
+            return false
+        }
+    }
+    private func clearKeychainFailure() {
+        #if DEBUG && targetEnvironment(simulator)
+        keychainTestDiagnostic = nil
+        #endif
+    }
+    private func recordKeychainFailure(_ error: Error) {
+        #if DEBUG && targetEnvironment(simulator)
+        if let failure = error as? OnlineCoachKeychain.KeychainFailure {
+            keychainTestDiagnostic = failure.operation.rawValue + ":" + String(failure.status)
+        } else { keychainTestDiagnostic = "decode" }
+        #endif
     }
     func cancel() {
         generation += 1; session?.invalidateAndCancel(); session = nil; isRequesting = false

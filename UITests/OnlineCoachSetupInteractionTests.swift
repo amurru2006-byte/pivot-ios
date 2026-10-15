@@ -74,16 +74,27 @@ final class OnlineCoachSetupInteractionTests: XCTestCase {
         let save = app.buttons["online-coach-save"]
         for _ in 0..<5 { if save.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(save.isEnabled); save.tap()
-        XCTAssertTrue(app.buttons["open-pivot-coach"].waitForExistence(timeout: 8))
-        app.buttons["open-pivot-coach"].tap()
+        // An underlying button can still exist while the QR sheet covers it.
+        // Require a successful save/dismissal before attempting navigation.
+        let review = app.staticTexts["online-coach-qr-review"]
+        XCTAssertTrue(review.waitForNonExistence(timeout: 10), "Il salvataggio deve chiudere la revisione QR; verificare la diagnostica QA del portachiavi negli allegati.")
+        openCoach(app)
         XCTAssertTrue(app.staticTexts["coach-online-mode"].waitForExistence(timeout: 8))
         XCTAssertEqual(app.staticTexts["coach-online-mode"].label, "AI online")
         app.navigationBars.buttons.firstMatch.tap()
         app.terminate(); app.launch()
-        XCTAssertTrue(app.buttons["open-pivot-coach"].waitForExistence(timeout: 15)); app.buttons["open-pivot-coach"].tap()
+        openCoach(app)
         XCTAssertTrue(app.staticTexts["coach-online-mode"].waitForExistence(timeout: 8))
         XCTAssertEqual(app.staticTexts["coach-online-mode"].label, "AI online")
         // No message is sent: this synthetic endpoint must never be contacted.
+    }
+    private func openCoach(_ app: XCUIApplication) {
+        let button = app.buttons["open-pivot-coach"]
+        XCTAssertTrue(button.waitForExistence(timeout: 15))
+        let hittable = NSPredicate(format: "hittable == true")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: hittable, object: button)], timeout: 10), .completed)
+        button.tap()
+        XCTAssertTrue(app.navigationBars["Coach"].waitForExistence(timeout: 10))
     }
     private func unlock(_ app: XCUIApplication, code: String = "ABCD234567") {
         let field = app.secureTextFields["online-coach-activation-code"]
