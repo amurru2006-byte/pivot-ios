@@ -1,5 +1,17 @@
 # Configurazione locale cifrata e candidata 0.8.0 (21)
 
+## Aggiornamento dopo il run38668215367 — prevale sulla cronologia sotto
+
+**379 Core passati, gateway passato, Release iPhone compilata,37/38 UI passati.** Tutte e tre le prove finanziarie dell'email passano: unione/tariffa/riavvio, correzione compenso e incasso persistenti, rifiuto compenso sotto il ricevuto. L'unico errore resta nel salvataggio protetto della configurazione QR. Le altre tre prove QR passano, comprese codice errato, scadenza e annullamento. Nessuna IPA prodotta: il packaging resta subordinato all'intera regressione.
+
+Screenshot e gerarchia di accessibilità del fallimento mostrano che la revisione QR è ancora aperta e il messaggio indica salvataggio non riuscito. Il pulsante Coach esiste nella pagina sottostante ma non è raggiungibile; il test precedente tentava comunque di toccarlo. Non è una prova di configurazione persa al riavvio, perché il salvataggio non è riuscito prima. Il solo UUID QA corrisponde invece al valore previsto.
+
+Il codice scartava l'OSStatus delle operazioni Keychain: non si conosce ancora il codice preciso del fallimento. Nuova diagnostica soltanto Debug simulatore mostra operazione chiusa e numero OSStatus, mai query, credenziale o errore grezzo. I messaggi non attribuiscono più ogni indisponibilità al telefono bloccato. La rimozione del vecchio cooldown deve riuscire prima della sostituzione della configurazione, così un fallimento successivo alla pulizia non abilita inavvertitamente un nuovo token al riavvio.
+
+La firma disabilitata del simulatore è un'ipotesi verificabile: il gruppo privato Keychain dipende dagli entitlement effettivi, non dalla sola presenza di un file sorgente. L'harness ora usa firma ad-hoc e identità **sintetica per bundle esclusivamente nelle invocazioni Debug simulatore**, verificata con codesign e parsing degli entitlement. Il file per la firma iPhone e il namespace Keychain della Release non cambiano. Nessuna emulazione di Keychain o memorizzazione in chiaro sostituisce la prova. La correzione dell'harness va ancora verificata; non dichiarare il codice -34018 come già osservato. Riferimenti Apple: https://developer.apple.com/documentation/security/errsecmissingentitlement e https://developer.apple.com/forums/thread/114456 .
+
+Le quattro prove QR vengono eseguite anche come verifica anticipata prima della costosa compilazione Release e della suite UI completa. Un filtro chiuso permette solo questa classe, non filtri arbitrari che eliminino regressioni. Log, risultato e allegati anticipati hanno percorsi distinti. Il test richiede la chiusura reale della revisione dopo Salva, poi pulsante Coach raggiungibile, apertura della chat e configurazione prima/dopo riavvio. Nessuna asserzione di persistenza viene rimossa.
+
 ## Collaudo notturno del 15 ottobre — aggiornamento
 
 Run38657620347: **379 Core passati**, gateway passato, Release iPhone compilata, **35/38 UI passati**. Le31 prove precedenti sono tutte passate, comprese persistenza Coach e recupero sull'ottavo esercizio. Delle nuove prove, unione/modifica tariffa/riavvio passa; due correzioni compenso/incasso non raggiungono il dettaglio dopo il tap sulla riga incasso. Ora tutta la superficie della riga è tappabile con contentShape e altezza minima44; le prove richiedono anche l'apertura effettiva della pagina Pagamento prima di proseguire.

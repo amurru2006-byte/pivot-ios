@@ -76,6 +76,11 @@ struct OnlineCoachSettingsView: View {
             if let message = online.configurationMessage {
                 Text(message).foregroundStyle(PivotTheme.amber).accessibilityIdentifier("online-coach-settings-message")
             }
+            #if DEBUG && targetEnvironment(simulator)
+            if let diagnostic = online.keychainTestDiagnostic {
+                Text("Portachiavi QA: " + diagnostic).font(.caption).accessibilityIdentifier("online-coach-keychain-diagnostic")
+            }
+            #endif
             if let setupMessage { Text(setupMessage).foregroundStyle(PivotTheme.amber) }
             Text("Puoi usare la base locale e continuare a scrivere dentro Pivot anche senza questo collegamento.")
                 .font(.caption).foregroundStyle(PivotTheme.muted)
