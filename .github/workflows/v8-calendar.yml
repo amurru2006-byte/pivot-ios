@@ -1,7 +1,7 @@
 name: Verifica calendario e AI online V8
 on:
   push:
-    branches: ['codex/pivot-v8-calendar', 'codex/pivot-v8-workout-audio']
+    branches: ['codex/pivot-v8-calendar', 'codex/pivot-v8-workout-audio', 'codex/pivot-v8-entrate-081']
   workflow_dispatch:
 permissions:
   contents: read
@@ -72,8 +72,8 @@ jobs:
         with:
           name: Pivot-V8-iPhone-candidate
           path: |
-            build/Pivot-0.8.0.ipa
-            build/Pivot-0.8.0-manifest.json
+            build/Pivot-0.8.1.ipa
+            build/Pivot-0.8.1-manifest.json
             build/packaged-entitlements.plist
           retention-days: 1
           if-no-files-found: error

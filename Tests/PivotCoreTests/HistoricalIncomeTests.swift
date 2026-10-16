@@ -174,4 +174,26 @@ final class HistoricalIncomeTests: XCTestCase {
         data.payments[0].excludedFromBudget = nil
         XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encodeCompact(data)))
     }
+
+    func testHistoricalBackupRejectsImpossibleSourceOrExcessOpeningAttribution() throws {
+        var data = data(); let item = event()
+        try HistoricalIncome.apply([quote(item, data: data)], freshEvents: [item], now: now, data: &data)
+        let original = data
+        data.income[0].historicalSource?.openingAttributedCents = 1201
+        XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encodeCompact(data)))
+        data = original; data.income[0].historicalSource?.importedAt = item.start.addingTimeInterval(-1)
+        XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encodeCompact(data)))
+        data = original; data.income[0].historicalSource?.event.kind = .meal
+        XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encodeCompact(data)))
+    }
+
+    func testHistoricalBackupRejectsDuplicatedCalendarSourceWithDifferentReceiptIDs() throws {
+        var data = data(); let item = event()
+        try HistoricalIncome.apply([quote(item, data: data)], freshEvents: [item], now: now, data: &data)
+        var duplicate = data.income[0]; duplicate.id = UUID()
+        var payment = data.payments[0]; payment.id = UUID(); payment.incomeID = duplicate.id
+        duplicate.historicalSource?.receiptID = payment.id
+        data.income.append(duplicate); data.payments.append(payment)
+        XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encodeCompact(data)))
+    }
 }

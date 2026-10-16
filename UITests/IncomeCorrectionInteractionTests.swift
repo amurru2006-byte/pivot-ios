@@ -124,4 +124,31 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "contact-summary-partial-receipt"; screenshot.lifetime = .keepAlways; self.add(screenshot)
     }
+
+    func testGiftContactRecordsAReceiptWithoutInventingWorkedHours() {
+        let app = launch()
+        let add = app.buttons["Aggiungi contatto"]
+        scrollControlIntoView(add, in: app); add.tap()
+        replace(app.textFields["client-name"], with: "Contributo Test", app: app)
+        let activity = app.descendants(matching: .any)["client-activity"].firstMatch
+        scrollControlIntoView(activity, in: app); activity.tap()
+        let gift = app.buttons["Regali e contributi"]
+        XCTAssertTrue(gift.waitForExistence(timeout: 8)); gift.tap()
+        replace(app.textFields["client-rate"], with: "25", app: app)
+        let saveContact = app.buttons["client-save"]
+        scrollControlIntoView(saveContact, in: app); saveContact.tap()
+        let contact = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "client-detail-", "Contributo Test")).firstMatch
+        XCTAssertTrue(contact.waitForExistence(timeout: 8)); scrollControlIntoView(contact, in: app); contact.tap()
+        let newIncome = app.buttons["client-add-activity"]
+        scrollControlIntoView(newIncome, in: app); newIncome.tap()
+        XCTAssertTrue(app.buttons["income-manual-save"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.staticTexts["Durata della lezione"].exists)
+        XCTAssertFalse(app.staticTexts["Durata del lavoro"].exists)
+        XCTAssertEqual(app.switches["income-manual-has-receipt"].value as? String, "1")
+        let save = app.buttons["income-manual-save"]
+        scrollControlIntoView(save, in: app); XCTAssertTrue(save.isEnabled); save.tap()
+        let received = app.staticTexts["client-income-received"]
+        XCTAssertTrue(received.waitForExistence(timeout: 8)); XCTAssertTrue(received.label.contains("25,00"))
+        XCTAssertTrue(app.staticTexts["client-income-outstanding"].label.contains("0,00"))
+    }
 }

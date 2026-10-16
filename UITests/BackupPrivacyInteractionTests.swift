@@ -27,7 +27,7 @@ final class BackupPrivacyInteractionTests: XCTestCase {
         XCTAssertTrue(setup.label.contains("Imposta")); setup.tap()
         let input = app.secureTextFields["backup-password"]
         enterSyntheticPassword(input, in: app)
-        XCTAssertFalse(app.buttons["backup-password-save"].isEnabled)
+        XCTAssertFalse(app.buttons["backup-password-save"].exists)
         app.buttons["Annulla"].tap()
         XCTAssertTrue(setup.waitForExistence(timeout: 8)); XCTAssertTrue(setup.label.contains("Imposta"))
         XCTAssertFalse(app.buttons["Scegli cartella backup"].isEnabled)
@@ -39,6 +39,10 @@ final class BackupPrivacyInteractionTests: XCTestCase {
         let input = app.secureTextFields["backup-password"]
         let repeated = app.secureTextFields["backup-password-confirmation"]
         enterSyntheticPassword(input, in: app)
+        if app.buttons["Fine"].waitForExistence(timeout: 3) { app.buttons["Fine"].tap() }
+        let next = app.buttons["backup-password-next"]
+        scrollControlIntoView(next, in: app); XCTAssertTrue(next.isEnabled); next.tap()
+        XCTAssertFalse(input.exists)
         enterSyntheticPassword(repeated, in: app)
         if app.buttons["Fine"].waitForExistence(timeout: 3) { app.buttons["Fine"].tap() }
         let save = app.buttons["backup-password-save"]

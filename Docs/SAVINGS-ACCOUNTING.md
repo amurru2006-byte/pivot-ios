@@ -31,10 +31,10 @@ reale del patrimonio. Si considerano soltanto i flussi nel registro Pivot.
 
 `AppData.savingsBudget` è opzionale e non viene inizializzato automaticamente
 all'avvio. L'anteprima non modifica i dati: la base viene conservata solo alla
-prima azione esplicita su obiettivo/spesa. Il codice non legge calendari e non
-importa incassi storici: il futuro flusso EventKit
-dovrà gestire identità, tariffe confermate, duplicati, date di pagamento ignote
-e anteprima senza inventare un pagamento mensile.
+prima azione esplicita su obiettivo/spesa. Il solo modulo Salvadanaio non legge
+calendari: la ricostruzione esplicita è nel flusso separato HistoricalIncome,
+descritto in HISTORICAL-INCOME.md. Quel flusso inizializza i fondi prima di
+riclassificare il pregresso e mantiene ignote le date d'incasso non confermate.
 
 `BackupCodec` valida il journal quando presente. I totali ricevuti per lezione
 sono calcolati in tempo lineare con controllo overflow, anziché filtrare l'intero
