@@ -72,19 +72,23 @@ enum BackupCodec {
             let (total, overflow) = receiptTotals[payment.incomeID, default: 0].addingReportingOverflow(payment.amountCents)
             guard !overflow else { throw BackupError.invalidData }
             receiptTotals[payment.incomeID] = total
-            let year = String(PivotDate.calendar.component(.year, from: payment.date))
+            guard let receiptYear = payment.year, (1900...9999).contains(receiptYear),
+                  payment.receivedYear.map({ $0 == receiptYear }) ?? true else { throw BackupError.invalidData }
+            let year = String(receiptYear)
             let (annual, annualOverflow) = annualTotals[year, default: 0].addingReportingOverflow(payment.amountCents)
             guard !annualOverflow else { throw BackupError.invalidData }
             annualTotals[year] = annual
         }
-        guard Set(data.income.map(\.id)).count == data.income.count,
+        let incomeIDs = Set(data.income.map(\.id))
+        guard incomeIDs.count == data.income.count,
               Set(data.payments.map(\.id)).count == data.payments.count,
               Set(data.clients.map(\.id)).count == data.clients.count,
               data.records.allSatisfy({ $0.key == $0.value.id }),
               data.income.allSatisfy({ $0.amountCents >= 0 && $0.paidCents >= 0 && $0.paidCents <= $0.amountCents && $0.minutes > 0 && ($0.paymentTiming != .chosenDate || $0.promisedPaymentDate != nil) }),
               data.moves.allSatisfy({ $0.proposedEnd > $0.proposedStart }),
-              data.payments.allSatisfy({ payment in payment.amountCents > 0 && data.income.contains(where: { entry in entry.id == payment.incomeID }) }),
+              data.payments.allSatisfy({ payment in payment.amountCents > 0 && incomeIDs.contains(payment.incomeID) }),
               data.income.allSatisfy({ entry in receiptTotals[entry.id, default: 0] == entry.paidCents }) else { throw BackupError.invalidData }
+        try HistoricalIncome.validate(data)
         if let reviews = data.workoutReviews {
             guard Set(reviews.map(\.id)).count == reviews.count,
                   reviews.allSatisfy({ $0.workout.end > $0.workout.start && $0.workout.durationSeconds > 0 && $0.workout.durationSeconds <= 86400 && ($0.workout.activeCalories.map { $0.isFinite && $0 >= 0 } ?? true) }) else { throw BackupError.invalidData }

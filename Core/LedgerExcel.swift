@@ -6,7 +6,7 @@ enum LedgerExcel {
     enum Cell { case text(String), number(Int), money(Int) }
     static func make(data: AppData, year: Int) -> Data {
         let ledger = data.ledger ?? AnnualLedger()
-        let payments = data.payments.filter { PivotDate.calendar.component(.year, from: $0.date) == year }.sorted { $0.date < $1.date }
+        let payments = data.payments.filter { $0.year == year }.sorted { ($0.date ?? .distantPast) < ($1.date ?? .distantPast) }
         // Include lessons from previous years if they were paid in the selected year.
         let paymentIDs = Set(payments.map(\.incomeID))
         let lessons = data.income.filter { PivotDate.calendar.component(.year, from: $0.date) == year || paymentIDs.contains($0.id) }.sorted { $0.date < $1.date }
@@ -21,8 +21,8 @@ enum LedgerExcel {
             [.text("Fiscalità"), .text(AnnualLedger.fiscalExplanation)],
             [.text("Fonte INPS"), .text(AnnualLedger.sourceURL)]
         ]
-        var receipts: [[Cell]] = [[.text("ID pagamento"), .text("Data incasso"), .text("Studente"), .text("ID lezione"), .text("Incasso EUR")]]
-        receipts += payments.map { [.text($0.id.uuidString), .text(PivotDate.key($0.date)), .text($0.clientName), .text($0.incomeID.uuidString), .money($0.amountCents)] }
+        var receipts: [[Cell]] = [[.text("ID pagamento"), .text("Data incasso"), .text("Contatto"), .text("ID attività"), .text("Incasso EUR"), .text("Anno incasso"), .text("Disponibile nel budget")]]
+        receipts += payments.map { [.text($0.id.uuidString), .text($0.date.map(PivotDate.key) ?? "Data non nota"), .text($0.clientName), .text($0.incomeID.uuidString), .money($0.amountCents), .number($0.year ?? year), .text($0.excludedFromBudget == true ? "No, ricostruzione storica" : "Sì")] }
         var rows: [[Cell]] = [[.text("ID lezione"), .text("Data lezione"), .text("Studente"), .text("Minuti"), .text("Importo EUR"), .text("Pagato totale EUR"), .text("Da incassare EUR"), .text("Evento calendario"), .text("Note")]]
         rows += lessons.map { [.text($0.id.uuidString), .text(PivotDate.key($0.date)), .text($0.clientName), .number($0.minutes), .money($0.amountCents), .money($0.paidCents), .money($0.outstandingCents), .text($0.calendarEventID ?? ""), .text($0.notes)] }
         let ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"

@@ -216,6 +216,7 @@ struct IncomeEntry: Codable, Identifiable {
     var promisedPaymentDate: Date? = nil
     var paymentDeferralAfter: Date? = nil
     var lastKnownPaymentDate: Date? = nil
+    var historicalSource: HistoricalIncomeSource? = nil
     var outstandingCents: Int { max(0, amountCents - paidCents) }
 }
 
@@ -223,11 +224,15 @@ struct Payment: Codable, Identifiable {
     var id = UUID()
     var incomeID: UUID
     var clientName: String
-    var date: Date
+    var date: Date?
     var amountCents: Int
     // Historical earnings can belong to annual reporting without being funds
     // still available today. Nil preserves all existing normal receipts.
     var excludedFromBudget: Bool? = nil
+    // A confirmed year is not a fabricated payment day/month.
+    var receivedYear: Int? = nil
+    var year: Int? { date.map { PivotDate.calendar.component(.year, from: $0) } ?? receivedYear }
+    func occurred(from start: Date, to end: Date) -> Bool { date.map { $0 >= start && $0 < end } ?? false }
 }
 
 struct PlanMove: Codable, Identifiable {
