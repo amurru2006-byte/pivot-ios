@@ -1,7 +1,7 @@
 name: Verifica privacy V8 senza rilascio
 on:
   push:
-    branches: ['codex/pivot-v8-privacy', 'codex/pivot-v8-backup']
+    branches: ['codex/pivot-v8-privacy', 'codex/pivot-v8-backup', 'codex/pivot-v8-savings-core']
   workflow_dispatch:
 permissions:
   contents: read
@@ -22,6 +22,7 @@ jobs:
         run: python3 -m unittest discover -s Scripts -p 'test_*.py'
   online-ui:
     needs: privacy
+    if: github.ref != 'refs/heads/codex/pivot-v8-savings-core'
     runs-on: macos-15-intel
     timeout-minutes: 100
     steps:

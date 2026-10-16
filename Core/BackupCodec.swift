@@ -32,6 +32,7 @@ enum BackupCodec {
         try StudyFiles.validateBackup(data)
         try data.training?.validate()
         try data.strengthProfile?.validate()
+        if let budget = data.savingsBudget { _ = try SavingsAccounting.balance(budget, payments: data.payments) }
         guard (data.settings.ratingTargets ?? [:]).values.allSatisfy({ (-1...10).contains($0) }),
               data.records.values.allSatisfy({ [$0.energy, $0.fatigue, $0.hungerBefore, $0.hungerAfter].allSatisfy { $0.map { (0...10).contains($0) } ?? true } }),
               data.checkIns.values.allSatisfy({ [$0.energyMorning, $0.energyEvening, $0.fatigueMorning, $0.fatigueEvening, $0.moodMorning, $0.moodEvening].allSatisfy { $0.map { (0...10).contains($0) } ?? true } }) else { throw BackupError.invalidData }
@@ -64,6 +65,13 @@ enum BackupCodec {
             guard ledger.referenceCents == 500_000, ledger.warningMarginCents == 50_000,
                   ledger.openingCents.allSatisfy({ pair in (Int(pair.key).map { (1900...9999).contains($0) } ?? false) && pair.value >= 0 }) else { throw BackupError.invalidData }
         }
+        // Linear-time totals also reject integer overflow in an untrusted backup.
+        var receiptTotals: [UUID: Int] = [:]
+        for payment in data.payments {
+            let (total, overflow) = receiptTotals[payment.incomeID, default: 0].addingReportingOverflow(payment.amountCents)
+            guard !overflow else { throw BackupError.invalidData }
+            receiptTotals[payment.incomeID] = total
+        }
         guard Set(data.income.map(\.id)).count == data.income.count,
               Set(data.payments.map(\.id)).count == data.payments.count,
               Set(data.clients.map(\.id)).count == data.clients.count,
@@ -71,7 +79,7 @@ enum BackupCodec {
               data.income.allSatisfy({ $0.amountCents >= 0 && $0.paidCents >= 0 && $0.paidCents <= $0.amountCents && $0.minutes > 0 && ($0.paymentTiming != .chosenDate || $0.promisedPaymentDate != nil) }),
               data.moves.allSatisfy({ $0.proposedEnd > $0.proposedStart }),
               data.payments.allSatisfy({ payment in payment.amountCents > 0 && data.income.contains(where: { entry in entry.id == payment.incomeID }) }),
-              data.income.allSatisfy({ entry in data.payments.filter { $0.incomeID == entry.id }.reduce(0) { $0 + $1.amountCents } == entry.paidCents }) else { throw BackupError.invalidData }
+              data.income.allSatisfy({ entry in receiptTotals[entry.id, default: 0] == entry.paidCents }) else { throw BackupError.invalidData }
         if let reviews = data.workoutReviews {
             guard Set(reviews.map(\.id)).count == reviews.count,
                   reviews.allSatisfy({ $0.workout.end > $0.workout.start && $0.workout.durationSeconds > 0 && $0.workout.durationSeconds <= 86400 && ($0.workout.activeCalories.map { $0.isFinite && $0 >= 0 } ?? true) }) else { throw BackupError.invalidData }
