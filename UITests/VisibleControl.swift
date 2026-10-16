@@ -17,13 +17,15 @@ extension XCTestCase {
                                file: StaticString = #filePath, line: UInt = #line) {
         for attempt in 0...maxSwipes {
             let screen = app.frame
-            let navigation = app.navigationBars.matching(NSPredicate(format: "hittable == true")).firstMatch
+            // XCTest exposes isHittable as an element property, not a
+            // supported query-predicate key path.
+            let navigation = app.navigationBars.allElementsBoundByIndex.first { $0.isHittable }
             let tabs = app.tabBars.firstMatch
             let recovery = app.descendants(matching: .any)["workout-recovery-bar"].firstMatch
             let keyboard = app.keyboards.firstMatch
             var top = screen.minY + 60
             var bottom = screen.maxY - 34
-            if navigation.exists { top = max(top, navigation.frame.maxY) }
+            if let navigation { top = max(top, navigation.frame.maxY) }
             // A presented sheet can leave the underlying tab bar in the AX
             // tree. It does not cover this sheet's controls.
             if tabs.exists && tabs.isHittable { bottom = min(bottom, tabs.frame.minY) }
