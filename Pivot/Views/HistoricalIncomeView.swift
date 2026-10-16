@@ -157,7 +157,7 @@ struct HistoricalIncomeView: View {
             let fresh = EventCoalescer.unique(raw, data: original)
             let updated = try await Task.detached(priority: .userInitiated) {
                 var next = original
-                let result = try HistoricalIncome.apply(value.quotes, freshEvents: fresh, now: Date(), data: &next)
+                let result = try HistoricalIncome.apply(value.quotes, freshEvents: fresh, now: Date(), expectedAnnualTotal: value.before, data: &next)
                 return (next, result)
             }.value
             try Task.checkCancellation()
