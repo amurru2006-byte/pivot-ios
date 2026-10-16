@@ -8,11 +8,14 @@ struct SettingsView: View {
     @EnvironmentObject var notifications: NotificationService
     @EnvironmentObject var health: HealthService
     @EnvironmentObject var agenda: AgendaService
+    @Environment(\.scenePhase) private var scenePhase
     @State private var settings = Settings()
     @State private var folderPicker = false
     @State private var importing = false
     @State private var pendingRestore: URL?
     @State private var restoreApproval = false
+    @State private var restorePassword = ""
+    @State private var backupPasswordSetup = false
     @State private var exporting = false
     @State private var exportFile: URL?
     @State private var message: String?
@@ -27,6 +30,7 @@ struct SettingsView: View {
                     settingsLink("Salute e Apple Watch", subtitle: "Sonno e allenamenti", icon: "heart.text.square.fill") { healthSettings }
                     settingsLink("Notifiche", subtitle: "Quando e come avvisarti", icon: "bell.fill") { notificationSettings }
                     settingsLink("Backup e privacy", subtitle: "Proteggi il tuo storico", icon: "externaldrive.fill") { backupSettings }
+                        .accessibilityIdentifier("settings-backup")
                     settingsLink("AI online e privacy", subtitle: "Collegamento protetto e limiti", icon: "lock.shield") { OnlineCoachSettingsView() }
                     settingsLink("Studio ed esami", subtitle: "Priorità e recuperi", icon: "graduationcap.fill") { studySettings }
                     settingsLink("Energia e riferimenti", subtitle: "Obiettivi dei valori da 0 a 10", icon: "chart.dots.scatter") { ratingSettings }
@@ -46,8 +50,11 @@ struct SettingsView: View {
                     Spacer(); Text("\(installedVersion) · Il tuo punto di svolta").font(.caption)
                 }.foregroundStyle(PivotTheme.muted).padding(.top, 4)
             }.navigationTitle("Impostazioni")
-                .onAppear { settings = store.data.settings }
+                .onAppear { settings = store.data.settings; store.refreshBackupProtection() }
                 .onChange(of: store.isLoading) { _, loading in if !loading { settings = store.data.settings } }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .background { restorePassword = ""; pendingRestore = nil; restoreApproval = false }
+                }
                 .onChange(of: settings) { _, _ in
                     saveTask?.cancel()
                     guard !store.isLoading, settings != store.data.settings else { return }
@@ -62,20 +69,24 @@ struct SettingsView: View {
                     if !store.isLoading, settings != store.data.settings { store.change { $0.settings = settings } }
                 }
                 .sheet(isPresented: $folderPicker) { FolderPicker { store.selectBackupFolder($0) } }
+                .sheet(isPresented: $backupPasswordSetup) { BackupPasswordView() }
                 .sheet(isPresented: $exporting) { if let exportFile { ShareSheet(items: [exportFile]) } }
-                .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
+                .fileImporter(isPresented: $importing, allowedContentTypes: [.json, .data]) { result in
                     switch result {
-                    case .success(let url): pendingRestore = url; restoreApproval = true
+                    case .success(let url): pendingRestore = url; restorePassword = ""; restoreApproval = true
                     case .failure(let error): message = error.localizedDescription
                     }
                 }
                 .alert("Ripristinare lo storico?", isPresented: $restoreApproval) {
-                    Button("Annulla", role: .cancel) { pendingRestore = nil }
+                    SecureField("Password del backup cifrato", text: $restorePassword)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled().privacySensitive()
+                    Button("Annulla", role: .cancel) { pendingRestore = nil; restorePassword = "" }
                     Button("Confermo il ripristino") {
-                        if let url = pendingRestore { Task { await store.restore(url); settings = store.data.settings } }
-                        pendingRestore = nil
+                        let password = restorePassword.isEmpty ? nil : restorePassword
+                        if let url = pendingRestore { Task { await store.restore(url, password: password); settings = store.data.settings } }
+                        pendingRestore = nil; restorePassword = ""
                     }
-                } message: { Text("Il backup sostituirà i dati attuali. Pivot conserva una copia locale dei dati precedenti; un file non valido non verrà applicato.") }
+                } message: { Text("Il backup sostituirà i dati attuali solo dopo la verifica. Per un vecchio backup JSON lascia vuota la password. La copia locale precedente viene conservata.") }
         }
     }
     private var ratingSettings: some View {
@@ -130,25 +141,28 @@ struct SettingsView: View {
                     Text("Sono filtri modificabili per evitare domande sui tragitti brevi, non una misura medica dello sforzo. Fuori orario serve sempre la tua conferma; senza calorie disponibili non considero la camminata cardio in automatico.").font(.caption).foregroundStyle(PivotTheme.muted)
                 }
         Toggle("Includi Salute nei resoconti", isOn: Binding(get: { settings.includeHealthInExports == true }, set: { settings.includeHealthInExports = $0 }))
-        Text("Nei backup esterni sono esclusi dati importati da Salute, profilo forza e rank derivati. I backup JSON non sono cifrati da Pivot; note e documenti possono contenere dati personali.").font(.caption).foregroundStyle(PivotTheme.muted)
+        Text("Nei nuovi backup cifrati sono esclusi dati importati da Salute, profilo forza e rank derivati. I vecchi file JSON restano leggibili ma non diventano cifrati automaticamente.").font(.caption).foregroundStyle(PivotTheme.muted)
         Toggle("Includi la chat con Pivot nei resoconti", isOn: Binding(get: { settings.includeCoachInReports != false }, set: { settings.includeCoachInReports = $0 }))
     }
     }
     private var backupSettings: some View {
     PivotCard(tint: PivotTheme.blue) {
-        ActionRow(title: "I tuoi dati", subtitle: store.lastExternalBackup == nil ? "Configura il backup in iCloud Drive." : "Copia esterna configurata", icon: "externaldrive.badge.icloud")
-        Text(store.backupStatus).font(.caption).foregroundStyle(store.lastExternalBackup == nil ? PivotTheme.amber : PivotTheme.muted)
+        ActionRow(title: "I tuoi dati", subtitle: !store.backupPasswordConfigured ? "Imposta la protezione del backup" : (store.lastExternalBackup == nil ? "Configura la cartella esterna" : "Copia esterna configurata"), icon: "externaldrive.badge.icloud")
+        Text(store.backupStatus).font(.caption).foregroundStyle(!store.backupPasswordConfigured || store.lastExternalBackup == nil ? PivotTheme.amber : PivotTheme.muted)
         if let last = store.lastExternalBackup { Text("Ultima copia: \(DisplayDate.label(last, format: "d MMM · HH:mm"))").font(.caption).foregroundStyle(PivotTheme.muted) }
-        Button("Scegli cartella backup") { folderPicker = true }.buttonStyle(PivotSecondaryButton()).disabled(store.locked)
+        Button(store.backupPasswordConfigured ? "Cambia password del backup" : "Imposta password del backup") { backupPasswordSetup = true }
+            .buttonStyle(PivotPrimaryButton()).disabled(store.locked || store.isConfiguringBackupPassword)
+            .accessibilityIdentifier("backup-password-setup")
+        Button("Scegli cartella backup") { folderPicker = true }.buttonStyle(PivotSecondaryButton()).disabled(store.locked || !store.backupPasswordConfigured)
         DisclosureGroup("Gestisci backup e ripristino") {
             VStack(alignment: .leading, spacing: 16) {
-                Button("Aggiorna copia esterna") { store.backupNow() }.disabled(store.locked)
-                Button("Esporta backup") {
+                Button("Aggiorna copia esterna") { store.backupNow() }.disabled(store.locked || !store.backupPasswordConfigured)
+                Button("Esporta backup cifrato") {
                     Task {
                         do { exportFile = try await store.exportURL(); exporting = true }
                         catch { message = error.localizedDescription }
                     }
-                }
+                }.disabled(store.locked || !store.backupPasswordConfigured)
                 Button("Ripristina un backup…") { importing = true }
                 Text("Scegli una cartella in iCloud Drive, fuori da Pivot. Prima di aggiornare verifica il backup; installa la nuova versione sopra quella attuale. Se cancelli l'app, la copia locale viene eliminata. I backup contengono dati personali.").font(.caption).foregroundStyle(PivotTheme.muted)
             }.padding(.top, 12)

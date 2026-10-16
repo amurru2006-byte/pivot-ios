@@ -8,7 +8,7 @@ PIVOT_UI_RESULT=build/interaction-tests.xcresult
 PIVOT_SIM_ENTITLEMENTS=build/simulator-entitlements.plist
 case "$PIVOT_UI_ONLY_TESTING" in
   '') ;;
-  PivotUITests/OnlineCoachInteractionTests)
+  PivotUITests/OnlineCoachInteractionTests|v8-privacy-regression)
     PIVOT_PREVIEW_OUTPUT=build/Previews/OnlinePrivacy
     PIVOT_UI_BUILD_LOG=build/online-privacy-build.log
     PIVOT_UI_LOG=build/online-privacy-tests.log
@@ -83,7 +83,12 @@ PIVOT_UI_TEST_COMMAND=(
   -derivedDataPath build/DerivedData -parallel-testing-enabled NO
   -resultBundlePath "$PIVOT_UI_RESULT" "${PIVOT_SIM_SIGNING[@]}" test
 )
-if [ "$PIVOT_UI_ONLY_TESTING" = v8-modern-regression ]; then
+if [ "$PIVOT_UI_ONLY_TESTING" = v8-privacy-regression ]; then
+  PIVOT_UI_TEST_COMMAND+=(
+    -only-testing:PivotUITests/OnlineCoachInteractionTests
+    -only-testing:PivotUITests/BackupPrivacyInteractionTests
+  )
+elif [ "$PIVOT_UI_ONLY_TESTING" = v8-modern-regression ]; then
   PIVOT_UI_TEST_COMMAND+=(
     -only-testing:PivotUITests/OnlineCoachInteractionTests/testSwitchingToLocalCancelsPreflightWithoutSendingOrLosingComposer
     -only-testing:PivotUITests/PivotInteractionTests/testSerie7SevenRankSlotsAndManualProfilePersistWithoutInventedBirthDate

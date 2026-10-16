@@ -15,6 +15,9 @@ final class PivotStore: ObservableObject {
     let diagnostics = PerformanceDiagnostics()
     @Published private(set) var backupStatus = "Backup esterno non configurato"
     @Published private(set) var lastExternalBackup: Date?
+    @Published private(set) var backupPasswordConfigured = false
+    @Published private(set) var isConfiguringBackupPassword = false
+    @Published private(set) var isExportingBackup = false
     private let directory: URL
     private let file: URL
     private let documentsDirectory: URL
@@ -48,6 +51,8 @@ final class PivotStore: ObservableObject {
     init() {
         var storageName = "Pivot"
         #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--backup-privacy-test"),
+           let value = ProcessInfo.processInfo.environment["PIVOT_QA_BACKUP_ID"], let id = UUID(uuidString: value) { storageName = "PivotBackupQA-" + id.uuidString }
         if ProcessInfo.processInfo.arguments.contains("--student-recognition-test") { storageName = "PivotStudentTests" }
         if ProcessInfo.processInfo.arguments.contains("--payment-schedule-test") { storageName = "PivotPaymentTests" }
         if ProcessInfo.processInfo.arguments.contains("--autofill-test") { storageName = "PivotAutofillTests" }
@@ -78,6 +83,7 @@ final class PivotStore: ObservableObject {
                 self.error = "Non riesco a leggere lo storico. Non lo sovrascriverò. Ripristina un backup valido. Dettaglio: \(error.localizedDescription)"
             }
             isLoading = false
+            refreshBackupProtection()
             if !locked, var library = data.training, TrainingIsometry.migrate(&library) {
                 change { $0.training = library }
             }
@@ -165,6 +171,39 @@ final class PivotStore: ObservableObject {
         backgroundSaveID = .invalid
     }
 
+    func refreshBackupProtection() {
+        backupPasswordConfigured = !isLoading && BackupPasswordVault.configured(for: data.installationID)
+        if !backupPasswordConfigured { backupStatus = "Imposta una password per creare copie esterne cifrate. Le copie precedenti restano intatte." }
+    }
+
+    func configureBackupPassword(_ password: String, confirmation: String) async -> Bool {
+        guard !locked, !isLoading, !isRestoring, !isConfiguringBackupPassword, !isExportingBackup, !externalBackupRunning else {
+            backupStatus = "Attendi il completamento del salvataggio o del ripristino prima di impostare la password."
+            return false
+        }
+        isConfiguringBackupPassword = true
+        defer { isConfiguringBackupPassword = false; startNextExternalBackup() }
+        let installationID = data.installationID
+        do {
+            let protection = try await Task.detached(priority: .userInitiated) {
+                let key = try EncryptedBackup.prepare(password: password, confirmation: confirmation)
+                let probe = Data("Pivot backup verification".utf8)
+                guard try EncryptedBackup.open(EncryptedBackup.seal(probe, using: key), using: key) == probe else {
+                    throw EncryptedBackupError.unavailable
+                }
+                return key
+            }.value
+            try Task.checkCancellation()
+            guard !locked, !isRestoring, data.installationID == installationID else { throw EncryptedBackupError.unavailable }
+            try BackupPasswordVault.save(protection, for: installationID)
+            backupPasswordConfigured = true
+            backupStatus = "Protezione configurata. Le nuove copie saranno cifrate; conserva la password per il ripristino."
+            writeExternal(data)
+            return true
+        } catch is CancellationError { return false }
+        catch { backupStatus = error.localizedDescription; return false }
+    }
+
     func selectBackupFolder(_ url: URL) {
         guard !isLoading, !isRestoring else { return }
         guard !locked else { error = "Prima ripristina un backup valido. Il file originale è protetto."; return }
@@ -186,12 +225,16 @@ final class PivotStore: ObservableObject {
 
     private func writeExternal(_ snapshot: AppData) {
         guard UserDefaults.standard.data(forKey: bookmarkKey) != nil else { return }
+        guard backupPasswordConfigured else {
+            backupStatus = "Copia esterna sospesa: imposta la password del backup. Nessuna copia in chiaro viene creata."
+            return
+        }
         pendingExternalBackup = snapshot
         backupStatus = "Aggiornamento della copia esterna…"
         startNextExternalBackup()
     }
     private func startNextExternalBackup() {
-        guard !externalBackupRunning, let snapshot = pendingExternalBackup,
+        guard !externalBackupRunning, !isConfiguringBackupPassword, let snapshot = pendingExternalBackup,
               let bookmark = UserDefaults.standard.data(forKey: bookmarkKey) else { return }
         pendingExternalBackup = nil
         externalBackupRunning = true
@@ -222,23 +265,32 @@ final class PivotStore: ObservableObject {
     }
     private nonisolated static func performExternalBackup(_ snapshot: AppData, bookmark: Data, documents: URL) -> BackupResult {
         do {
-            let bytes = try BackupCodec.encode(StudyFiles.completeBackup(HealthImport.exportData(snapshot, allowHealth: false), directory: documents))
+            let protection = try BackupPasswordVault.load(for: snapshot.installationID)
+            let clear = try BackupCodec.encode(StudyFiles.completeBackup(HealthImport.exportData(snapshot, allowHealth: false), directory: documents))
+            _ = try BackupCodec.decode(clear)
+            let bytes = try EncryptedBackup.seal(clear, using: protection)
+            guard try EncryptedBackup.open(bytes, using: protection) == clear else { throw EncryptedBackupError.unavailable }
             var stale = false
             let folder = try URL(resolvingBookmarkData: bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &stale)
             let access = folder.startAccessingSecurityScopedResource()
             defer { if access { folder.stopAccessingSecurityScopedResource() } }
             try validateExternalFolder(folder)
             let refreshedBookmark = stale ? try folder.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) : nil
-            let destination = folder.appendingPathComponent("Backup Pivot.json")
+            let stem = "Backup Pivot-" + protection.identifier
+            let destination = folder.appendingPathComponent(stem + ".pivotbackup")
             if FileManager.default.fileExists(atPath: destination.path) {
-                let previous = try Data(contentsOf: destination)
-                if (try? BackupCodec.decode(previous)) != nil {
-                    try previous.write(to: folder.appendingPathComponent("Backup Pivot precedente.json"), options: .atomic)
+                let previous = try EncryptedBackup.read(destination)
+                if let priorClear = try? EncryptedBackup.open(previous, using: protection), (try? BackupCodec.decode(priorClear)) != nil {
+                    try previous.write(to: folder.appendingPathComponent(stem + " precedente.pivotbackup"), options: .atomic)
+                } else {
+                    // Preserve an unreadable existing archive for recovery.
+                    // Never overwrite it merely because the new snapshot is valid.
+                    throw EncryptedBackupError.authenticationFailed
                 }
             }
             try bytes.write(to: destination, options: .atomic)
-            _ = try BackupCodec.decode(Data(contentsOf: destination))
-            return BackupResult(status: "Copia esterna scritta e verificata. La sincronizzazione iCloud è gestita da iOS.", date: Date(), bookmark: refreshedBookmark)
+            _ = try BackupCodec.decode(EncryptedBackup.open(EncryptedBackup.read(destination), using: protection))
+            return BackupResult(status: "Copia cifrata scritta e verificata. La sincronizzazione iCloud è gestita da iOS.", date: Date(), bookmark: refreshedBookmark)
         } catch {
             return BackupResult(status: "ATTENZIONE: copia esterna non aggiornata. \(error.localizedDescription)")
         }
@@ -254,21 +306,28 @@ final class PivotStore: ObservableObject {
     }
 
     func exportURL() async throws -> URL {
-        guard !isLoading, await flushPendingWrites() else { throw BackupError.invalidData }
+        guard !isLoading, !isRestoring, !isConfiguringBackupPassword, !isExportingBackup else { throw EncryptedBackupError.unavailable }
+        isExportingBackup = true
+        defer { isExportingBackup = false }
+        guard await flushPendingWrites() else { throw BackupError.invalidData }
         let snapshot = data, pdfDirectory = documentsDirectory, isLocked = locked
         return try await Task.detached(priority: .utility) {
             // A corrupted local file must not bypass the privacy filter. Recovery
             // of that original is a separate explicit operation, never a backup.
             guard !isLocked else { throw BackupError.invalidData }
-            let bytes = try BackupCodec.encode(StudyFiles.completeBackup(HealthImport.exportData(snapshot, allowHealth: false), directory: pdfDirectory))
-            let destination = FileManager.default.temporaryDirectory.appendingPathComponent("Backup Pivot.json")
+            let protection = try BackupPasswordVault.load(for: snapshot.installationID)
+            let clear = try BackupCodec.encode(StudyFiles.completeBackup(HealthImport.exportData(snapshot, allowHealth: false), directory: pdfDirectory))
+            _ = try BackupCodec.decode(clear)
+            let bytes = try EncryptedBackup.seal(clear, using: protection)
+            guard try EncryptedBackup.open(bytes, using: protection) == clear else { throw EncryptedBackupError.unavailable }
+            let destination = FileManager.default.temporaryDirectory.appendingPathComponent("Backup Pivot.pivotbackup")
             try bytes.write(to: destination, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             return destination
         }.value
     }
 
-    func restore(_ url: URL) async {
-        guard !isRestoring, !isLoading else { return }
+    func restore(_ url: URL, password: String? = nil) async {
+        guard !isRestoring, !isLoading, !isConfiguringBackupPassword, !isExportingBackup else { return }
         isRestoring = true
         defer { isRestoring = false }
         guard await flushPendingWrites() else { return }
@@ -277,7 +336,7 @@ final class PivotStore: ObservableObject {
             var restored = try await Task.detached(priority: .utility) {
                 let access = url.startAccessingSecurityScopedResource()
                 defer { if access { url.stopAccessingSecurityScopedResource() } }
-                let decoded = try BackupCodec.decode(Data(contentsOf: url))
+                let decoded = try EncryptedBackup.decoded(EncryptedBackup.read(url), password: password)
                 for bytes in (decoded.studyPDFs ?? [:]).values {
                     guard let pdf = PDFDocument(data: bytes), pdf.pageCount > 0, !pdf.isLocked else { throw StudyFileError.invalidBackup }
                 }
@@ -291,6 +350,7 @@ final class PivotStore: ObservableObject {
             deletedTrainingIDs.removeAll()
             locked = false
             error = nil
+            refreshBackupProtection()
             writeExternal(restored)
         } catch { self.error = "Ripristino non eseguito: \(error.localizedDescription)" }
     }
