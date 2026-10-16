@@ -1,7 +1,7 @@
 name: Verifica privacy V8 senza rilascio
 on:
   push:
-    branches: ['codex/pivot-v8-privacy', 'codex/pivot-v8-backup', 'codex/pivot-v8-savings-core', 'codex/pivot-v8-savings-ui', 'codex/pivot-v8-history-core', 'codex/pivot-v8-history-ui', 'codex/pivot-v8-contacts-core', 'codex/pivot-v8-contacts-ui', 'codex/pivot-v8-backup-ui-fix']
+    branches: ['codex/pivot-v8-privacy', 'codex/pivot-v8-backup', 'codex/pivot-v8-savings-core', 'codex/pivot-v8-savings-ui', 'codex/pivot-v8-history-core', 'codex/pivot-v8-history-ui', 'codex/pivot-v8-contacts-core', 'codex/pivot-v8-contacts-ui', 'codex/pivot-v8-backup-ui-fix', 'codex/pivot-v8-entrate-ui']
   workflow_dispatch:
 permissions:
   contents: read
@@ -52,8 +52,18 @@ jobs:
           PY
       - name: Compila app e verifica consenso, annullamento, quote e base locale
         env:
-          PIVOT_UI_ONLY_TESTING: ${{ github.ref == 'refs/heads/codex/pivot-v8-backup-ui-fix' && 'PivotUITests/BackupPrivacyInteractionTests' || (github.ref == 'refs/heads/codex/pivot-v8-contacts-ui' && 'v8-contacts-regression' || (github.ref == 'refs/heads/codex/pivot-v8-history-ui' && 'v8-history-regression' || (github.ref == 'refs/heads/codex/pivot-v8-savings-ui' && 'v8-savings-regression' || (github.ref == 'refs/heads/codex/pivot-v8-backup' && 'v8-privacy-regression' || 'PivotUITests/OnlineCoachInteractionTests')))) }}
-        run: bash Scripts/preview-ui.sh
+          PIVOT_QA_BRANCH: ${{ github.ref }}
+        run: |
+          case "$PIVOT_QA_BRANCH" in
+            refs/heads/codex/pivot-v8-backup-ui-fix) PIVOT_UI_ONLY_TESTING=PivotUITests/BackupPrivacyInteractionTests ;;
+            refs/heads/codex/pivot-v8-contacts-ui|refs/heads/codex/pivot-v8-entrate-ui) PIVOT_UI_ONLY_TESTING=v8-contacts-regression ;;
+            refs/heads/codex/pivot-v8-history-ui) PIVOT_UI_ONLY_TESTING=v8-history-regression ;;
+            refs/heads/codex/pivot-v8-savings-ui) PIVOT_UI_ONLY_TESTING=v8-savings-regression ;;
+            refs/heads/codex/pivot-v8-backup) PIVOT_UI_ONLY_TESTING=v8-privacy-regression ;;
+            *) PIVOT_UI_ONLY_TESTING=PivotUITests/OnlineCoachInteractionTests ;;
+          esac
+          export PIVOT_UI_ONLY_TESTING
+          bash Scripts/preview-ui.sh
       - name: Conserva diagnostica sintetica del collaudo
         if: always()
         uses: actions/upload-artifact@v4

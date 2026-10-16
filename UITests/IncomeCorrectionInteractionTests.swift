@@ -21,8 +21,7 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
         return app
     }
     private func reveal(_ element: XCUIElement, app: XCUIApplication, up: Bool = true) {
-        for _ in 0..<10 { if element.isHittable { return }; if up { app.swipeUp() } else { app.swipeDown() } }
-        XCTAssertTrue(element.isHittable)
+        scrollControlIntoView(element, in: app)
     }
     private func replace(_ field: XCUIElement, with value: String, app: XCUIApplication) {
         reveal(field, app: app); field.tap()
