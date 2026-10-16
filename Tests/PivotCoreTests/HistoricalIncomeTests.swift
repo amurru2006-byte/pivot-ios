@@ -124,6 +124,20 @@ final class HistoricalIncomeTests: XCTestCase {
         XCTAssertEqual(try balance(data).freeCents, 3700)
     }
 
+    func testCorrectedHistoricalReceiptAndLaterGenuinePaymentKeepDistinctProvenance() throws {
+        var data = data(); let item = event()
+        try HistoricalIncome.apply([quote(item, data: data)], freshEvents: [item], now: now, data: &data)
+        let sourceID = data.payments[0].id
+        try IncomeEdits.receipt(paymentID: sourceID, cents: 800, now: now, data: &data)
+        XCTAssertEqual(data.income[0].outstandingCents, 400)
+        XCTAssertEqual(try balance(data).freeCents, 2500)
+        XCTAssertTrue(StudentPayments.collect(clientID: data.clients[0].id, cents: 400, date: now, data: &data))
+        XCTAssertEqual(try balance(data).freeCents, 2900)
+        XCTAssertEqual(data.income[0].historicalSource?.receiptID, sourceID)
+        XCTAssertNil(data.payments.last?.excludedFromBudget)
+        XCTAssertNoThrow(try BackupCodec.decode(BackupCodec.encodeCompact(data)))
+    }
+
     func testYearOnlyReceiptRoundTripAndMonthlyDailyReportNeverInventDate() throws {
         var data = data(); let item = event()
         try HistoricalIncome.apply([quote(item, data: data)], freshEvents: [item], now: now, data: &data)

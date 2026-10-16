@@ -51,6 +51,8 @@ final class PivotStore: ObservableObject {
     init() {
         var storageName = "Pivot"
         #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--history-test"),
+           let value = ProcessInfo.processInfo.environment["PIVOT_QA_HISTORY_ID"], let id = UUID(uuidString: value) { storageName = "PivotHistoryQA-" + id.uuidString }
         if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--savings-test"),
            let value = ProcessInfo.processInfo.environment["PIVOT_QA_SAVINGS_ID"], let id = UUID(uuidString: value) { storageName = "PivotSavingsQA-" + id.uuidString }
         if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--backup-privacy-test"),
@@ -92,6 +94,13 @@ final class PivotStore: ObservableObject {
             diagnostics.record("Caricamento storico", seconds: ProcessInfo.processInfo.systemUptime - started)
             if !locked { applyInitialSettings() }
             #if DEBUG && targetEnvironment(simulator)
+            if !locked, ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--history-test"),
+               UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_HISTORY_ID"] ?? "") != nil, data.clients.isEmpty {
+                change { data in
+                    data.clients = [Client(name: "Contatto A Test", rateCents: 1200), Client(name: "Contatto B Test", rateCents: 1800)]
+                    data.ledger = .init(openingCents: [String(PivotDate.calendar.component(.year, from: Date())): 2500])
+                }
+            }
             if !locked, ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--savings-test"),
                UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_SAVINGS_ID"] ?? "") != nil,
                data.savingsBudget == nil, data.clients.isEmpty, data.payments.isEmpty, data.ledger?.openingCents.isEmpty != false {

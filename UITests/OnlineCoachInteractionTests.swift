@@ -75,8 +75,11 @@ final class OnlineCoachInteractionTests: XCTestCase {
         XCTAssertTrue(input.waitForExistence(timeout: 8))
         for _ in 0..<8 { if input.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(input.isHittable); input.tap(); input.typeText("Preferisco dopo cena")
-        XCTAssertTrue(app.buttons["Fine"].waitForExistence(timeout: 8)); app.buttons["Fine"].tap()
-        app.buttons["coach-send"].tap()
+        if app.keyboards.firstMatch.exists {
+            XCTAssertTrue(app.buttons["Fine"].waitForExistence(timeout: 8)); app.buttons["Fine"].tap()
+        }
+        let send = app.buttons["coach-send"]
+        scrollControlIntoView(send, in: app); send.tap()
         XCTAssertTrue(app.staticTexts["coach-online-error"].waitForExistence(timeout: 8))
         XCTAssertEqual(input.value as? String, "Preferisco dopo cena")
         app.swipeDown()

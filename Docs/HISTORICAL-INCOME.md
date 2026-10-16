@@ -39,5 +39,27 @@ Independent notes/ratings remain; no actual stopwatch times are invented.
 
 The batch is schema-validated before assignment. A missing/ambiguous identity,
 calendar conflict or invalid backup leaves the original AppData untouched.
-Source provenance is preserved locally for audit. Importing must remain behind
-a native local review/confirmation, not run automatically when opening Pivot.
+Source provenance and the original imported receipt ID are preserved locally for
+audit. Correcting that receipt never turns it into spendable money; a different,
+later genuine receipt can still fund the budget. Older Pivot releases that require
+an exact receipt date cannot read year-only receipts; preserve pre-upgrade backups
+instead of promising backward compatibility with the old application binary.
+
+## Native entry point and checks
+
+Entrate → Recupera dal calendario queries the selected calendars for the chosen
+year in the existing EventKit actor, separately from the home agenda. It never
+changes events or broadens the routine agenda fetch. Excluded calendars remain
+excluded. Each row shows the calendar title/date/duration, contact and tariff;
+unknown contacts can be added through the existing contact form. Selection is
+explicit, including a select-ready convenience action. Conflicts stay unselected.
+
+The confirmation shows full reconstructed receipts, the share already in the
+opening aggregate, and the resulting annual total. The user must confirm that
+the selected lessons were actually held and paid in the chosen year. The receipt
+day stays unknown. Cancel/background causes no ledger write. Final confirmation
+reads EventKit again, validates source/rates against the current AppData, and
+refuses a changed preview rather than silently changing the accepted amounts.
+Expensive preview/commit validation runs off the UI thread; only a validated,
+revision-matched snapshot is assigned back to the store. New native interaction
+coverage uses a unique Debug-simulator-only synthetic storage namespace.
