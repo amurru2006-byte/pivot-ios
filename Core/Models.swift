@@ -225,6 +225,9 @@ struct Payment: Codable, Identifiable {
     var clientName: String
     var date: Date
     var amountCents: Int
+    // Historical earnings can belong to annual reporting without being funds
+    // still available today. Nil preserves all existing normal receipts.
+    var excludedFromBudget: Bool? = nil
 }
 
 struct PlanMove: Codable, Identifiable {
@@ -332,6 +335,7 @@ struct AppData: Codable {
     var actualWorkoutDraft: ActualWorkoutDraft? = nil
     var strengthProfile: StrengthProfile? = nil
     var incomeEdits: [IncomeEdit]? = nil
+    var savingsBudget: SavingsBudget? = nil
 }
 
 struct ActivityDraft: Codable {
