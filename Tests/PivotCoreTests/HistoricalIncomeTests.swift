@@ -196,4 +196,16 @@ final class HistoricalIncomeTests: XCTestCase {
         data.income.append(duplicate); data.payments.append(payment)
         XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encodeCompact(data)))
     }
+
+    func testAnnualReceiptChangeAfterPreviewRequiresANewConfirmation() throws {
+        var data = data(); let item = event(), quotes = [try quote(event(), data: data)]
+        let client = data.clients[0]
+        let entry = IncomeEntry(clientID: client.id, clientName: client.name, date: now, minutes: 60, amountCents: 1000, paidCents: 1000)
+        data.income.append(entry); data.payments.append(.init(incomeID: entry.id, clientName: client.name, date: now, amountCents: 1000))
+        XCTAssertThrowsError(try HistoricalIncome.apply(quotes, freshEvents: [item], now: now, expectedAnnualTotal: 2500, data: &data))
+        XCTAssertNil(data.savingsBudget); XCTAssertEqual(data.income.count, 1); XCTAssertEqual(data.payments.count, 1)
+        XCTAssertEqual(data.ledger?.openingCents["2026"], 2500)
+        XCTAssertNoThrow(try HistoricalIncome.apply(quotes, freshEvents: [item], now: now, expectedAnnualTotal: 3500, data: &data))
+        XCTAssertEqual(data.ledger?.total(year: 2026, payments: data.payments), 3500)
+    }
 }

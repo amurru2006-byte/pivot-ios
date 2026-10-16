@@ -91,8 +91,13 @@ enum HistoricalIncome {
 
     /// Re-evaluate against a fresh EventKit snapshot and latest store. Atomic on failure.
     /// Repeating an identical confirmed batch is harmless; no destructive deduplication.
-    @discardableResult static func apply(_ quotes: [Quote], freshEvents: [CalendarItem], now: Date, data: inout AppData) throws -> Result {
+    @discardableResult static func apply(_ quotes: [Quote], freshEvents: [CalendarItem], now: Date,
+        expectedAnnualTotal: Int? = nil, data: inout AppData) throws -> Result {
         guard !quotes.isEmpty, quotes.count <= 10_000, Set(quotes.map(\.id)).count == quotes.count else { throw HistoricalIncomeError.invalid }
+        if let expectedAnnualTotal {
+            guard Set(quotes.map(\.year)).count == 1,
+                  (data.ledger ?? AnnualLedger()).total(year: quotes[0].year, payments: data.payments) == expectedAnnualTotal else { throw HistoricalIncomeError.changed }
+        }
         var next = data
         var pending: [Quote] = []
         for expected in quotes {
