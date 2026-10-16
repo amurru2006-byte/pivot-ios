@@ -64,7 +64,7 @@ struct IncomeView: View {
     var body: some View {
         NavigationStack {
             PivotScreen {
-                PivotHeader(title: "Le tue entrate", subtitle: "Ripetizioni, incassi e pagamenti da ricordare.")
+                PivotHeader(title: "Le tue entrate", subtitle: "Attività, incassi e pagamenti da ricordare.")
                 balanceCarousel
                 HStack {
                     Button { editingOpening = true } label: { Label("Importo pregresso", systemImage: "slider.horizontal.3") }.buttonStyle(PivotSecondaryButton()).disabled(store.locked)
@@ -86,11 +86,11 @@ struct IncomeView: View {
                 }
                 if store.data.clients.isEmpty {
                     PivotCard {
-                        ActionRow(title: "Parti dal primo studente", subtitle: "Imposta la tariffa e registra le lezioni.", icon: "person.badge.plus")
-                        Button("Aggiungi studente") { addingClient = true }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
+                        ActionRow(title: "Aggiungi il primo contatto", subtitle: "Ripetizioni, lavoro o altre entrate.", icon: "person.badge.plus")
+                        Button("Aggiungi contatto") { addingClient = true }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
                     }
                 } else {
-                    Button { addingLesson = true } label: { Label("Registra una lezione", systemImage: "plus.circle.fill") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
+                    Button { addingLesson = true } label: { Label("Registra attività", systemImage: "plus.circle.fill") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
                 }
                 VStack(alignment: .leading, spacing: 14) {
                     SectionHeading(title: "Ultimi incassi", detail: String(year))
@@ -136,7 +136,7 @@ struct IncomeView: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: 14) {
-                    SectionHeading(title: "I tuoi studenti", detail: "\(store.data.clients.count)")
+                    SectionHeading(title: "I tuoi contatti", detail: "\(store.data.clients.count)")
                     ForEach(store.data.clients) { client in
                         NavigationLink { ClientDetailView(client: client) } label: {
                             PivotCard {
@@ -144,16 +144,15 @@ struct IncomeView: View {
                                     avatar(client.name)
                                     VStack(alignment: .leading, spacing: 5) {
                                         Text(client.name).font(.headline).foregroundStyle(PivotTheme.text)
-                                        Text("\(Money.display(client.rateCents)) all'ora").font(.caption).foregroundStyle(PivotTheme.muted)
+                                        Text(client.activityKind == .gift ? client.activityKind.label : "\(client.activityKind.label) · \(Money.display(client.rateCents))\(client.billingMode == .hourly ? "/h" : "")").font(.caption).foregroundStyle(PivotTheme.muted)
                                     }
                                     Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(PivotTheme.muted)
                                 }
                             }
                         }.buttonStyle(.plain).accessibilityIdentifier("client-detail-" + client.id.uuidString)
                     }
-                    if !store.data.clients.isEmpty { Button { addingClient = true } label: { Label("Aggiungi studente", systemImage: "person.badge.plus") }.buttonStyle(PivotSecondaryButton()).disabled(store.locked) }
+                    if !store.data.clients.isEmpty { Button { addingClient = true } label: { Label("Aggiungi contatto", systemImage: "person.badge.plus") }.buttonStyle(PivotSecondaryButton()).disabled(store.locked) }
                 }
-                Text("Registra qui le lezioni e gli incassi: il totale segue la data effettiva dei pagamenti.").font(.caption).foregroundStyle(PivotTheme.muted)
             }.navigationTitle("Entrate")
                 .sheet(isPresented: $addingClient) { ClientForm() }
                 .sheet(isPresented: $addingLesson) { LessonForm(clients: store.data.clients) }
@@ -332,48 +331,57 @@ struct ClientForm: View {
     @State private var rate = ""
     @State private var cadence: PaymentCadence = .everyLesson
     @State private var aliases = ""
+    @State private var activity: IncomeActivityKind = .lesson
+    @State private var billing: IncomeBilling = .hourly
     @State private var message: String?
     var editingClient: Client? = nil
     private var existing: [Client] { ClientRegistry.named(name, clients: store.data.clients) }
-    private var saveTitle: String { editingClient != nil || existing.count == 1 ? "Salva studente" : "Aggiungi studente" }
+    private var saveTitle: String { editingClient != nil || existing.count == 1 ? "Salva contatto" : "Aggiungi contatto" }
+    private var rateValue: Int? { rate.trimmingCharacters(in: .whitespaces).isEmpty && activity != .lesson ? 0 : Money.cents(from: rate) }
     var body: some View {
         NavigationStack {
             PivotScreen {
-                PivotHeader(title: editingClient == nil ? "Studente e tariffa" : "Modifica studente", subtitle: "La tariffa vale per le prossime lezioni, non cambia gli importi passati.")
+                PivotHeader(title: editingClient == nil ? "Nuovo contatto" : "Modifica contatto", subtitle: "Le modifiche non cambiano gli importi già registrati.")
                 PivotCard {
-                    Label("Studente", systemImage: "person.fill").font(.headline).foregroundStyle(PivotTheme.blue)
+                    Label("Contatto", systemImage: "person.fill").font(.headline).foregroundStyle(PivotTheme.blue)
                     TextField("Nome", text: $name).textContentType(.name).accessibilityIdentifier("client-name").padding(14).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
-                    Label("Tariffa all'ora", systemImage: "eurosign.circle").font(.subheadline.weight(.semibold))
+                    Picker("Attività abituale", selection: $activity) { ForEach(IncomeActivityKind.allCases, id: \.self) { Text($0.label).tag($0) } }.accessibilityIdentifier("client-activity")
+                    if activity != .lesson && activity != .gift {
+                        Picker("Compenso", selection: $billing) { Text("A ore").tag(IncomeBilling.hourly); Text("Importo fisso").tag(IncomeBilling.fixed) }.accessibilityIdentifier("client-billing")
+                    }
+                    Label(activity == .gift ? "Importo abituale, facoltativo" : (billing == .hourly ? "Tariffa all'ora" : "Importo abituale, facoltativo"), systemImage: "eurosign.circle").font(.subheadline.weight(.semibold))
                     HStack {
                         TextField("Ad esempio 18", text: $rate).keyboardType(.decimalPad).accessibilityIdentifier("client-rate")
-                        Text("€/h").foregroundStyle(PivotTheme.muted)
+                        Text(billing == .hourly ? "€/h" : "€").foregroundStyle(PivotTheme.muted)
                     }.padding(14).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
-                    Picker("Come ti paga di solito?", selection: $cadence) {
-                        ForEach(PaymentCadence.allCases, id: \.self) { Text($0.label).tag($0) }
-                    }
+                if activity != .gift { Picker("Come ti paga di solito?", selection: $cadence) {
+                        ForEach(PaymentCadence.allCases, id: \.self) { Text($0 == .everyLesson && activity != .lesson ? "A ogni attività" : $0.label).tag($0) }
+                    } }
                     TextField("Altri nomi nel calendario, uno per riga", text: $aliases, axis: .vertical).lineLimit(2...4).accessibilityIdentifier("client-aliases")
                     Text("Aggiungi solo nomi che sai appartenere a questa persona. I casi ambigui richiedono una scelta; i nomi non vengono inviati all’AI online.").font(.caption).foregroundStyle(PivotTheme.muted)
                 }
                 if editingClient == nil && existing.count == 1 {
-                    Text("Questo studente esiste già: aggiornerò la sua tariffa senza creare un doppione.").font(.subheadline).accessibilityIdentifier("client-update-existing")
+                    Text("Questo contatto esiste già: aggiornerò il profilo senza creare un doppione.").font(.subheadline).accessibilityIdentifier("client-update-existing")
                 } else if existing.contains(where: { $0.id != editingClient?.id }) {
                     Text("Ci sono più profili con questo nome. Apri lo studente da Entrate e scegli Unisci profili, solo se sono davvero la stessa persona.").foregroundStyle(PivotTheme.amber)
                 }
                 if let message { Text(message).foregroundStyle(PivotTheme.amber) }
                 Button(saveTitle) {
-                    guard let cents = Money.cents(from: rate) else { return }
+                    guard let cents = rateValue else { return }
                     var next = store.data
                     do {
                         try ClientRegistry.save(name: name, rateCents: cents, cadence: cadence,
-                                                aliases: aliases.components(separatedBy: .newlines), editingID: editingClient?.id, data: &next)
+                                                aliases: aliases.components(separatedBy: .newlines), editingID: editingClient?.id,
+                                                activity: activity, billing: billing, data: &next)
                         if store.change({ $0 = next }) { dismiss() }
                     } catch { message = "Non ho creato un altro profilo. Scegli lo studente esistente o unisci prima i doppioni." }
-                }.buttonStyle(PivotPrimaryButton()).accessibilityIdentifier("client-save").disabled(store.locked || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || Money.cents(from: rate) == nil)
-            }.navigationTitle("Studente")
-                .onAppear { if let client = editingClient { name = client.name; rate = String(format: "%.2f", Double(client.rateCents) / 100); cadence = client.paymentCadence ?? .everyLesson; aliases = (client.calendarAliases ?? []).joined(separator: "\n") } }
+                }.buttonStyle(PivotPrimaryButton()).accessibilityIdentifier("client-save").disabled(store.locked || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || rateValue == nil)
+            }.navigationTitle("Contatto")
+                .onAppear { if let client = editingClient { name = client.name; rate = String(format: "%.2f", Double(client.rateCents) / 100); cadence = client.paymentCadence ?? .everyLesson; aliases = (client.calendarAliases ?? []).joined(separator: "\n"); activity = client.activityKind; billing = client.billingMode } }
+                .onChange(of: activity) { _, value in if value == .lesson { billing = .hourly }; if value == .gift { billing = .fixed } }
                 .onChange(of: name) { _, _ in
                     if editingClient == nil, existing.count == 1, rate.isEmpty, let client = existing.first {
-                        rate = String(format: "%.2f", Double(client.rateCents) / 100); cadence = client.paymentCadence ?? .everyLesson
+                        rate = String(format: "%.2f", Double(client.rateCents) / 100); cadence = client.paymentCadence ?? .everyLesson; activity = client.activityKind; billing = client.billingMode
                     }
                 }
                 .toolbar { Button("Annulla") { dismiss() } }
@@ -390,51 +398,84 @@ struct LessonForm: View {
     @State private var minutes = 60
     @State private var amount = ""
     @State private var alreadyPaid = false
+    @State private var received = ""
+    @State private var receiptDate = Date()
+    @State private var operationID = UUID()
+    @State private var message: String?
     @State private var notes = ""
+    @State private var activityOverride: IncomeActivityKind?
+    @State private var billingOverride: IncomeBilling?
     @State private var paymentTiming: PaymentTiming = .everyLesson
     @State private var promisedDate = Date()
     @State private var rememberCadence = false
-    init(clients: [Client]) { self.clients = clients; _clientID = State(initialValue: clients.first?.id ?? UUID()) }
-    var selected: Client? { clients.first { $0.id == clientID } }
-    var calculated: Int { Money.lessonAmount(rateCents: selected?.rateCents ?? 0, minutes: minutes) }
+    init(clients: [Client], selectedClientID: UUID? = nil) { self.clients = clients; _clientID = State(initialValue: selectedClientID ?? clients.first?.id ?? UUID()) }
+    var selected: Client? { store.data.clients.first { $0.id == clientID } }
+    var activityKind: IncomeActivityKind { activityOverride ?? selected?.activityKind ?? .lesson }
+    var billingMode: IncomeBilling { activityKind == .gift ? .fixed : activityKind == .lesson ? .hourly : billingOverride ?? selected?.billingMode ?? .hourly }
+    var isLesson: Bool { activityKind == .lesson }
+    var hasDuration: Bool { isLesson || billingMode == .hourly }
+    var calculated: Int { billingMode == .fixed ? selected?.rateCents ?? 0 : Money.lessonAmount(rateCents: selected?.rateCents ?? 0, minutes: minutes) }
     var finalAmount: Int? { amount.isEmpty ? calculated : Money.cents(from: amount) }
+    var receivedAmount: Int? { alreadyPaid ? (received.isEmpty ? finalAmount : Money.cents(from: received)) : 0 }
     var body: some View {
         NavigationStack {
             PivotScreen {
-                PivotHeader(title: "Una lezione in più", subtitle: "Registra il lavoro fatto e tieni traccia del pagamento.")
+                PivotHeader(title: isLesson ? "Una lezione in più" : "Nuova entrata", subtitle: "Compenso e incasso restano separati.")
                 PivotCard {
                     HStack {
-                        Label("Studente", systemImage: "person.fill").font(.subheadline.weight(.semibold))
+                        Label("Contatto", systemImage: "person.fill").font(.subheadline.weight(.semibold))
                         Spacer()
-                        Picker("Studente", selection: $clientID) { ForEach(clients) { Text($0.name).tag($0.id) } }.pickerStyle(.menu).labelsHidden()
+                        Picker("Contatto", selection: $clientID) { ForEach(store.data.clients) { Text($0.name).tag($0.id) } }.pickerStyle(.menu).labelsHidden()
                     }
-                    DatePicker("Data della lezione", selection: $date)
-                    DurationField(title: "Durata della lezione", seconds: Binding(get: { minutes * 60 }, set: { minutes = max(1, ($0 ?? 60) / 60) }), maxHours: 8)
+                    DatePicker(isLesson ? "Data della lezione" : "Data dell’attività", selection: $date)
+                    Picker("Tipo di attività", selection: Binding(get: { activityKind }, set: { activityOverride = $0; billingOverride = nil })) {
+                        ForEach(IncomeActivityKind.allCases, id: \.self) { Text($0.label).tag($0) }
+                    }
+                    if activityKind != .lesson && activityKind != .gift {
+                        Picker("Compenso", selection: Binding(get: { billingMode }, set: { billingOverride = $0 })) {
+                            Text("A ore").tag(IncomeBilling.hourly); Text("Importo fisso").tag(IncomeBilling.fixed)
+                        }
+                    }
+                    if hasDuration { DurationField(title: isLesson ? "Durata della lezione" : "Durata del lavoro", seconds: Binding(get: { minutes * 60 }, set: { minutes = max(1, ($0 ?? 60) / 60) }), maxHours: 8) }
                 }
                 PivotCard(tint: PivotTheme.accent) {
-                    Text("Importo della lezione").font(.subheadline).foregroundStyle(PivotTheme.muted)
+                    Text(isLesson ? "Compenso della lezione" : "Importo previsto").font(.subheadline).foregroundStyle(PivotTheme.muted)
                     Text(Money.display(finalAmount ?? 0)).font(.system(.largeTitle, design: .rounded, weight: .bold)).foregroundStyle(PivotTheme.accent)
-                    Text("Calcolato dalla tariffa: \(Money.display(calculated))").font(.caption).foregroundStyle(PivotTheme.muted)
-                    TextField("Importo diverso in euro, se serve", text: $amount).keyboardType(.decimalPad).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
-                    Toggle("Già pagata", isOn: $alreadyPaid)
-                    if alreadyPaid { Text("L'incasso verrà registrato con la data di oggi.").font(.caption).foregroundStyle(PivotTheme.muted) }
-                    if !alreadyPaid { PaymentTermsFields(timing: $paymentTiming, promisedDate: $promisedDate, remember: $rememberCadence, studentName: selected?.name ?? "") }
+                    if hasDuration { Text("Calcolato dalla tariffa: \(Money.display(calculated))").font(.caption).foregroundStyle(PivotTheme.muted) }
+                    TextField("Importo diverso in euro, se serve", text: $amount).keyboardType(.decimalPad).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12)).accessibilityIdentifier("income-manual-compensation")
+                    Toggle("Ho già ricevuto un pagamento", isOn: $alreadyPaid).accessibilityIdentifier("income-manual-has-receipt")
+                    if alreadyPaid {
+                        TextField("Ricevuto in euro, lascia vuoto per il saldo", text: $received).keyboardType(.decimalPad).accessibilityIdentifier("income-manual-received")
+                        DatePicker("Data incasso", selection: $receiptDate)
+                    }
+                    if (receivedAmount ?? 0) < (finalAmount ?? 0) {
+                        Text("Da incassare \(Money.display(max(0, (finalAmount ?? 0) - (receivedAmount ?? 0))))").foregroundStyle(PivotTheme.amber)
+                        PaymentTermsFields(timing: $paymentTiming, promisedDate: $promisedDate, remember: $rememberCadence, studentName: selected?.name ?? "")
+                    }
                 }
-                PivotCard { TextField("Note della lezione…", text: $notes, axis: .vertical).lineLimit(3...6) }
-                Button("Registra lezione") {
-                    guard let client = selected, let cents = finalAmount, cents > 0 else { return }
-                    let entry = IncomeEntry(clientID: client.id, clientName: client.name, date: date, minutes: minutes, amountCents: cents, paidCents: alreadyPaid ? cents : 0, notes: notes, paymentTiming: paymentTiming, promisedPaymentDate: paymentTiming == .chosenDate ? promisedDate : nil)
-                    if store.change({ data in
-                        data.income.append(entry)
-                        if rememberCadence { StudentPayments.remember(paymentTiming, for: client.id, data: &data) }
-                        if alreadyPaid { data.payments.append(.init(incomeID: entry.id, clientName: client.name, date: Date(), amountCents: cents)) }
-                    }) { dismiss() }
-                }.buttonStyle(PivotPrimaryButton()).disabled(store.locked || (finalAmount ?? 0) <= 0 || selected == nil)
-            }.navigationTitle("Lezione")
-                .onAppear { paymentTiming = store.data.clients.first { $0.id == clientID }?.paymentCadence?.timing ?? .everyLesson }
-                .onChange(of: clientID) { _, id in paymentTiming = store.data.clients.first { $0.id == id }?.paymentCadence?.timing ?? .everyLesson; rememberCadence = false }
+                PivotCard { TextField("Descrizione o note…", text: $notes, axis: .vertical).lineLimit(3...6) }
+                if let message { Text(message).foregroundStyle(PivotTheme.amber) }
+                Button(isLesson ? "Registra lezione" : "Registra entrata") { save() }
+                    .buttonStyle(PivotPrimaryButton()).disabled(store.locked || (finalAmount ?? 0) <= 0 || receivedAmount == nil || (receivedAmount ?? 0) > (finalAmount ?? 0) || selected == nil)
+                    .accessibilityIdentifier("income-manual-save")
+            }.navigationTitle(isLesson ? "Lezione" : "Entrata")
+                .onAppear { paymentTiming = selected?.paymentCadence?.timing ?? .everyLesson; alreadyPaid = selected?.activityKind == .gift }
+                .onChange(of: clientID) { _, id in paymentTiming = store.data.clients.first { $0.id == id }?.paymentCadence?.timing ?? .everyLesson; rememberCadence = false; amount = ""; received = ""; activityOverride = nil; billingOverride = nil; alreadyPaid = selected?.activityKind == .gift }
                 .toolbar { Button("Annulla") { dismiss() } }
         }
+    }
+    private func save() {
+        guard let client = selected, let cents = finalAmount, let paid = receivedAmount else { return }
+        var next = store.data
+        do {
+            let timing: PaymentTiming = paid == cents ? .everyLesson : paymentTiming
+            try ManualIncome.register(id: operationID, client: client, date: date, minutes: minutes,
+                amountCents: cents, receivedCents: paid, paymentDate: receiptDate, notes: notes,
+                timing: timing, promisedDate: timing == .chosenDate ? promisedDate : nil,
+                activity: activityKind, billing: billingMode, data: &next)
+            if rememberCadence && paid < cents { StudentPayments.remember(timing, for: client.id, data: &next) }
+            if store.change({ $0 = next }) { dismiss() }
+        } catch { message = error.localizedDescription }
     }
 }
 
@@ -454,7 +495,7 @@ struct IncomeDetailView: View {
     var body: some View {
         PivotScreen {
             if let entry {
-                PivotHeader(title: entry.clientName, subtitle: "\(DisplayDate.label(entry.date, format: "d MMMM yyyy")) · \(entry.minutes) minuti di lezione")
+                PivotHeader(title: entry.clientName, subtitle: "\(DisplayDate.label(entry.date, format: "d MMMM yyyy"))\(entry.hasDuration ? " · \(entry.minutes) min" : "") · \(entry.activityKind.label)")
                 PivotCard(tint: entry.outstandingCents > 0 ? PivotTheme.amber : PivotTheme.accent) {
                     Text(entry.outstandingCents > 0 ? "Da incassare" : "Lezione saldata").font(.subheadline).foregroundStyle(PivotTheme.muted)
                     Text(Money.display(entry.outstandingCents > 0 ? entry.outstandingCents : entry.amountCents)).font(.system(.largeTitle, design: .rounded, weight: .bold)).foregroundStyle(entry.outstandingCents > 0 ? PivotTheme.amber : PivotTheme.accent)
@@ -531,38 +572,37 @@ struct ClientDetailView: View {
     let client: Client
     @State private var editingClient = false
     @State private var mergingClient = false
+    @State private var addingActivity = false
     private var current: Client { store.data.clients.first { $0.id == client.id } ?? client }
     var entries: [IncomeEntry] { store.data.income.filter { $0.clientID == client.id }.sorted { $0.date > $1.date } }
     var body: some View {
         PivotScreen {
-            PivotHeader(title: current.name, subtitle: "\(Money.display(current.rateCents)) all'ora · \(entries.count) lezioni registrate")
+            PivotHeader(title: current.name, subtitle: current.activityKind == .lesson ? "\(Money.display(current.rateCents)) all'ora · \(entries.count) lezioni registrate" : "\(current.activityKind.label) · \(entries.count) attività registrate")
             Button("Modifica nome e tariffa") { editingClient = true }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("client-edit").disabled(store.locked)
-            if store.data.clients.count > 1 { Button("Unisci profili dello stesso studente") { mergingClient = true }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("client-merge").disabled(store.locked) }
-            HStack(spacing: 10) {
-                MetricTile(title: "Ricevuto", value: Money.display(entries.reduce(0) { $0 + $1.paidCents }), icon: "checkmark.circle.fill")
-                MetricTile(title: "Da incassare", value: Money.display(entries.reduce(0) { $0 + $1.outstandingCents }), icon: "clock.fill", color: PivotTheme.amber)
-            }
-            PivotCard {
+            if store.data.clients.count > 1 { Button("Unisci profili dello stesso contatto") { mergingClient = true }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("client-merge").disabled(store.locked) }
+            ClientIncomeOverview(clientID: client.id)
+            Button(current.activityKind == .lesson ? "Aggiungi lezione" : "Aggiungi attività") { addingActivity = true }
+                .buttonStyle(PivotPrimaryButton()).accessibilityIdentifier("client-add-activity").disabled(store.locked)
+            if current.activityKind != .gift { PivotCard {
                 Picker("Come ti paga di solito?", selection: Binding(get: { store.data.clients.first { $0.id == client.id }?.paymentCadence ?? .everyLesson }, set: { value in
                     store.change { data in if let index = data.clients.firstIndex(where: { $0.id == client.id }) { data.clients[index].paymentCadence = value } }
                 })) {
-                    ForEach(PaymentCadence.allCases, id: \.self) { Text($0.label).tag($0) }
+                    ForEach(PaymentCadence.allCases, id: \.self) { Text($0 == .everyLesson && current.activityKind != .lesson ? "A ogni attività" : $0.label).tag($0) }
                 }.accessibilityIdentifier("student-payment-cadence")
-                Text("Questa preferenza verrà proposta nelle prossime lezioni. Un rinvio scelto per una singola lezione rimane separato.").font(.caption).foregroundStyle(PivotTheme.muted)
-            }
+            } }
             if StudentPayments.balance(clientID: client.id, data: store.data) > 0 {
                 StudentBalancePaymentView(clientID: client.id, clientName: client.name)
             } else {
-                Text("Non ci sono saldi da incassare per questo studente.").font(.caption).accessibilityIdentifier("student-balance-clear")
+                Text("Nessun saldo da incassare.").font(.caption).accessibilityIdentifier("student-balance-clear")
             }
-            SectionHeading(title: "Le lezioni")
-            if entries.isEmpty { EmptyCard(title: "Pronto per la prima lezione", message: "Registra una lezione dalla schermata Entrate.", icon: "person.2.fill") }
+            SectionHeading(title: current.activityKind == .lesson ? "Storico lezioni" : "Storico attività")
+            if entries.isEmpty { EmptyCard(title: "Nessuna attività registrata", message: "Aggiungi un’attività a questo contatto.", icon: "person.2.fill") }
             ForEach(entries) { entry in
                 NavigationLink { IncomeDetailView(entryID: entry.id) } label: {
                     PivotCard {
                         HStack {
                             VStack(alignment: .leading, spacing: 6) {
-                                Text("\(DisplayDate.label(entry.date, format: "d MMM yyyy")) · \(entry.minutes) min").font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.text)
+                                Text("\(DisplayDate.label(entry.date, format: "d MMM yyyy"))\(entry.hasDuration ? " · \(entry.minutes) min" : "")").font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.text)
                                 Text(entry.outstandingCents == 0 ? "Pagata · \(Money.display(entry.amountCents))" : "Da incassare · \(Money.display(entry.outstandingCents))").font(.caption).foregroundStyle(entry.outstandingCents == 0 ? PivotTheme.accent : PivotTheme.amber)
                                 if entry.outstandingCents > 0 { PaymentDueLabel(due: agenda.paymentDues.first { $0.entryIDs.contains(entry.id) }) }
                             }
@@ -571,9 +611,10 @@ struct ClientDetailView: View {
                     }
                 }.buttonStyle(.plain)
             }
-        }.navigationTitle("Studente")
+        }.navigationTitle("Contatto")
         .sheet(isPresented: $editingClient) { ClientForm(editingClient: current) }
         .sheet(isPresented: $mergingClient) { ClientMergeForm(targetID: client.id) }
+        .sheet(isPresented: $addingActivity) { LessonForm(clients: store.data.clients, selectedClientID: client.id) }
     }
 }
 

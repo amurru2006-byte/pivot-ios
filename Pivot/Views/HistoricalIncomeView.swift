@@ -99,7 +99,7 @@ struct HistoricalIncomeView: View {
             if HistoricalIncome.existingEntry(for: event, data: store.data) == nil {
                 Picker("Contatto", selection: Binding<UUID?>(get: { clients[event.id] }, set: { value in clients[event.id] = value; selected.remove(event.id) })) {
                     Text("Da scegliere").tag(UUID?.none)
-                    ForEach(store.data.clients) { client in Text("\(client.name) · \(Money.display(client.rateCents))/h").tag(Optional(client.id)) }
+                    ForEach(store.data.clients.filter { $0.activityKind == .lesson && $0.billingMode == .hourly }) { client in Text("\(client.name) · \(Money.display(client.rateCents))/h").tag(Optional(client.id)) }
                 }.accessibilityIdentifier("history-client-" + event.id)
             }
             if let quote = state.quote {

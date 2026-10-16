@@ -22,9 +22,12 @@ enum ManualIncomeError: LocalizedError {
 enum ManualIncome {
     @discardableResult static func register(id: UUID, client: Client, date: Date, minutes: Int,
         amountCents: Int, receivedCents: Int, paymentDate: Date, notes: String,
-        timing: PaymentTiming = .everyLesson, promisedDate: Date? = nil, data: inout AppData) throws -> UUID {
+        timing: PaymentTiming = .everyLesson, promisedDate: Date? = nil,
+        activity: IncomeActivityKind? = nil, billing: IncomeBilling? = nil, data: inout AppData) throws -> UUID {
         guard data.clients.first(where: { $0.id == client.id }) == client else { throw ManualIncomeError.changed }
-        let hasDuration = client.activityKind == .lesson || client.billingMode == .hourly
+        let kind = activity ?? client.activityKind
+        let mode: IncomeBilling = kind == .gift ? .fixed : kind == .lesson ? .hourly : billing ?? client.billingMode
+        let hasDuration = kind == .lesson || mode == .hourly
         let duration = hasDuration ? minutes : 0
         guard (1...100_000_000).contains(amountCents), (0...amountCents).contains(receivedCents),
               (!hasDuration || (1...480).contains(minutes)),
@@ -34,8 +37,8 @@ enum ManualIncome {
             let receipts = data.payments.filter { $0.incomeID == id }
             guard existing.clientID == client.id, existing.date == date, existing.minutes == duration,
                   existing.amountCents == amountCents, existing.paidCents == receivedCents,
-                  existing.notes == notes, existing.activityKind == client.activityKind,
-                  existing.billing == client.billingMode, existing.paymentTiming == timing,
+                  existing.notes == notes, existing.activityKind == kind,
+                  existing.billing == mode, existing.paymentTiming == timing,
                   existing.promisedPaymentDate == promisedDate,
                   (receivedCents == 0 ? receipts.isEmpty : receipts.count == 1 && receipts[0].date == paymentDate && receipts[0].amountCents == receivedCents) else { throw ManualIncomeError.conflict }
             return id
@@ -43,7 +46,7 @@ enum ManualIncome {
         var next = data
         next.income.append(IncomeEntry(id: id, clientID: client.id, clientName: client.name, date: date,
             minutes: duration, amountCents: amountCents, paidCents: receivedCents, notes: notes,
-            paymentTiming: timing, promisedPaymentDate: promisedDate, activity: client.activityKind, billing: client.billingMode))
+            paymentTiming: timing, promisedPaymentDate: promisedDate, activity: kind, billing: mode))
         if receivedCents > 0 { next.payments.append(Payment(incomeID: id, clientName: client.name, date: paymentDate, amountCents: receivedCents)) }
         _ = try BackupCodec.decode(BackupCodec.encodeCompact(next))
         data = next

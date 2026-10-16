@@ -23,8 +23,8 @@ enum LedgerExcel {
         ]
         var receipts: [[Cell]] = [[.text("ID pagamento"), .text("Data incasso"), .text("Contatto"), .text("ID attività"), .text("Incasso EUR"), .text("Anno incasso"), .text("Disponibile nel budget")]]
         receipts += payments.map { [.text($0.id.uuidString), .text($0.date.map(PivotDate.key) ?? "Data non nota"), .text($0.clientName), .text($0.incomeID.uuidString), .money($0.amountCents), .number($0.year ?? year), .text($0.excludedFromBudget == true ? "No, ricostruzione storica" : "Sì")] }
-        var rows: [[Cell]] = [[.text("ID lezione"), .text("Data lezione"), .text("Studente"), .text("Minuti"), .text("Importo EUR"), .text("Pagato totale EUR"), .text("Da incassare EUR"), .text("Evento calendario"), .text("Note")]]
-        rows += lessons.map { [.text($0.id.uuidString), .text(PivotDate.key($0.date)), .text($0.clientName), .number($0.minutes), .money($0.amountCents), .money($0.paidCents), .money($0.outstandingCents), .text($0.calendarEventID ?? ""), .text($0.notes)] }
+        var rows: [[Cell]] = [[.text("ID attività"), .text("Data attività"), .text("Contatto"), .text("Minuti"), .text("Importo EUR"), .text("Pagato totale EUR"), .text("Da incassare EUR"), .text("Evento calendario"), .text("Note")]]
+        rows += lessons.map { [.text($0.id.uuidString), .text(PivotDate.key($0.date)), .text($0.clientName), $0.hasDuration ? .number($0.minutes) : .text("Non applicabile"), .money($0.amountCents), .money($0.paidCents), .money($0.outstandingCents), .text($0.calendarEventID ?? ""), .text($0.notes)] }
         let ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
         let rel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
         let parts: [(String, String)] = [
