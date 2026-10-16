@@ -15,27 +15,42 @@ extension XCTestCase {
     func scrollControlIntoView(_ element: XCUIElement, in app: XCUIApplication,
                                maxSwipes: Int = 15,
                                file: StaticString = #filePath, line: UInt = #line) {
-        let scroll = app.scrollViews.firstMatch
         for attempt in 0...maxSwipes {
             let screen = app.frame
-            let navigation = app.navigationBars.firstMatch
+            let navigation = app.navigationBars.matching(NSPredicate(format: "hittable == true")).firstMatch
             let tabs = app.tabBars.firstMatch
             let recovery = app.descendants(matching: .any)["workout-recovery-bar"].firstMatch
+            let keyboard = app.keyboards.firstMatch
             var top = screen.minY + 60
             var bottom = screen.maxY - 34
             if navigation.exists { top = max(top, navigation.frame.maxY) }
-            if tabs.exists { bottom = min(bottom, tabs.frame.minY) }
-            if recovery.exists { bottom = min(bottom, recovery.frame.minY) }
+            // A presented sheet can leave the underlying tab bar in the AX
+            // tree. It does not cover this sheet's controls.
+            if tabs.exists && tabs.isHittable { bottom = min(bottom, tabs.frame.minY) }
+            if recovery.exists && recovery.isHittable { bottom = min(bottom, recovery.frame.minY) }
+            if keyboard.exists && keyboard.frame.height > 0 { bottom = min(bottom, keyboard.frame.minY) }
             let frame = element.exists ? element.frame : .zero
             let finite = frame.minY.isFinite && frame.maxY.isFinite && frame.height > 0
             if finite && frame.minY >= top + 8 && frame.maxY <= bottom - 8 && element.isHittable {
                 return
             }
             if attempt == maxSwipes { break }
+            // Form exposes a collection/table instead of a ScrollView. Find
+            // the container owning the target, not a covered screen behind it.
+            let containers = app.scrollViews.allElementsBoundByIndex + app.collectionViews.allElementsBoundByIndex + app.tables.allElementsBoundByIndex
+            let visible = containers.filter { $0.isHittable }
+            let scroll: XCUIElement?
+            if element.exists {
+                let identifier = element.identifier, label = element.label, type = element.elementType
+                scroll = visible.first { container in
+                    if !identifier.isEmpty { return container.descendants(matching: .any).matching(identifier: identifier).firstMatch.exists }
+                    return container.descendants(matching: type).matching(NSPredicate(format: "label == %@", label)).firstMatch.exists
+                } ?? visible.first
+            } else { scroll = visible.first }
             if finite && frame.minY < top + 8 {
-                if scroll.exists { scroll.swipeDown(velocity: .slow) } else { app.swipeDown(velocity: .slow) }
+                if let scroll { scroll.swipeDown(velocity: .slow) } else { app.swipeDown(velocity: .slow) }
             } else {
-                if scroll.exists { scroll.swipeUp(velocity: .slow) } else { app.swipeUp(velocity: .slow) }
+                if let scroll { scroll.swipeUp(velocity: .slow) } else { app.swipeUp(velocity: .slow) }
             }
         }
         let hierarchy = XCTAttachment(string: app.debugDescription)
