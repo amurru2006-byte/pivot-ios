@@ -236,6 +236,10 @@ struct IncomeView: View {
                 Spacer()
                 Text("Da incassare \(Money.display(outstanding.reduce(0) { $0 + $1.outstandingCents }))").font(.caption.weight(.semibold)).foregroundStyle(PivotTheme.amber)
             }
+            if let unassigned = ledger.openingCents[String(year)], unassigned > 0 {
+                Text("Incassi da attribuire · \(Money.display(unassigned))").font(.caption).foregroundStyle(PivotTheme.muted)
+                    .accessibilityIdentifier("income-unassigned-opening")
+            }
             if let progress = ledger.warningProgress(total: annualTotal) {
                 Label(progress >= 1 ? "Riferimento INPS raggiunto: verifica gli adempimenti" : "Ti avvicini al riferimento INPS: \(Money.display(max(0, ledger.referenceCents - annualTotal))) rimanenti", systemImage: "exclamationmark.triangle.fill").font(.caption.weight(.semibold)).foregroundStyle(balanceColor)
             }
