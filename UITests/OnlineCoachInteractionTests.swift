@@ -1,6 +1,34 @@
 import XCTest
 
 final class OnlineCoachInteractionTests: XCTestCase {
+    func testOnlineReviewRequiresConfirmationAndCancelPreservesComposer() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--interaction-test", "--online-coach-review-test"]
+        app.launch()
+        XCTAssertTrue(app.buttons["open-pivot-coach"].waitForExistence(timeout: 15)); app.buttons["open-pivot-coach"].tap()
+        let input = app.descendants(matching: .any)["coach-message-input"]
+        for _ in 0..<12 { if input.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(input.isHittable); input.tap(); input.typeText("Dopo cena, contattami a prova@example.test")
+        if app.buttons["Fine"].waitForExistence(timeout: 3) { app.buttons["Fine"].tap() }
+        app.buttons["coach-send"].tap()
+        let reviewed = app.staticTexts["coach-online-reviewed-message"]
+        XCTAssertTrue(reviewed.waitForExistence(timeout: 12))
+        XCTAssertTrue(reviewed.label.contains("[email]")); XCTAssertFalse(reviewed.label.contains("example.test"))
+        XCTAssertFalse(app.staticTexts["coach-online-error"].exists)
+        let cancel = app.buttons["coach-online-review-cancel"]
+        scrollControlIntoView(cancel, in: app); cancel.tap()
+        XCTAssertEqual(input.value as? String, "Dopo cena, contattami a prova@example.test")
+        XCTAssertFalse(app.staticTexts["coach-online-error"].exists)
+        let send = app.buttons["coach-send"]
+        scrollControlIntoView(send, in: app); send.tap()
+        let approve = app.buttons["coach-online-approve"]
+        XCTAssertTrue(approve.waitForExistence(timeout: 12)); scrollControlIntoView(approve, in: app); approve.tap()
+        // Only explicit approval reaches the synthetic provider. Never a network call.
+        XCTAssertTrue(app.staticTexts["coach-online-error"].waitForExistence(timeout: 8))
+        XCTAssertEqual(input.value as? String, "Dopo cena, contattami a prova@example.test")
+    }
+
     func testSwitchingToLocalCancelsPreflightWithoutSendingOrLosingComposer() {
         continueAfterFailure = false
         let app = XCUIApplication()

@@ -8,6 +8,13 @@ PIVOT_UI_RESULT=build/interaction-tests.xcresult
 PIVOT_SIM_ENTITLEMENTS=build/simulator-entitlements.plist
 case "$PIVOT_UI_ONLY_TESTING" in
   '') ;;
+  PivotUITests/OnlineCoachInteractionTests)
+    PIVOT_PREVIEW_OUTPUT=build/Previews/OnlinePrivacy
+    PIVOT_UI_BUILD_LOG=build/online-privacy-build.log
+    PIVOT_UI_LOG=build/online-privacy-tests.log
+    PIVOT_UI_RESULT=build/online-privacy-tests.xcresult
+    PIVOT_SIM_ENTITLEMENTS=build/online-privacy-simulator-entitlements.plist
+    ;;
   PivotUITests/OnlineCoachSetupInteractionTests)
     PIVOT_PREVIEW_OUTPUT=build/Previews/QRPreflight
     PIVOT_UI_BUILD_LOG=build/qr-preflight-build.log

@@ -98,13 +98,14 @@ final class OnlineCoachService: ObservableObject {
     #if DEBUG && targetEnvironment(simulator)
     private var quotaFixture: Bool { ProcessInfo.processInfo.arguments.contains("--online-coach-quota-test") }
     private var preflightFixture: Bool { ProcessInfo.processInfo.arguments.contains("--online-coach-preflight-test") }
+    private var reviewFixture: Bool { ProcessInfo.processInfo.arguments.contains("--online-coach-review-test") }
     #endif
 
     init() { reload() }
     func reload() {
         clearKeychainFailure()
         #if DEBUG && targetEnvironment(simulator)
-        if preflightFixture { isConfigured = true; return }
+        if preflightFixture || reviewFixture { isConfigured = true; return }
         if quotaFixture {
             isConfigured = true
             if failure == nil { failure = .init(kind: .quota, receivedAt: Date(), retryAt: Date().addingTimeInterval(5 * 3600)) }
@@ -181,7 +182,7 @@ final class OnlineCoachService: ObservableObject {
         try Task.checkCancellation()
         if let failure, let seconds = failure.remaining(at: Date()), seconds > 0 { throw failure }
         #if DEBUG && targetEnvironment(simulator)
-        if preflightFixture {
+        if preflightFixture || reviewFixture {
             // A cancelled preflight must never reach this synthetic provider failure.
             let value = CoachOnlineFailure(kind: .invalidResponse, receivedAt: Date())
             failure = value; throw value
@@ -194,7 +195,7 @@ final class OnlineCoachService: ObservableObject {
         guard !isRequesting, let config = configuration, config.valid, let url = config.url else {
             throw CoachOnlineFailure(kind: .notConfigured, receivedAt: Date())
         }
-        let bytes = try snapshot.request.encoded()
+        let bytes = snapshot.encodedRequest
         guard bytes.count <= 24_000 else { throw CoachV8Error.contextTooLarge }
         let currentGeneration = generation
         isRequesting = true

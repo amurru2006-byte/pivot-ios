@@ -13,7 +13,7 @@ actor FilePersistence {
     }
 
     func load() throws -> AppData {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try prepareDirectory()
         guard FileManager.default.fileExists(atPath: file.path) else { return AppData() }
         let bytes = try Data(contentsOf: file)
         let data = try BackupCodec.decode(bytes)
@@ -22,7 +22,7 @@ actor FilePersistence {
     }
 
     func save(_ data: AppData, restoring: Bool = false) throws {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try prepareDirectory()
         let bytes = try BackupCodec.encodeCompact(data)
         let previous = try lastBytes ?? (FileManager.default.fileExists(atPath: file.path) ? Data(contentsOf: file) : nil)
         if let previous {
@@ -39,6 +39,18 @@ actor FilePersistence {
         try bytes.write(to: file, options: .atomic)
         #endif
         lastBytes = bytes
+    }
+
+    private func prepareDirectory() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        #if os(iOS)
+        // Includes local snapshots, restore safety copies and attached PDFs.
+        // This does not remove existing remote backups or encrypt JSON exports.
+        var target = directory
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try target.setResourceValues(values)
+        #endif
     }
 }
 

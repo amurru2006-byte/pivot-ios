@@ -1,0 +1,66 @@
+name: Verifica privacy V8 senza rilascio
+on:
+  push:
+    branches: ['codex/pivot-v8-privacy']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pivot-privacy-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  privacy:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Core completo, inclusi confini privacy e denaro
+        run: swift test
+      - name: Gateway senza rete
+        run: node --test Backend/coach-gateway/worker.test.mjs
+      - name: Strumenti senza rete
+        run: python3 -m unittest discover -s Scripts -p 'test_*.py'
+  online-ui:
+    needs: privacy
+    runs-on: macos-15-intel
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+      - name: Seleziona strumenti
+        run: |
+          PIVOT_XCODE=$(find /Applications -maxdepth 1 -name 'Xcode_*.app' | sort -V | tail -n 1)
+          if [ -n "$PIVOT_XCODE" ]; then sudo xcode-select -s "$PIVOT_XCODE/Contents/Developer"; fi
+          xcodebuild -version
+      - name: Genera progetto
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Autorizza solo il componente AI approvato
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          approved = json.loads(Path('Scripts/trusted-macros.json').read_text())
+          assert len(approved) == 1
+          assert approved[0]['targetName'] == 'LLMMacrosImplementation'
+          assert approved[0]['packageIdentity'] == 'llm.swift'
+          assert ('revision: ' + approved[0]['fingerprint']) in Path('project.yml').read_text()
+          security = Path.home() / 'Library/org.swift.swiftpm/security'
+          security.mkdir(parents=True, exist_ok=True)
+          (security / 'macros.json').write_text(json.dumps(approved, indent=2))
+          PY
+      - name: Compila app e verifica consenso, annullamento, quote e base locale
+        env:
+          PIVOT_UI_ONLY_TESTING: PivotUITests/OnlineCoachInteractionTests
+        run: bash Scripts/preview-ui.sh
+      - name: Conserva diagnostica sintetica del collaudo
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pivot-privacy-tests
+          path: |
+            build/online-privacy-build.log
+            build/online-privacy-tests.log
+            build/Previews/OnlinePrivacy/
+          retention-days: 7
+          if-no-files-found: ignore

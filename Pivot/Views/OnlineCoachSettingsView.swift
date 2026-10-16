@@ -24,9 +24,9 @@ struct OnlineCoachSettingsView: View {
             PivotCard {
                 Label(online.isConfigured ? "Collegamento configurato" : "Collegamento da configurare", systemImage: "lock.shield")
                     .font(.headline).accessibilityIdentifier("online-coach-configuration-status")
-                Text("Quando usi l'AI online, invii il messaggio, fino a sei messaggi recenti della chat online di oggi e le ultime quattro preferenze esplicite. Messaggi della base locale, vecchie conversazioni e risposte preparate dai dati locali restano esclusi. Il calendario viene riassunto con categorie e orari: titoli, indirizzi, note, nominativi e dati Salute non vengono aggiunti automaticamente.")
+                Text("Prima di ogni invio puoi controllare la richiesta destinata a Cloudflare e Groq: messaggio filtrato, fino a sei messaggi recenti ammissibili della chat online di oggi e calendario con alias, categorie e orari. Memorie, conversazioni locali, titoli e note degli eventi non vengono aggiunti. Stati e spostamenti riconoscibili come derivati da Salute restano locali.")
                     .font(.subheadline)
-                Text("Il testo che scrivi può contenere informazioni personali. Il servizio AI deve leggerlo per rispondere: HTTPS protegge il trasporto, ma non lo rende invisibile al servizio. La configurazione richiede verifica della mancata conservazione dei contenuti nell'account del servizio.")
+                Text("Il filtro non garantisce l’anonimato: controlla anche i messaggi recenti e non inviare informazioni sanitarie. Il servizio AI legge il contenuto: HTTPS protegge il trasporto, non lo nasconde al servizio. Va verificata la mancata conservazione dei contenuti nell’account del servizio.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
                 Text("Il token resta nel portachiavi di questo iPhone, senza sincronizzazione iCloud. Non viene incluso nel backup Pivot. Nessun servizio a pagamento si attiva quando finisce la quota.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)

@@ -42,7 +42,7 @@ final class CoachV8Tests: XCTestCase {
             XCTAssertFalse(json.contains(secret), secret)
         }
         XCTAssertEqual(snapshot.request.history.map(\.role), ["user", "assistant"])
-        XCTAssertEqual(snapshot.request.memories.count, 1)
+        XCTAssertTrue(snapshot.request.memories.isEmpty)
         XCTAssertEqual(snapshot.request.events.count, 2)
         XCTAssertTrue(json.contains("mezzogiorno"))
     }

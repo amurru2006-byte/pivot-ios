@@ -68,13 +68,14 @@ enum CoachV8Error: Error, LocalizedError {
         case .invalidResponse: return "La risposta AI non supera i controlli. Nessuna modifica preparata."
         case .contextTooLarge: return "Il contesto è troppo ampio per questo primo collegamento AI. Usa le regole locali."
         case .emptyMessage: return "Scrivi un messaggio prima di inviare."
-        case .staleContext: return "La giornata è cambiata. Aggiorna prima di chiedere una nuova proposta."
+        case .staleContext: return "La richiesta è scaduta o i dati sono cambiati. Prepara una nuova anteprima."
         }
     }
 }
 
 struct CoachV8Snapshot {
-    var request: CoachV8Request
+    private(set) var request: CoachV8Request
+    private(set) var encodedRequest: Data
     private(set) var originalEvents: [CalendarItem]
     private(set) var dataUpdatedAt: Date
     private(set) var sources: [String: CalendarItem]
@@ -84,7 +85,8 @@ struct CoachV8Snapshot {
         guard !clean.isEmpty else { throw CoachV8Error.emptyMessage }
         guard clean.count <= 1500 else { throw CoachV8Error.contextTooLarge }
         let canonical = EventCoalescer.unique(events, data: data)
-        let planned = Planner.plannedEvents(events, data: data).filter { !$0.isAllDay && $0.occurs(on: now) }
+        let calendarData = CoachPrivacy.calendarData(data)
+        let planned = Planner.plannedEvents(events, data: calendarData).filter { !$0.isAllDay && $0.occurs(on: now) }
             .sorted { $0.start == $1.start ? $0.id < $1.id : $0.start < $1.start }
         guard planned.count <= 48 else { throw CoachV8Error.contextTooLarge }
         var sources: [String: CalendarItem] = [:]
@@ -99,19 +101,23 @@ struct CoachV8Snapshot {
             else { category = .other }
             let rule = data.rules[item.id] ?? .defaultRule(for: item)
             return .init(id: alias, kind: item.kind, category: category,
-                         status: data.records[item.id]?.status ?? .pending,
+                         status: calendarData.records[item.id]?.status ?? .pending,
                          start: item.start, end: item.end, durationMinutes: item.durationMinutes,
                          flexibility: rule.flexibility, travelConfirmed: rule.travelConfirmed)
         }
         let history = data.coachState.messages.filter {
             $0.dayKey == PivotDate.key(now) && $0.onlineHistoryEligible == true
                 && $0.healthDerived != true && ($0.role == .user || $0.role == .coach)
-        }.suffix(6).map { CoachV8Request.Message(role: $0.role == .user ? "user" : "assistant", text: String($0.text.prefix(400))) }
+        }.suffix(6).map { CoachV8Request.Message(role: $0.role == .user ? "user" : "assistant",
+                                               text: String(CoachPrivacy.text($0.text, events: events, data: data).prefix(400))) }
         let request = CoachV8Request(requestID: UUID().uuidString, now: now, dayKey: PivotDate.key(now),
-                                     message: clean, events: summaries, history: history,
-                                     memories: data.coachState.memories.suffix(4).map { String($0.text.prefix(240)) })
-        guard try request.encoded().count <= 24_000 else { throw CoachV8Error.contextTooLarge }
-        return .init(request: request, originalEvents: events, dataUpdatedAt: data.updatedAt, sources: sources)
+                                     message: CoachPrivacy.text(clean, events: events, data: data), events: summaries, history: history,
+                                     // Memories lack provenance and per-message cloud consent.
+                                     memories: [])
+        guard request.message.count <= 1500 else { throw CoachV8Error.contextTooLarge }
+        let bytes = try request.encoded()
+        guard bytes.count <= 24_000 else { throw CoachV8Error.contextTooLarge }
+        return .init(request: request, encodedRequest: bytes, originalEvents: events, dataUpdatedAt: data.updatedAt, sources: sources)
     }
 
     func isCurrent(events: [CalendarItem], data: AppData, now: Date) -> Bool {
