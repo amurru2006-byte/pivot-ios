@@ -456,11 +456,14 @@ final class PivotInteractionTests: XCTestCase {
         XCTAssertTrue(carousel.waitForExistence(timeout: 8))
         let summary = app.descendants(matching: .any)["income-summary"].firstMatch
         XCTAssertTrue(summary.waitForExistence(timeout: 5)); XCTAssertTrue(summary.isHittable)
-        XCTAssertLessThanOrEqual(summary.frame.height, 330, "Il riepilogo deve restare compatto, senza lo spazio vuoto richiesto dal grafico")
-        XCTAssertLessThanOrEqual(carousel.frame.height, 330, "Anche il carosello deve restringersi, non solo la scheda al suo interno")
         let summaryScreenshot = XCTAttachment(screenshot: app.screenshot())
         summaryScreenshot.name = "income-compact-centered-summary"; summaryScreenshot.lifetime = .keepAlways
         add(summaryScreenshot)
+        let initialHierarchy = XCTAttachment(string: app.debugDescription)
+        initialHierarchy.name = "income-initial-carousel-hierarchy"; initialHierarchy.lifetime = .keepAlways; add(initialHierarchy)
+        XCTAssertLessThanOrEqual(summary.frame.height, 330, "Il riepilogo deve restare compatto, senza lo spazio vuoto richiesto dal grafico")
+        XCTAssertLessThanOrEqual(carousel.frame.height, 330, "Anche il carosello deve restringersi, non solo la scheda al suo interno")
+        XCTAssertFalse(app.descendants(matching: .any)["income-chart-title"].firstMatch.exists, "VoiceOver non deve leggere le pagine fuori schermo")
         carousel.swipeLeft()
         XCTAssertTrue(app.buttons["income-page-2"].isSelected, "Il primo swipe deve aprire il Salvadanaio")
         XCTAssertTrue(app.buttons["savings-create-goal"].waitForExistence(timeout: 5))
