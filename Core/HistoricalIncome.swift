@@ -145,14 +145,15 @@ enum HistoricalIncome {
     }
 
     static func validate(_ data: AppData) throws {
+        var sourceIDs = Set<String>()
         for entry in data.income {
             guard let source = entry.historicalSource else { continue }
             guard (1...100_000_000).contains(source.rateCents),
                   (0...100_000_000).contains(source.openingAttributedCents),
-                  (2026...9999).contains(source.receivedYear),
-                  source.event.end > source.event.start, !source.event.isAllDay,
+                  isEligible(source.event, year: source.receivedYear, now: source.importedAt),
+                  sourceIDs.insert(source.event.id).inserted,
                   source.event.id == entry.calendarEventID,
-                  PivotDate.calendar.component(.year, from: source.event.start) == source.receivedYear else { throw BackupError.invalidData }
+                  source.openingAttributedCents <= Money.lessonAmount(rateCents: source.rateCents, minutes: source.event.durationMinutes) else { throw BackupError.invalidData }
             // The imported receipt stays excluded after corrections. A later
             // genuine payment toward this activity is a different, normal receipt.
             guard data.payments.contains(where: { $0.id == source.receiptID && $0.incomeID == entry.id && $0.excludedFromBudget == true }) else { throw BackupError.invalidData }

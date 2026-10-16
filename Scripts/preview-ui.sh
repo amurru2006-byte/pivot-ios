@@ -8,7 +8,7 @@ PIVOT_UI_RESULT=build/interaction-tests.xcresult
 PIVOT_SIM_ENTITLEMENTS=build/simulator-entitlements.plist
 case "$PIVOT_UI_ONLY_TESTING" in
   '') ;;
-  PivotUITests/OnlineCoachInteractionTests|v8-privacy-regression|v8-savings-regression|v8-history-regression|v8-contacts-regression)
+  PivotUITests/OnlineCoachInteractionTests|PivotUITests/BackupPrivacyInteractionTests|v8-privacy-regression|v8-savings-regression|v8-history-regression|v8-contacts-regression)
     PIVOT_PREVIEW_OUTPUT=build/Previews/OnlinePrivacy
     PIVOT_UI_BUILD_LOG=build/online-privacy-build.log
     PIVOT_UI_LOG=build/online-privacy-tests.log
@@ -46,9 +46,17 @@ PIVOT_SIM_SIGNING=(
   CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
   "CODE_SIGN_ENTITLEMENTS=$PWD/Scripts/simulator-keychain.entitlements"
 )
-xcodebuild -project Pivot.xcodeproj -scheme Pivot -configuration Debug \
+if xcodebuild -project Pivot.xcodeproj -scheme Pivot -configuration Debug \
   -destination "platform=iOS Simulator,id=$PIVOT_SIMULATOR" ONLY_ACTIVE_ARCH=YES \
-  -derivedDataPath build/DerivedData "${PIVOT_SIM_SIGNING[@]}" build > "$PIVOT_UI_BUILD_LOG" 2>&1
+  -derivedDataPath build/DerivedData "${PIVOT_SIM_SIGNING[@]}" build > "$PIVOT_UI_BUILD_LOG" 2>&1; then
+  printf '%s\n' 'App simulator build succeeded.'
+else
+  PIVOT_BUILD_STATUS=$?
+  # Surface compiler diagnostics immediately. A failed build must not look
+  # like an unexplained exit 65 requiring a separate artifact download.
+  awk '/error:|fatal error:|\*\* BUILD FAILED|The following build commands failed/ { print; fflush() }' "$PIVOT_UI_BUILD_LOG"
+  exit "$PIVOT_BUILD_STATUS"
+fi
 PIVOT_SIM_APP=build/DerivedData/Build/Products/Debug-iphonesimulator/Pivot.app
 codesign --verify --deep --strict "$PIVOT_SIM_APP"
 # Simulator entitlements are linked into __TEXT,__entitlements; its ad-hoc

@@ -1,5 +1,11 @@
 # Privacy V8 — prima correzione, non ancora un rilascio
 
+> Nota di aggiornamento: questo documento registra il primo blocco privacy.
+> La cifratura portabile è stata poi implementata: vedere ENCRYPTED-BACKUPS.md.
+> I limiti sotto relativi a testo libero ed esportazioni separate restano validi;
+> le frasi sul backup non cifrato descrivono il punto di partenza, non il nuovo
+> formato `.pivotbackup`. Il collaudo finale della candidata resta obbligatorio.
+
 ## Confini modificati
 
 - Il DTO online usa una copia priva degli stati e degli spostamenti riconoscibili
