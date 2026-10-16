@@ -462,6 +462,9 @@ final class PivotInteractionTests: XCTestCase {
         summaryScreenshot.name = "income-compact-centered-summary"; summaryScreenshot.lifetime = .keepAlways
         add(summaryScreenshot)
         carousel.swipeLeft()
+        XCTAssertTrue(app.buttons["income-page-2"].isSelected, "Il primo swipe deve aprire il Salvadanaio")
+        XCTAssertTrue(app.buttons["savings-create-goal"].waitForExistence(timeout: 5))
+        carousel.swipeLeft()
         let afterSwipe = XCTAttachment(screenshot: app.screenshot())
         afterSwipe.name = "income-immediately-after-swipe"; afterSwipe.lifetime = .keepAlways
         add(afterSwipe)

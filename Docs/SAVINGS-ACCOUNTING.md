@@ -1,4 +1,4 @@
-# Salvadanaio — motore contabile locale, UI e migrazione non attive
+# Salvadanaio — contabilità locale e interfaccia
 
 Non è un saldo bancario, un modulo investimenti o una promessa di disponibilità
 reale del patrimonio. Si considerano soltanto i flussi nel registro Pivot.
@@ -30,18 +30,27 @@ reale del patrimonio. Si considerano soltanto i flussi nel registro Pivot.
 ## Compatibilità e verifica
 
 `AppData.savingsBudget` è opzionale e non viene inizializzato automaticamente
-all'avvio in questa fase. Nessuna migrazione dei dati reali è attiva. Il codice
-non legge calendari e non importa incassi storici: il futuro flusso EventKit
+all'avvio. L'anteprima non modifica i dati: la base viene conservata solo alla
+prima azione esplicita su obiettivo/spesa. Il codice non legge calendari e non
+importa incassi storici: il futuro flusso EventKit
 dovrà gestire identità, tariffe confermate, duplicati, date di pagamento ignote
 e anteprima senza inventare un pagamento mensile.
 
 `BackupCodec` valida il journal quando presente. I totali ricevuti per lezione
 sono calcolati in tempo lineare con controllo overflow, anziché filtrare l'intero
-registro per ogni lezione. Le nuove strutture entrano solo negli archivi
+registro per ogni lezione; controlla anche l'overflow dei totali annuali. Le nuove strutture entrano solo negli archivi
 protetti, mai nel DTO online del Coach.
 
 Test sintetici: apertura una sola volta, storico annuale separato, nuovi incassi,
 crediti esclusi, più obiettivi, plafond, rilascio, idempotenza, spese/deficit,
-correzione incasso, archiviazione, rollback, backup e overflow. La UI deve ancora
-collegare questi percorsi mantenendo il design esistente. Il collaudo Core non
-equivale a una verifica iPhone o a una consegna.
+correzione incasso, archiviazione, rollback, backup e overflow. Correzione,
+annullamento e ripristino spese mantengono le revisioni. Le modifiche di obiettivi
+e spese rifiutano una versione superata, senza sovrascrivere dati più recenti.
+
+La UI aggiunge una card arancione fra riepilogo e grafico, lasciando iniziale il
+riepilogo originale. Il vecchio ID grafico rimane stabile. Stato vuoto con +,
+modulo nome/target/categoria/scadenza, accantonamento/rilascio, spese correggibili,
+deficit esplicito e più obiettivi selezionabili. Nessun riferimento INPS nella
+card obiettivo, nessun testo esplicativo superfluo. L'importo pregresso resta un
+controllo del totale annuale e dichiara che non corregge i fondi già inizializzati.
+Il collaudo Core non equivale a una verifica iPhone o a una consegna.

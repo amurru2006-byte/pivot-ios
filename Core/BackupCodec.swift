@@ -67,10 +67,15 @@ enum BackupCodec {
         }
         // Linear-time totals also reject integer overflow in an untrusted backup.
         var receiptTotals: [UUID: Int] = [:]
+        var annualTotals = data.ledger?.openingCents ?? [:]
         for payment in data.payments {
             let (total, overflow) = receiptTotals[payment.incomeID, default: 0].addingReportingOverflow(payment.amountCents)
             guard !overflow else { throw BackupError.invalidData }
             receiptTotals[payment.incomeID] = total
+            let year = String(PivotDate.calendar.component(.year, from: payment.date))
+            let (annual, annualOverflow) = annualTotals[year, default: 0].addingReportingOverflow(payment.amountCents)
+            guard !annualOverflow else { throw BackupError.invalidData }
+            annualTotals[year] = annual
         }
         guard Set(data.income.map(\.id)).count == data.income.count,
               Set(data.payments.map(\.id)).count == data.payments.count,
