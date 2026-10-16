@@ -9,7 +9,7 @@ final class HistoricalIncomeInteractionTests: XCTestCase {
         app.launchEnvironment["PIVOT_QA_HISTORY_ID"] = UUID().uuidString
         app.launchEnvironment["PIVOT_QA_KEYCHAIN_ID"] = UUID().uuidString
         app.launch()
-        openHistory(in: app)
+        openHistory(in: app, expectedUnassigned: "25,00")
         let load = app.buttons["history-load"]
         XCTAssertTrue(load.waitForExistence(timeout: 8)); load.tap()
         let select = app.buttons["history-select-ready"]
@@ -30,6 +30,7 @@ final class HistoricalIncomeInteractionTests: XCTestCase {
         app.buttons["Chiudi"].tap()
         let total = app.staticTexts["income-summary-total"]
         XCTAssertTrue(total.waitForExistence(timeout: 8)); XCTAssertTrue(total.label.contains("30,00"))
+        XCTAssertFalse(app.staticTexts["income-unassigned-opening"].exists)
         let savings = app.buttons["income-page-2"]
         scrollControlIntoView(savings, in: app); savings.tap()
         let free = app.staticTexts["savings-free-total"]
@@ -42,9 +43,13 @@ final class HistoricalIncomeInteractionTests: XCTestCase {
         scrollControlIntoView(review, in: app); XCTAssertFalse(review.isEnabled)
     }
 
-    private func openHistory(in app: XCUIApplication) {
+    private func openHistory(in app: XCUIApplication, expectedUnassigned: String? = nil) {
         let income = app.tabBars.buttons["Entrate"]
         XCTAssertTrue(income.waitForExistence(timeout: 15)); income.tap()
+        if let expectedUnassigned {
+            let amount = app.staticTexts["income-unassigned-opening"]
+            XCTAssertTrue(amount.waitForExistence(timeout: 8)); XCTAssertTrue(amount.label.contains(expectedUnassigned))
+        }
         let open = app.buttons["income-history-open"]
         XCTAssertTrue(open.waitForExistence(timeout: 8)); scrollControlIntoView(open, in: app); open.tap()
     }

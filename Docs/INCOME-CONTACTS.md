@@ -21,6 +21,9 @@ an always-unfiltered outstanding amount for that contact. Full activity history
 and Add lesson/activity remain independent from the receipt period selector.
 Unknown receipt dates stay in annual/all totals, not a guessed month. Unassigned
 opening aggregates are never distributed between contacts for presentation.
+The general summary shows the remaining unassigned opening amount only while
+it is positive, so the difference from the contact totals stays visible without
+inventing a person or duplicating any receipt.
 
 The native overview uses the existing green gradient, rounded cards, typography
 and separate page controls; the general contact terminology is an extension of
