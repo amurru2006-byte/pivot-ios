@@ -128,4 +128,11 @@ final class IncomeActivityTests: XCTestCase {
         XCTAssertThrowsError(try HistoricalIncome.quote(event, clientID: client.id, year: 2026, now: date.addingTimeInterval(7200), data: data))
         XCTAssertTrue(data.income.isEmpty)
     }
+
+    func testUntrustedBackupCannotSupplyATariffThatCrashesAutomaticSuggestions() throws {
+        for rate in [-1, 100_000_001, Int.max] {
+            var data = AppData(); data.clients = [Client(name: "Contatto di prova", rateCents: rate)]
+            XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encodeCompact(data)))
+        }
+    }
 }

@@ -80,7 +80,7 @@ struct HistoricalIncomeView: View {
                     calendarIDs = Set(choices.filter { EventCoalescer.normalized($0.title) == "lavoro" }.map(\.id))
                 }
                 .sheet(isPresented: $addingClient) { ClientForm() }
-                .sheet(item: $review) { value in HistoricalIncomeConfirmation(review: value.quotes, result: value.result, before: value.before, after: value.after) { confirm(value) } }
+                .sheet(item: $review) { value in HistoricalIncomeConfirmation(review: value.quotes, result: value.result, before: value.before, after: value.after) { await confirm(value) } }
         }
     }
 
