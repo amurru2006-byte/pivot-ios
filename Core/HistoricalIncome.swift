@@ -64,6 +64,7 @@ enum HistoricalIncome {
         guard isEligible(event, year: year, now: now) else { throw HistoricalIncomeError.ineligible }
         guard existingEntry(for: event, data: data) == nil else { throw HistoricalIncomeError.alreadyRecorded }
         guard let client = data.clients.first(where: { $0.id == clientID }),
+              client.activityKind == .lesson, client.billingMode == .hourly,
               (1...100_000_000).contains(client.rateCents) else { throw HistoricalIncomeError.missingClient }
         let records = data.records.values.filter { EventCoalescer.savedOccurrence($0.snapshot, event) }
         // Explicit diary answers are not overwritten by "all past lessons paid".

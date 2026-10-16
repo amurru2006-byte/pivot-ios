@@ -11,7 +11,8 @@ enum ClientRegistry {
 
     // Updating a tariff does not recalculate old lessons or receipts.
     @discardableResult static func save(name: String, rateCents: Int, cadence: PaymentCadence,
-                                       aliases: [String] = [], editingID: UUID? = nil, data: inout AppData) throws -> UUID {
+                                       aliases: [String] = [], editingID: UUID? = nil,
+                                       activity: IncomeActivityKind? = nil, billing: IncomeBilling? = nil, data: inout AppData) throws -> UUID {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, rateCents >= 0, rateCents <= 100_000_000 else { throw Failure.invalid }
         let matches = named(name, clients: data.clients)
@@ -19,10 +20,11 @@ enum ClientRegistry {
             if editingID != nil || matches.count > 1 { throw Failure.ambiguous }
             if let existing = matches.first {
                 return try save(name: existing.name, rateCents: rateCents, cadence: cadence,
-                                aliases: (existing.calendarAliases ?? []) + aliases, editingID: existing.id, data: &data)
+                                aliases: (existing.calendarAliases ?? []) + aliases, editingID: existing.id,
+                                activity: activity, billing: billing, data: &data)
             }
             let client = Client(name: name, rateCents: rateCents, paymentCadence: cadence,
-                                calendarAliases: cleanAliases(aliases, name: name))
+                                calendarAliases: cleanAliases(aliases, name: name), activity: activity, billing: billing)
             data.clients.append(client); return client.id
         }
         guard let index = data.clients.firstIndex(where: { $0.id == editingID }) else { throw Failure.missing }
@@ -31,6 +33,8 @@ enum ClientRegistry {
         data.clients[index].rateCents = rateCents
         data.clients[index].paymentCadence = cadence
         data.clients[index].calendarAliases = cleanAliases(aliases + [formerName], name: name)
+        if let activity { data.clients[index].activity = activity }
+        if let billing { data.clients[index].billing = billing }
         return data.clients[index].id
     }
 

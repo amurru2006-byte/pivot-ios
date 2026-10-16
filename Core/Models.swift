@@ -193,13 +193,17 @@ struct DayCheckIn: Codable, Identifiable {
     var healthWakeTime: Date? = nil
 }
 
-struct Client: Codable, Identifiable {
+struct Client: Codable, Identifiable, Equatable {
     var id = UUID()
     var name: String
     var rateCents: Int
     var paymentCadence: PaymentCadence? = nil
     // Explicitly confirmed calendar names, never AI-inferred identities.
     var calendarAliases: [String]? = nil
+    var activity: IncomeActivityKind? = nil
+    var billing: IncomeBilling? = nil
+    var activityKind: IncomeActivityKind { activity ?? .lesson }
+    var billingMode: IncomeBilling { activityKind == .gift ? .fixed : billing ?? .hourly }
 }
 
 struct IncomeEntry: Codable, Identifiable {
@@ -217,6 +221,10 @@ struct IncomeEntry: Codable, Identifiable {
     var paymentDeferralAfter: Date? = nil
     var lastKnownPaymentDate: Date? = nil
     var historicalSource: HistoricalIncomeSource? = nil
+    var activity: IncomeActivityKind? = nil
+    var billing: IncomeBilling? = nil
+    var activityKind: IncomeActivityKind { activity ?? .lesson }
+    var hasDuration: Bool { activityKind == .lesson || (activityKind != .gift && (billing ?? .hourly) == .hourly) }
     var outstandingCents: Int { max(0, amountCents - paidCents) }
 }
 
