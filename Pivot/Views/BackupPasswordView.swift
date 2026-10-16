@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct BackupPasswordView: View {
+    private enum Field: Hashable { case password, confirmation }
     @EnvironmentObject private var store: PivotStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -8,6 +9,7 @@ struct BackupPasswordView: View {
     @State private var confirmation = ""
     @State private var savedElsewhere = false
     @State private var task: Task<Void, Never>?
+    @FocusState private var focused: Field?
 
     var body: some View {
         NavigationStack {
@@ -15,9 +17,15 @@ struct BackupPasswordView: View {
                 Section("Password del backup") {
                     SecureField("Password · almeno 12 caratteri", text: $password)
                         .textContentType(.newPassword).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .focused($focused, equals: .password).submitLabel(.next)
+                        .frame(minHeight: 44).contentShape(Rectangle()).onTapGesture { focused = .password }
+                        .onSubmit { focused = .confirmation }
                         .privacySensitive().accessibilityIdentifier("backup-password")
                     SecureField("Ripeti la password", text: $confirmation)
                         .textContentType(.newPassword).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .focused($focused, equals: .confirmation).submitLabel(.done)
+                        .frame(minHeight: 44).contentShape(Rectangle()).onTapGesture { focused = .confirmation }
+                        .onSubmit { focused = nil }
                         .privacySensitive().accessibilityIdentifier("backup-password-confirmation")
                 }
                 Section {
@@ -43,12 +51,12 @@ struct BackupPasswordView: View {
                     ToolbarItem(placement: .cancellationAction) { Button("Annulla") { cancel(); dismiss() } }
                     ToolbarItemGroup(placement: .keyboard) {
                         Spacer()
-                        Button("Fine") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
+                        Button("Fine") { focused = nil }
                     }
                 }
                 .onChange(of: scenePhase) { _, phase in if phase == .background { cancel(); dismiss() } }
                 .onDisappear { cancel() }
         }
     }
-    private func cancel() { task?.cancel(); task = nil; password = ""; confirmation = ""; savedElsewhere = false }
+    private func cancel() { task?.cancel(); task = nil; focused = nil; password = ""; confirmation = ""; savedElsewhere = false }
 }

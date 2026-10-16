@@ -129,6 +129,7 @@ struct SavingsPanel: View {
         }.padding(24).frame(maxWidth: .infinity, minHeight: cardHeight, alignment: .topLeading)
             .background(LinearGradient(colors: [Color(pivotHex: "563A29"), Color(pivotHex: "302D3A"), PivotTheme.surface], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 26))
             .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(orange.opacity(0.22)))
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("savings-summary")
     }
 

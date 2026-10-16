@@ -5,6 +5,7 @@ struct HistoricalIncomeSource: Codable, Equatable {
     var rateCents: Int
     var openingAttributedCents: Int
     var receivedYear: Int
+    var receiptID: UUID
     var importedAt: Date
 }
 
@@ -118,13 +119,14 @@ enum HistoricalIncome {
             let covered = min(ledger.openingCents[yearKey, default: 0], item.amountCents)
             guard covered >= 0 else { throw HistoricalIncomeError.invalid }
             ledger.openingCents[yearKey, default: 0] -= covered
+            let receiptID = UUID()
             let source = HistoricalIncomeSource(event: item.event, rateCents: item.rateCents,
-                openingAttributedCents: covered, receivedYear: item.year, importedAt: now)
+                openingAttributedCents: covered, receivedYear: item.year, receiptID: receiptID, importedAt: now)
             let entry = IncomeEntry(clientID: item.clientID, clientName: item.clientName, date: item.event.end,
                 minutes: item.minutes, amountCents: item.amountCents, paidCents: item.amountCents,
                 calendarEventID: item.id, historicalSource: source)
             next.income.append(entry)
-            next.payments.append(Payment(incomeID: entry.id, clientName: item.clientName, date: nil,
+            next.payments.append(Payment(id: receiptID, incomeID: entry.id, clientName: item.clientName, date: nil,
                 amountCents: item.amountCents, excludedFromBudget: true, receivedYear: item.year))
             // Keep any independent diary notes/ratings intact. Do not invent actual times.
             let recordID = next.records.values.first { EventCoalescer.savedOccurrence($0.snapshot, item.event) }?.id ?? item.id
@@ -150,9 +152,9 @@ enum HistoricalIncome {
                   source.event.end > source.event.start, !source.event.isAllDay,
                   source.event.id == entry.calendarEventID,
                   PivotDate.calendar.component(.year, from: source.event.start) == source.receivedYear else { throw BackupError.invalidData }
-            // Corrections retain provenance, but no imported receipt may become
-            // spendable just because its amount was edited.
-            guard data.payments.filter({ $0.incomeID == entry.id }).allSatisfy({ $0.excludedFromBudget == true }) else { throw BackupError.invalidData }
+            // The imported receipt stays excluded after corrections. A later
+            // genuine payment toward this activity is a different, normal receipt.
+            guard data.payments.contains(where: { $0.id == source.receiptID && $0.incomeID == entry.id && $0.excludedFromBudget == true }) else { throw BackupError.invalidData }
         }
     }
 }

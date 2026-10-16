@@ -25,7 +25,7 @@ final class BackupPrivacyInteractionTests: XCTestCase {
         let setup = app.buttons["backup-password-setup"]
         XCTAssertTrue(setup.label.contains("Imposta")); setup.tap()
         let input = app.secureTextFields["backup-password"]
-        XCTAssertTrue(input.waitForExistence(timeout: 8)); input.tap(); input.typeText("Synthetic password only 42!")
+        enterSyntheticPassword(input, in: app)
         XCTAssertFalse(app.buttons["backup-password-save"].isEnabled)
         app.buttons["Annulla"].tap()
         XCTAssertTrue(setup.waitForExistence(timeout: 8)); XCTAssertTrue(setup.label.contains("Imposta"))
@@ -37,13 +37,18 @@ final class BackupPrivacyInteractionTests: XCTestCase {
         app.buttons["backup-password-setup"].tap()
         let input = app.secureTextFields["backup-password"]
         let repeated = app.secureTextFields["backup-password-confirmation"]
-        XCTAssertTrue(input.waitForExistence(timeout: 8)); input.tap(); input.typeText("Synthetic password only 42!")
-        repeated.tap(); repeated.typeText("Synthetic password only 42!")
+        enterSyntheticPassword(input, in: app)
+        enterSyntheticPassword(repeated, in: app)
         if app.buttons["Fine"].waitForExistence(timeout: 3) { app.buttons["Fine"].tap() }
         let save = app.buttons["backup-password-save"]
         XCTAssertFalse(save.isEnabled)
         let acknowledgement = app.switches["backup-password-saved"]
-        scrollControlIntoView(acknowledgement, in: app); acknowledgement.tap()
+        scrollControlIntoView(acknowledgement, in: app)
+        let actualSwitch = acknowledgement.switches.firstMatch
+        if actualSwitch.exists { actualSwitch.tap() } else { acknowledgement.tap() }
+        XCTAssertEqual(acknowledgement.value as? String, "1")
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "backup-confirmed-fields-and-acknowledgement"; screenshot.lifetime = .keepAlways; add(screenshot)
         scrollControlIntoView(save, in: app); XCTAssertTrue(save.isEnabled); save.tap()
         let setup = app.buttons["backup-password-setup"]
         let configured = expectation(for: NSPredicate(format: "label CONTAINS %@", "Cambia"), evaluatedWith: setup)
@@ -51,5 +56,13 @@ final class BackupPrivacyInteractionTests: XCTestCase {
         app.terminate(); app.launch(); openBackup(in: app)
         XCTAssertTrue(setup.label.contains("Cambia"))
         XCTAssertTrue(app.buttons["Scegli cartella backup"].isEnabled)
+    }
+
+    private func enterSyntheticPassword(_ field: XCUIElement, in app: XCUIApplication) {
+        XCTAssertTrue(field.waitForExistence(timeout: 8)); scrollControlIntoView(field, in: app); field.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 8))
+        field.typeText("Synthetic password only 42!")
+        // Keep this behavioural assertion: a visible placeholder is not a successful edit.
+        XCTAssertNotEqual(field.value as? String, field.placeholderValue)
     }
 }

@@ -35,6 +35,7 @@ struct IncomeView: View {
     @EnvironmentObject var agenda: AgendaService
     @State private var addingClient = false
     @State private var addingLesson = false
+    @State private var importingHistory = false
     @State private var selectedYear: Int? = nil
     @State private var exportFile: URL?
     @State private var exporting = false
@@ -74,6 +75,8 @@ struct IncomeView: View {
                         }
                     } label: { Label("Esporta in Excel", systemImage: "square.and.arrow.up") }.buttonStyle(PivotSecondaryButton()).disabled(store.locked)
                 }
+                Button { importingHistory = true } label: { Label("Recupera dal calendario", systemImage: "calendar.badge.clock") }
+                    .buttonStyle(PivotSecondaryButton()).disabled(store.locked).accessibilityIdentifier("income-history-open")
                 PivotCard(tint: PivotTheme.amber) {
                     DisclosureGroup {
                         Text(AnnualLedger.fiscalExplanation).font(.caption).foregroundStyle(PivotTheme.muted).padding(.top, 8)
@@ -154,6 +157,7 @@ struct IncomeView: View {
             }.navigationTitle("Entrate")
                 .sheet(isPresented: $addingClient) { ClientForm() }
                 .sheet(isPresented: $addingLesson) { LessonForm(clients: store.data.clients) }
+                .sheet(isPresented: $importingHistory) { HistoricalIncomeView() }
                 .sheet(isPresented: $exporting) { if let exportFile { ShareSheet(items: [exportFile]) } }
                 .sheet(isPresented: $editingOpening) { OpeningIncomeForm(year: year) }
         }
@@ -172,6 +176,8 @@ struct IncomeView: View {
                     }.scrollTargetLayout()
                 }
                 .scrollIndicators(.hidden)
+                .frame(width: geometry.size.width, height: geometry.size.height)
+                .clipped()
                 .scrollTargetBehavior(.paging)
                 .scrollPosition(id: Binding<Int?>(get: { balancePage }, set: { if let page = $0 { balancePage = page } }))
                 .accessibilityLabel("Riepilogo, Salvadanaio e grafico delle entrate, scorri orizzontalmente")
@@ -225,7 +231,7 @@ struct IncomeView: View {
                 Spacer()
                 Picker("Anno", selection: Binding(get: { year }, set: { selectedYear = $0 == currentYear ? nil : $0 })) { ForEach(years, id: \.self) { Text(String($0)).tag($0) } }.pickerStyle(.menu)
             }.foregroundStyle(PivotTheme.accent)
-            Text(Money.display(annualTotal)).foregroundStyle(balanceColor).font(.system(size: 42, weight: .bold, design: .rounded)).minimumScaleFactor(0.6).lineLimit(1)
+            Text(Money.display(annualTotal)).foregroundStyle(balanceColor).font(.system(size: 42, weight: .bold, design: .rounded)).minimumScaleFactor(0.6).lineLimit(1).accessibilityIdentifier("income-summary-total")
             HStack {
                 Text("1 gennaio – 31 dicembre \(year)").font(.caption).foregroundStyle(PivotTheme.muted)
                 Spacer()

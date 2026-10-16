@@ -60,6 +60,12 @@ final class CalendarService: ObservableObject {
         isRefreshing = false
     }
     func apply(_ move: PlanMove, data: AppData) async throws { try await worker.apply(move, data: data) }
+    // An explicit history query must not replace or enlarge the home agenda window.
+    func incomeHistory(year: Int, calendarIDs: Set<String>, settings: Settings) async throws -> [CalendarItem] {
+        let items = try await worker.incomeHistory(year: year, calendarIDs: calendarIDs, settings: settings)
+        try Task.checkCancellation()
+        return items
+    }
     func applyActualWorkout(_ draft: ActualWorkoutDraft, data: AppData) async throws { try await worker.applyActualWorkout(draft, data: data) }
     func applyActualTimes(for record: EventRecord, event: CalendarItem, data: AppData) async throws -> CalendarItem? {
         guard let timing = CalendarSynchronization.actualTiming(for: record, event: event),
@@ -88,6 +94,33 @@ private struct CalendarSnapshot {
 private actor CalendarWorker {
     private lazy var eventStore = EKEventStore()
     func requestAccess() async throws -> Bool { try await eventStore.requestFullAccessToEvents() }
+    func incomeHistory(year: Int, calendarIDs: Set<String>, settings: Settings) throws -> [CalendarItem] {
+        assert(!Thread.isMainThread, "Calendar history must not block touch handling")
+        let now = Date()
+        guard (2026...PivotDate.calendar.component(.year, from: now)).contains(year), !calendarIDs.isEmpty,
+              let start = PivotDate.calendar.date(from: DateComponents(year: year, month: 1, day: 1)),
+              let yearEnd = PivotDate.calendar.date(byAdding: .year, value: 1, to: start) else { throw CalendarFailure.changed }
+        #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--history-test") {
+            return (0..<2).map { index in
+                let date = start.addingTimeInterval(Double(3 + index) * 86400 + 10 * 3600)
+                let id = "history-fixture-\(index)"
+                return CalendarItem(id: id, eventIdentifier: id, calendarIdentifier: "history-fixture", calendarTitle: "Lavoro",
+                    title: "Lezione Contatto \(index == 0 ? "A" : "B") Test", start: date, end: date.addingTimeInterval(3600),
+                    location: "", notes: "", colorHex: "7EE6CD", isAllDay: false, writable: false, kind: .tutoring)
+            }.filter { calendarIDs.contains($0.calendarIdentifier) }
+        }
+        #endif
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { throw CalendarFailure.noAccess }
+        let selected = eventStore.calendars(for: .event).filter { calendar in
+            calendarIDs.contains(calendar.calendarIdentifier) && !settings.excludedCalendarIDs.contains(calendar.calendarIdentifier)
+                && !settings.excludedCalendarTitles.contains(calendar.title) && !(settings.excludeHolidays && Self.isHoliday(calendar.title))
+        }
+        guard !selected.isEmpty else { throw CalendarFailure.changed }
+        let predicate = eventStore.predicateForEvents(withStart: start, end: min(now, yearEnd), calendars: selected)
+        return eventStore.events(matching: predicate).map(Self.item).filter { HistoricalIncome.isEligible($0, year: year, now: now) }
+            .sorted { $0.start == $1.start ? $0.id < $1.id : $0.start < $1.start }
+    }
     func snapshot(settings: Settings) -> CalendarSnapshot {
         assert(!Thread.isMainThread, "Calendar reads must not block touch handling")
         #if DEBUG && targetEnvironment(simulator)
@@ -186,6 +219,9 @@ private actor CalendarWorker {
     }
     #if DEBUG && targetEnvironment(simulator)
     private func interactionSnapshot() -> CalendarSnapshot {
+        if ProcessInfo.processInfo.arguments.contains("--history-test") {
+            return CalendarSnapshot(hasAccess: true, choices: [.init(id: "history-fixture", title: "Lavoro", colorHex: "7EE6CD", holiday: false)], events: [])
+        }
         // Exercise the production refresh path with a slow import, not PreviewMode.
         Thread.sleep(forTimeInterval: 4)
         let day = PivotDate.calendar.startOfDay(for: Date())
