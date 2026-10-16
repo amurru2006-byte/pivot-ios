@@ -1,7 +1,7 @@
 name: Verifica privacy V8 senza rilascio
 on:
   push:
-    branches: ['codex/pivot-v8-privacy']
+    branches: ['codex/pivot-v8-privacy', 'codex/pivot-v8-backup']
   workflow_dispatch:
 permissions:
   contents: read
@@ -51,7 +51,7 @@ jobs:
           PY
       - name: Compila app e verifica consenso, annullamento, quote e base locale
         env:
-          PIVOT_UI_ONLY_TESTING: PivotUITests/OnlineCoachInteractionTests
+          PIVOT_UI_ONLY_TESTING: ${{ github.ref == 'refs/heads/codex/pivot-v8-backup' && 'v8-privacy-regression' || 'PivotUITests/OnlineCoachInteractionTests' }}
         run: bash Scripts/preview-ui.sh
       - name: Conserva diagnostica sintetica del collaudo
         if: always()
