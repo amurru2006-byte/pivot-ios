@@ -15,6 +15,16 @@ struct BudgetExpense: Codable, Identifiable, Equatable {
     var amountCents: Int
     var date: Date
     var description: String
+    var voided: Bool? = nil
+    var revisions: [BudgetExpenseRevision]? = nil
+}
+
+struct BudgetExpenseRevision: Codable, Equatable {
+    var amountCents: Int
+    var date: Date
+    var description: String
+    var voided: Bool
+    var editedAt: Date
 }
 
 struct SavingsAllocation: Codable, Identifiable, Equatable {
@@ -82,23 +92,24 @@ enum SavingsAccounting {
               Set(budget.expenses.map(\.id)).count == budget.expenses.count,
               Set(budget.allocations.map(\.id)).count == budget.allocations.count,
               budget.goals.allSatisfy({ !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (1...maximumMovementCents).contains($0.targetCents) }),
-              budget.expenses.allSatisfy({ (1...maximumMovementCents).contains($0.amountCents) }) else { throw SavingsBudgetError.invalidData }
+              budget.expenses.allSatisfy({ (1...maximumMovementCents).contains($0.amountCents)
+                  && ($0.revisions ?? []).allSatisfy { (1...maximumMovementCents).contains($0.amountCents) } }) else { throw SavingsBudgetError.invalidData }
         var reserved: [UUID: Int] = [:]
         for move in budget.allocations {
             guard (-maximumMovementCents...maximumMovementCents).contains(move.cents), move.cents != 0,
                   let goal = budget.goals.first(where: { $0.id == move.goalID }) else { throw SavingsBudgetError.invalidData }
             let value = try sum([reserved[goal.id] ?? 0, move.cents])
-            guard (0...goal.targetCents).contains(value) else { throw SavingsBudgetError.invalidData }
+            guard value >= 0 else { throw SavingsBudgetError.invalidData }
             reserved[goal.id] = value
         }
-        guard budget.goals.filter(\.archived).allSatisfy({ reserved[$0.id, default: 0] == 0 }) else { throw SavingsBudgetError.invalidData }
+        guard budget.goals.allSatisfy({ reserved[$0.id, default: 0] <= $0.targetCents && (!$0.archived || reserved[$0.id, default: 0] == 0) }) else { throw SavingsBudgetError.invalidData }
     }
 
     static func balance(_ budget: SavingsBudget, payments: [Payment]) throws -> SavingsBalance {
         try validate(budget)
         guard Set(payments.map(\.id)).count == payments.count, payments.allSatisfy({ $0.amountCents > 0 }) else { throw SavingsBudgetError.invalidData }
         let received = try sum([budget.openingFundsCents] + payments.filter { $0.excludedFromBudget != true }.map(\.amountCents))
-        let spent = try sum(budget.expenses.map(\.amountCents))
+        let spent = try sum(budget.expenses.filter { $0.voided != true }.map(\.amountCents))
         let reserved = try sum(budget.allocations.map(\.cents))
         return .init(receivedCents: received, spentCents: spent, reservedCents: reserved)
     }
@@ -123,6 +134,16 @@ enum SavingsAccounting {
         next.savingsBudget!.goals.append(clean)
         try validate(next.savingsBudget!)
         data = next
+    }
+
+    static func editGoal(_ expected: SavingsGoal, replacement: SavingsGoal, data: inout AppData) throws {
+        guard var budget = data.savingsBudget, let index = budget.goals.firstIndex(where: { $0.id == expected.id }) else { throw SavingsBudgetError.missingGoal }
+        guard budget.goals[index] == expected, replacement.id == expected.id, replacement.archived == expected.archived else { throw SavingsBudgetError.conflict }
+        var clean = replacement; clean.name = clean.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard try reserved(for: expected.id, in: budget) <= clean.targetCents else { throw SavingsBudgetError.goalLimit }
+        budget.goals[index] = clean
+        try validate(budget)
+        data.savingsBudget = budget
     }
 
     static func reserve(_ cents: Int, goalID: UUID, operationID: UUID = UUID(), at date: Date = Date(), data: inout AppData) throws {
@@ -173,6 +194,21 @@ enum SavingsAccounting {
         guard try reserved(for: goalID, in: budget) == 0 else { throw SavingsBudgetError.reservedGoal }
         budget.goals[index].archived = true
         try validate(budget)
+        data.savingsBudget = budget
+    }
+
+    static func correctExpense(_ expected: BudgetExpense, amountCents: Int, date: Date, description: String,
+                               voided: Bool = false, now: Date = Date(), data: inout AppData) throws {
+        guard var budget = data.savingsBudget, let index = budget.expenses.firstIndex(where: { $0.id == expected.id }),
+              budget.expenses[index] == expected else { throw SavingsBudgetError.conflict }
+        guard (1...maximumMovementCents).contains(amountCents) else { throw SavingsBudgetError.invalidData }
+        var next = expected
+        guard next.amountCents != amountCents || next.date != date || next.description != description || (next.voided == true) != voided else { return }
+        next.revisions = (next.revisions ?? []) + [.init(amountCents: next.amountCents, date: next.date,
+            description: next.description, voided: next.voided == true, editedAt: now)]
+        next.amountCents = amountCents; next.date = date; next.description = description; next.voided = voided
+        budget.expenses[index] = next
+        _ = try balance(budget, payments: data.payments)
         data.savingsBudget = budget
     }
 }

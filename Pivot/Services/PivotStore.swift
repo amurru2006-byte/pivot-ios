@@ -51,6 +51,8 @@ final class PivotStore: ObservableObject {
     init() {
         var storageName = "Pivot"
         #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--savings-test"),
+           let value = ProcessInfo.processInfo.environment["PIVOT_QA_SAVINGS_ID"], let id = UUID(uuidString: value) { storageName = "PivotSavingsQA-" + id.uuidString }
         if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--backup-privacy-test"),
            let value = ProcessInfo.processInfo.environment["PIVOT_QA_BACKUP_ID"], let id = UUID(uuidString: value) { storageName = "PivotBackupQA-" + id.uuidString }
         if ProcessInfo.processInfo.arguments.contains("--student-recognition-test") { storageName = "PivotStudentTests" }
@@ -90,6 +92,11 @@ final class PivotStore: ObservableObject {
             diagnostics.record("Caricamento storico", seconds: ProcessInfo.processInfo.systemUptime - started)
             if !locked { applyInitialSettings() }
             #if DEBUG && targetEnvironment(simulator)
+            if !locked, ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--savings-test"),
+               UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_SAVINGS_ID"] ?? "") != nil,
+               data.savingsBudget == nil, data.clients.isEmpty, data.payments.isEmpty, data.ledger?.openingCents.isEmpty != false {
+                change { $0.ledger = .init(openingCents: [String(PivotDate.calendar.component(.year, from: Date())): 35_000]) }
+            }
             if !locked, ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--financial-corrections-test"),
                UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_FINANCE_ID"] ?? "") != nil, data.clients.isEmpty {
                 let client = Client(id: UUID(uuidString: "55555555-5555-4555-8555-555555555551")!, name: "Marta Test", rateCents: 1500)

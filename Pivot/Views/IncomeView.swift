@@ -57,7 +57,7 @@ struct IncomeView: View {
     }
     var outstanding: [IncomeEntry] { store.data.income.filter { $0.outstandingCents > 0 }.sorted { $0.date < $1.date } }
     private var carouselHeight: CGFloat {
-        let minimum: CGFloat = balancePage == 0 ? 300 : 480
+        let minimum: CGFloat = balancePage == 1 ? 480 : 300
         return max(minimum, carouselHeights[balancePage] ?? minimum)
     }
     var body: some View {
@@ -165,6 +165,8 @@ struct IncomeView: View {
                     HStack(alignment: .top, spacing: 0) {
                         balance.frame(width: geometry.size.width)
                             .frame(height: carouselHeight, alignment: .center).id(0)
+                        measuredIncomePage(2) { SavingsPanel(cardHeight: max(300, carouselHeights[0] ?? 300)) }
+                            .frame(width: geometry.size.width).frame(height: carouselHeight, alignment: .top).id(2)
                         incomeChart.frame(width: geometry.size.width)
                             .frame(height: carouselHeight, alignment: .top).id(1)
                     }.scrollTargetLayout()
@@ -172,7 +174,7 @@ struct IncomeView: View {
                 .scrollIndicators(.hidden)
                 .scrollTargetBehavior(.paging)
                 .scrollPosition(id: Binding<Int?>(get: { balancePage }, set: { if let page = $0 { balancePage = page } }))
-                .accessibilityLabel("Riepilogo e grafico delle entrate, scorri orizzontalmente")
+                .accessibilityLabel("Riepilogo, Salvadanaio e grafico delle entrate, scorri orizzontalmente")
                 .accessibilityIdentifier("income-carousel")
             }
             .frame(height: carouselHeight)
@@ -189,6 +191,7 @@ struct IncomeView: View {
             // or the explanation, even with larger accessibility text.
             HStack(spacing: 20) {
                 incomePageButton("Riepilogo", page: 0)
+                incomePageButton("Salvadanaio", page: 2)
                 incomePageButton("Grafico", page: 1)
             }
         }
@@ -196,10 +199,11 @@ struct IncomeView: View {
     private func incomePageButton(_ title: String, page: Int) -> some View {
         Button { withAnimation { balancePage = page } } label: {
             HStack(spacing: 6) {
-                Circle().fill(balancePage == page ? PivotTheme.accent : PivotTheme.muted).frame(width: 7, height: 7)
+                Circle().fill(balancePage == page ? (page == 2 ? Color(pivotHex: "FFB56B") : PivotTheme.accent) : PivotTheme.muted).frame(width: 7, height: 7)
                 Text(title).font(.caption.weight(balancePage == page ? .semibold : .regular))
-            }.foregroundStyle(balancePage == page ? PivotTheme.accent : PivotTheme.muted)
+            }.foregroundStyle(balancePage == page ? (page == 2 ? Color(pivotHex: "FFB56B") : PivotTheme.accent) : PivotTheme.muted)
                 .padding(.vertical, 8)
+                .frame(minHeight: 44)
         }.buttonStyle(.plain)
             .accessibilityAddTraits(balancePage == page ? .isSelected : [])
             .accessibilityIdentifier("income-page-\(page)")
@@ -580,6 +584,7 @@ struct OpeningIncomeForm: View {
                 PivotCard {
                     TextField("Totale già incassato in euro", text: $total).keyboardType(.decimalPad).padding(14).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
                     Text("Include i pagamenti già registrati (\(Money.display(recorded))). Li sottraggo dall'importo pregresso per evitare doppioni. Non creo ricevute o studenti fittizi.").font(.caption).foregroundStyle(PivotTheme.muted)
+                    if store.data.savingsBudget != nil { Text("Questa modifica riguarda il totale annuale, non i fondi del Salvadanaio.").font(.caption).foregroundStyle(PivotTheme.amber) }
                 }
                 Button("Salva totale iniziale") {
                     guard let cents = Money.cents(from: total), cents >= recorded else { return }

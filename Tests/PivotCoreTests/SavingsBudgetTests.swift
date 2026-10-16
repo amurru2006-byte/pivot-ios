@@ -164,4 +164,71 @@ final class SavingsBudgetTests: XCTestCase {
         data.payments.append(.init(incomeID: data.income[0].id, clientName: "Contatto di prova", date: now, amountCents: 1))
         XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encode(data)))
     }
+
+    func testGoalCanBeReducedAfterReleaseWithoutInvalidatingPastJournal() throws {
+        var data = data(); let original = try goal(data: &data)
+        try SavingsAccounting.reserve(10_000, goalID: original.id, data: &data)
+        try SavingsAccounting.release(6000, goalID: original.id, data: &data)
+        var replacement = original; replacement.name = "Obiettivo aggiornato"; replacement.targetCents = 5000
+        replacement.deadline = now.addingTimeInterval(86400)
+        try SavingsAccounting.editGoal(original, replacement: replacement, data: &data)
+        XCTAssertEqual(data.savingsBudget?.goals.first, replacement)
+        XCTAssertNoThrow(try BackupCodec.decode(BackupCodec.encode(data)))
+        let current = replacement; replacement.targetCents = 3000
+        XCTAssertThrowsError(try SavingsAccounting.editGoal(current, replacement: replacement, data: &data))
+        XCTAssertEqual(data.savingsBudget?.goals.first?.targetCents, 5000)
+    }
+
+    func testStaleGoalEditsCannotOverwriteNewerChanges() throws {
+        var data = data(); let original = try goal(data: &data)
+        var first = original; first.name = "Primo aggiornamento"
+        try SavingsAccounting.editGoal(original, replacement: first, data: &data)
+        var stale = original; stale.name = "Aggiornamento superato"
+        XCTAssertThrowsError(try SavingsAccounting.editGoal(original, replacement: stale, data: &data))
+        XCTAssertEqual(data.savingsBudget?.goals.first?.name, first.name)
+    }
+
+    func testExpenseCorrectionVoidAndRestoreKeepAuditAndOneExpense() throws {
+        var data = data()
+        let expense = BudgetExpense(amountCents: 350, date: now, description: "Voce di prova")
+        try SavingsAccounting.expense(expense, data: &data)
+        try SavingsAccounting.correctExpense(expense, amountCents: 700, date: now, description: "Voce corretta", data: &data)
+        var current = try XCTUnwrap(data.savingsBudget?.expenses.first)
+        XCTAssertEqual(try balance(data).spentCents, 700)
+        XCTAssertEqual(current.revisions?.first?.amountCents, 350)
+        try SavingsAccounting.correctExpense(current, amountCents: 700, date: now, description: current.description, voided: true, data: &data)
+        current = try XCTUnwrap(data.savingsBudget?.expenses.first)
+        XCTAssertEqual(try balance(data).spentCents, 0)
+        try SavingsAccounting.correctExpense(current, amountCents: 700, date: now, description: current.description, voided: false, data: &data)
+        XCTAssertEqual(try balance(data).spentCents, 700)
+        XCTAssertEqual(data.savingsBudget?.expenses.count, 1)
+        XCTAssertEqual(data.savingsBudget?.expenses.first?.revisions?.count, 3)
+    }
+
+    func testStaleExpenseCorrectionDoesNotDuplicateOrOverwrite() throws {
+        var data = data()
+        let expense = BudgetExpense(amountCents: 350, date: now, description: "Voce di prova")
+        try SavingsAccounting.expense(expense, data: &data)
+        try SavingsAccounting.correctExpense(expense, amountCents: 500, date: now, description: expense.description, data: &data)
+        XCTAssertThrowsError(try SavingsAccounting.correctExpense(expense, amountCents: 1000, date: now, description: expense.description, data: &data))
+        XCTAssertEqual(try balance(data).spentCents, 500)
+    }
+
+    func testExpenseAuditSurvivesBackupAndDoesNotChangeAnnualEarnings() throws {
+        var data = data()
+        let expense = BudgetExpense(amountCents: 350, date: now, description: "Voce di prova")
+        try SavingsAccounting.expense(expense, data: &data)
+        try SavingsAccounting.correctExpense(expense, amountCents: 500, date: now, description: "Corretta", voided: true, data: &data)
+        let restored = try BackupCodec.decode(BackupCodec.encode(data))
+        XCTAssertEqual(restored.savingsBudget?.expenses.first?.revisions?.count, 1)
+        XCTAssertEqual(restored.savingsBudget?.expenses.first?.voided, true)
+        XCTAssertEqual(restored.ledger?.total(year: 2026, payments: restored.payments), 32_000)
+        XCTAssertEqual(try balance(restored).spentCents, 0)
+    }
+
+    func testOpeningPlusAnnualReceiptOverflowIsRejectedBeforeRestoring() throws {
+        var data = data()
+        data.ledger?.openingCents["2026"] = Int.max
+        XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encode(data)))
+    }
 }
