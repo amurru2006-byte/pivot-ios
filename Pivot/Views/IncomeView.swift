@@ -168,10 +168,13 @@ struct IncomeView: View {
                     HStack(alignment: .top, spacing: 0) {
                         balance.frame(width: geometry.size.width)
                             .frame(height: carouselHeight, alignment: .center).id(0)
+                            .accessibilityHidden(balancePage != 0)
                         measuredIncomePage(2) { SavingsPanel(cardHeight: max(300, carouselHeights[0] ?? 300)) }
                             .frame(width: geometry.size.width).frame(height: carouselHeight, alignment: .top).id(2)
+                            .accessibilityHidden(balancePage != 2)
                         incomeChart.frame(width: geometry.size.width)
                             .frame(height: carouselHeight, alignment: .top).id(1)
+                            .accessibilityHidden(balancePage != 1)
                     }.scrollTargetLayout()
                 }
                 .scrollIndicators(.hidden)
