@@ -47,13 +47,13 @@ struct IncomeView: View {
     var year: Int { selectedYear ?? currentYear }
     var ledger: AnnualLedger { store.data.ledger ?? AnnualLedger() }
     var annualTotal: Int { ledger.total(year: year, payments: store.data.payments) }
-    var years: [Int] { Array(Set([currentYear] + store.data.payments.map { PivotDate.calendar.component(.year, from: $0.date) } + ledger.openingCents.keys.compactMap(Int.init))).sorted(by: >) }
+    var years: [Int] { Array(Set([currentYear] + store.data.payments.compactMap(\.year) + ledger.openingCents.keys.compactMap(Int.init))).sorted(by: >) }
     var balanceColor: Color {
         guard let progress = ledger.warningProgress(total: annualTotal) else { return PivotTheme.accent }
         return Color(red: 1, green: 0.82 * (1 - progress) + 0.12 * progress, blue: 0.1 * (1 - progress) + 0.18 * progress)
     }
     var monthPayments: [Payment] {
-        return store.data.payments.filter { PivotDate.calendar.component(.year, from: $0.date) == year }.sorted { $0.date > $1.date }
+        return store.data.payments.filter { $0.year == year }.sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
     }
     var outstanding: [IncomeEntry] { store.data.income.filter { $0.outstandingCents > 0 }.sorted { $0.date < $1.date } }
     private var carouselHeight: CGFloat {
@@ -99,7 +99,7 @@ struct IncomeView: View {
                                     avatar(payment.clientName)
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text(payment.clientName).font(.subheadline.weight(.semibold))
-                                        Text(DisplayDate.label(payment.date, format: "d MMM · HH:mm")).font(.caption).foregroundStyle(PivotTheme.muted)
+                                        Text(payment.date.map { DisplayDate.label($0, format: "d MMM · HH:mm") } ?? "\(payment.year ?? year) · Data incasso non nota").font(.caption).foregroundStyle(PivotTheme.muted)
                                     }
                                     Spacer()
                                     Text("+ \(Money.display(payment.amountCents))").font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.accent)
@@ -292,7 +292,7 @@ struct IncomeView: View {
             return (0..<30).reversed().compactMap { offset -> IncomeChartPoint? in
                 guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else { return nil }
                 let next = calendar.date(byAdding: .day, value: 1, to: date)!
-                let cents = store.data.payments.filter { $0.date >= date && $0.date < next }.reduce(0) { $0 + $1.amountCents }
+                let cents = store.data.payments.filter { $0.occurred(from: date, to: next) }.reduce(0) { $0 + $1.amountCents }
                 return IncomeChartPoint(key: PivotDate.key(date), label: DisplayDate.label(date, format: "d/M"), amountCents: cents)
             }
         case .months:
@@ -300,13 +300,13 @@ struct IncomeView: View {
             guard let currentMonth = calendar.date(from: components) else { return [] }
             return (0..<12).reversed().compactMap { offset -> IncomeChartPoint? in
                 guard let date = calendar.date(byAdding: .month, value: -offset, to: currentMonth), let next = calendar.date(byAdding: .month, value: 1, to: date) else { return nil }
-                let cents = store.data.payments.filter { $0.date >= date && $0.date < next }.reduce(0) { $0 + $1.amountCents }
+                let cents = store.data.payments.filter { $0.occurred(from: date, to: next) }.reduce(0) { $0 + $1.amountCents }
                 return IncomeChartPoint(key: DisplayDate.label(date, format: "yyyy-MM"), label: DisplayDate.label(date, format: "MMM yy"), amountCents: cents)
             }
         case .year:
             return (1...12).compactMap { month -> IncomeChartPoint? in
                 guard let date = calendar.date(from: DateComponents(year: year, month: month, day: 1)), let next = calendar.date(byAdding: .month, value: 1, to: date) else { return nil }
-                let cents = store.data.payments.filter { $0.date >= date && $0.date < next }.reduce(0) { $0 + $1.amountCents }
+                let cents = store.data.payments.filter { $0.occurred(from: date, to: next) }.reduce(0) { $0 + $1.amountCents }
                 return IncomeChartPoint(key: "\(year)-\(month)", label: DisplayDate.label(date, format: "MMM"), amountCents: cents)
             }
         case .years:
@@ -484,12 +484,12 @@ struct IncomeDetailView: View {
                         NavigationLink("Paga più lezioni / vedi il saldo dello studente") { ClientDetailView(client: client) }.buttonStyle(PivotSecondaryButton())
                     }
                 }
-                let payments = store.data.payments.filter { $0.incomeID == entry.id }.sorted { $0.date > $1.date }
+                let payments = store.data.payments.filter { $0.incomeID == entry.id }.sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
                 if !payments.isEmpty {
                     PivotCard {
                         SectionHeading(title: "Pagamenti ricevuti")
                         ForEach(payments) { p in
-                            HStack { Text(DisplayDate.label(p.date, format: "d MMM yyyy")).foregroundStyle(PivotTheme.muted); Spacer(); Text("+ \(Money.display(p.amountCents))").foregroundStyle(PivotTheme.accent) }.font(.subheadline)
+                            HStack { Text(p.date.map { DisplayDate.label($0, format: "d MMM yyyy") } ?? "\(p.year ?? 0) · Data incasso non nota").foregroundStyle(PivotTheme.muted); Spacer(); Text("+ \(Money.display(p.amountCents))").foregroundStyle(PivotTheme.accent) }.font(.subheadline)
                             Button("Correggi questo incasso") { editingReceipt = p }.font(.subheadline).accessibilityIdentifier("income-edit-receipt-" + p.id.uuidString).disabled(store.locked)
                         }
                     }
@@ -576,7 +576,7 @@ struct OpeningIncomeForm: View {
     @Environment(\.dismiss) var dismiss
     let year: Int
     @State private var total = ""
-    var recorded: Int { store.data.payments.filter { PivotDate.calendar.component(.year, from: $0.date) == year }.reduce(0) { $0 + $1.amountCents } }
+    var recorded: Int { store.data.payments.filter { $0.year == year }.reduce(0) { $0 + $1.amountCents } }
     var body: some View {
         NavigationStack {
             PivotScreen {

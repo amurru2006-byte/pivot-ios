@@ -6,10 +6,10 @@ struct AnnualLedger: Codable {
     var referenceCents: Int = 500_000
     var warningMarginCents: Int = 50_000
     func total(year: Int, payments: [Payment]) -> Int {
-        (openingCents[String(year)] ?? 0) + payments.filter { PivotDate.calendar.component(.year, from: $0.date) == year }.reduce(0) { $0 + $1.amountCents }
+        (openingCents[String(year)] ?? 0) + payments.filter { $0.year == year }.reduce(0) { $0 + $1.amountCents }
     }
     mutating func setOpeningTotal(_ total: Int, year: Int, payments: [Payment]) {
-        let recorded = payments.filter { PivotDate.calendar.component(.year, from: $0.date) == year }.reduce(0) { $0 + $1.amountCents }
+        let recorded = payments.filter { $0.year == year }.reduce(0) { $0 + $1.amountCents }
         openingCents[String(year)] = max(0, total - recorded)
     }
     func warningProgress(total: Int) -> Double? {

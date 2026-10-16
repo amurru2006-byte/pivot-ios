@@ -85,7 +85,7 @@ enum Report {
             lines.append("\n" + TrainingExport.text(session, library: data.training ?? TrainingLibrary()))
         }
         let entries = data.income.filter { PivotDate.calendar.isDate($0.date, inSameDayAs: date) }
-        let payments = data.payments.filter { PivotDate.calendar.isDate($0.date, inSameDayAs: date) }
+        let payments = data.payments.filter { $0.date.map { PivotDate.calendar.isDate($0, inSameDayAs: date) } ?? false }
         lines.append("\nIncassato oggi: \(Money.display(payments.reduce(0) { $0 + $1.amountCents }))")
         lines.append("Da incassare per queste lezioni: \(Money.display(entries.reduce(0) { $0 + $1.outstandingCents }))")
         let coachMessages = data.settings.includeCoachInReports == false ? [] : (data.coach?.messages ?? []).filter { $0.dayKey == key }
