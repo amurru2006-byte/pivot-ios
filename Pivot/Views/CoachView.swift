@@ -1,5 +1,11 @@
 import SwiftUI
 
+private struct OnlineCoachReview: Identifiable {
+    let snapshot: CoachV8Snapshot
+    let originalMessage: String
+    var id: String { snapshot.request.requestID }
+}
+
 struct CoachView: View {
     var contextEventID: String? = nil
     @Environment(\.dismiss) private var dismiss
@@ -21,6 +27,7 @@ struct CoachView: View {
     @StateObject private var dictation = DictationService()
     @StateObject private var onlineCoach = OnlineCoachService()
     @State private var useLocal = false
+    @State private var onlineReview: OnlineCoachReview?
     @Environment(\.scenePhase) private var scenePhase
     @State private var dictationComposer = DictationTextComposer()
     private var reviews: [WorkoutReview] { (store.data.workoutReviews ?? []).filter { !$0.dismissed && !$0.resolved } }
@@ -194,6 +201,30 @@ struct CoachView: View {
         }) { record in
             NavigationStack { EventDetailView(event: record.snapshot, initial: record, rule: store.rule(for: record.snapshot), onSaved: { returnHomeAfterResponse = true }) }.presentationDragIndicator(.visible)
         }
+        .sheet(item: $onlineReview) { review in
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        Text("Destinazione: Pivot Coach su Cloudflare → Groq").font(.headline)
+                        Text("Controlla il testo prima di inviarlo. Il filtro oscura dati riconoscibili, ma può lasciare nomi, indirizzi o informazioni sensibili. Per parlare di salute usa la base locale.")
+                            .font(.subheadline)
+                        Text(review.snapshot.request.message).textSelection(.enabled)
+                            .accessibilityIdentifier("coach-online-reviewed-message")
+                        Text("\(review.snapshot.request.events.count) eventi con alias e orari · \(review.snapshot.request.history.count) messaggi recenti · nessuna memoria")
+                            .font(.caption)
+                        DisclosureGroup("Tutti i dati della richiesta") {
+                            Text(String(decoding: review.snapshot.encodedRequest, as: UTF8.self))
+                                .font(.caption.monospaced()).textSelection(.enabled)
+                        }
+                        Button("Conferma invio online") { sendReviewed(review) }
+                            .buttonStyle(PivotPrimaryButton()).accessibilityIdentifier("coach-online-approve")
+                        Button("Annulla e modifica") { onlineReview = nil }
+                            .buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("coach-online-review-cancel")
+                    }.padding()
+                }.navigationTitle("Prima dell’invio")
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Annulla") { onlineReview = nil } } }
+            }.interactiveDismissDisabled(false)
+        }
         .confirmationDialog("Eliminare questa conversazione? Anche il resoconto non la includerà più.", isPresented: $deleteHistory, titleVisibility: .visible) {
             Button("Elimina", role: .destructive) {
                 let key = PivotDate.key(historyDay)
@@ -338,6 +369,20 @@ struct CoachView: View {
         turnGeneration += 1
         turnTask?.cancel(); turnTask = nil; isPlanning = false
         onlineCoach.cancel()
+        onlineReview = nil
+    }
+
+    private func sendReviewed(_ review: OnlineCoachReview) {
+        onlineReview = nil
+        guard !isPlanning, !store.locked, !useLocal, onlineCoach.isConfigured else { return }
+        turnGeneration += 1
+        let generation = turnGeneration
+        isPlanning = true
+        turnTask = Task {
+            await sendOnline(review.originalMessage, now: review.snapshot.request.now, approved: review.snapshot)
+            guard generation == turnGeneration else { return }
+            isPlanning = false; turnTask = nil
+        }
     }
     private func sendInBackground(_ text: String, targetID: String?) async {
         let clean = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(3000))
@@ -403,25 +448,38 @@ struct CoachView: View {
         message = result.options.isEmpty ? "Nessuna modifica è stata preparata." : nil
     }
 
-    private func sendOnline(_ clean: String, now: Date) async {
+    private func sendOnline(_ clean: String, now: Date, approved: CoachV8Snapshot? = nil) async {
         do {
             try Task.checkCancellation()
-            await calendar.refresh(settings: store.data.settings)
-            #if DEBUG && targetEnvironment(simulator)
-            if ProcessInfo.processInfo.arguments.contains("--online-coach-preflight-test") {
-                // This fixture represents a preflight that has NOT finished.
-                // A slow UI runner must not turn it into a provider error while
-                // the test is scrolling to Cancel. Only cancellation releases it.
-                while !Task.isCancelled { try await Task.sleep(nanoseconds: 1_000_000_000) }
+            if let approved {
+                await calendar.refresh(settings: store.data.settings)
                 try Task.checkCancellation()
+                guard approved.isCurrent(events: calendar.events, data: store.data, now: Date()) else { throw CoachV8Error.staleContext }
+            } else {
+                // No provider request is made while preparing the on-device review.
+                // A known quota failure also avoids an unnecessary calendar refresh.
+                if let failure = onlineCoach.failure, let seconds = failure.remaining(at: Date()), seconds > 0 { throw failure }
+                await calendar.refresh(settings: store.data.settings)
+                #if DEBUG && targetEnvironment(simulator)
+                if ProcessInfo.processInfo.arguments.contains("--online-coach-preflight-test") {
+                    // A slow UI runner must not turn an unfinished preflight
+                    // into a provider error. Only cancellation releases it.
+                    while !Task.isCancelled { try await Task.sleep(nanoseconds: 1_000_000_000) }
+                    try Task.checkCancellation()
+                }
+                #endif
+                try Task.checkCancellation()
+                let snapshotData = store.data, events = calendar.events
+                let snapshot = try await Task.detached(priority: .userInitiated) {
+                    try CoachV8Snapshot.make(message: clean, events: events, data: snapshotData, now: now)
+                }.value
+                try Task.checkCancellation()
+                guard snapshot.isCurrent(events: calendar.events, data: store.data, now: Date()) else { throw CoachV8Error.staleContext }
+                onlineReview = .init(snapshot: snapshot, originalMessage: clean)
+                return
             }
-            #endif
-            try Task.checkCancellation()
-            let snapshotData = store.data, events = calendar.events
-            let snapshot = try await Task.detached(priority: .userInitiated) {
-                try CoachV8Snapshot.make(message: clean, events: events, data: snapshotData, now: now)
-            }.value
-            try Task.checkCancellation()
+            guard let snapshot = approved else { throw CoachV8Error.staleContext }
+            // Send the exact reviewed bytes, never silently rebuild the context.
             let response = try await onlineCoach.ask(snapshot)
             guard !store.locked, !store.isRestoring, !Task.isCancelled else { return }
             let currentData = store.data, currentEvents = calendar.events, currentTime = Date()

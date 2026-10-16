@@ -95,20 +95,26 @@ enum HealthImport {
         record.updatedAt = Date(); record.snapshot = event; data.records[event.id] = record
     }
     // Default exports exclude automatically imported health values. Explicit user consent can include them.
-    static func exportData(_ data: AppData) -> AppData {
-        guard data.settings.includeHealthInExports != true else { return data }
+    static func exportData(_ data: AppData, allowHealth: Bool? = nil) -> AppData {
+        guard !(allowHealth ?? (data.settings.includeHealthInExports == true)) else { return data }
         var result = data
+        // Legacy profiles have no reliable per-field provenance. Exclude the
+        // entire copy rather than misclassifying imported measurements as manual.
+        result.strengthProfile = nil
+        result.training?.achievements?.removeAll { $0.kind == .rank }
         result.workoutReviews = nil
         result.coach?.messages.removeAll { $0.healthDerived == true }
         if result.actualWorkoutDraft?.health != nil || result.actualWorkoutDraft?.healthDerived == true { result.actualWorkoutDraft = nil }
         let derivedIDs = Set(result.moves.filter { $0.healthDerived == true }.map { $0.source.id })
         result.moves.removeAll { $0.healthDerived == true }
         result.coach?.pendingCalendarChanges.removeAll { $0.move.healthDerived == true }
+        result.coach?.options.removeAll { $0.moves.contains { $0.healthDerived == true } }
         for id in derivedIDs {
             result.records[id]?.actualStart = nil; result.records[id]?.actualEnd = nil; result.records[id]?.activeMinutes = 0
+            result.records[id]?.status = .pending
         }
-        for key in Array(result.checkIns.keys) where result.checkIns[key]?.sleep?.importedFromHealth == true {
-            result.checkIns[key]?.sleep = nil
+        for key in Array(result.checkIns.keys) {
+            if result.checkIns[key]?.sleep?.importedFromHealth == true { result.checkIns[key]?.sleep = nil }
             if result.checkIns[key]?.healthWakeTime == result.checkIns[key]?.wakeTime { result.checkIns[key]?.wakeTime = nil }
             result.checkIns[key]?.healthWakeTime = nil
         }
@@ -120,15 +126,20 @@ enum HealthImport {
             }
             result.records[id]?.health = nil
             result.records[id]?.cardio = nil
+            // Old records cannot distinguish a manual outcome from an imported
+            // one. Neutralize only the exported copy, never the stored history.
+            result.records[id]?.status = .pending
         }
         for id in Array(result.records.keys) where result.records[id]?.healthSleep != nil {
             result.records[id]?.healthSleep = nil; result.records[id]?.actualStart = nil; result.records[id]?.actualEnd = nil; result.records[id]?.activeMinutes = 0
+            result.records[id]?.status = .pending
         }
         for id in Array((result.activityDrafts ?? [:]).keys) {
             guard var draft = result.activityDrafts?[id] else { continue }
             if draft.record.health != nil || draft.record.healthSleep != nil {
                 draft.record.health = nil; draft.record.healthSleep = nil; draft.record.cardio = nil
                 draft.record.actualStart = nil; draft.record.actualEnd = nil; draft.record.activeMinutes = 0
+                draft.record.status = .pending
                 result.activityDrafts?[id] = draft
             }
         }

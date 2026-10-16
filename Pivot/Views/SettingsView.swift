@@ -129,8 +129,8 @@ struct SettingsView: View {
                     Stepper("Calorie attive minime: \(settings.cardioReviewMinimumCalories ?? 100)", value: Binding(get: { settings.cardioReviewMinimumCalories ?? 100 }, set: { settings.cardioReviewMinimumCalories = $0 }), in: 0...1000, step: 25)
                     Text("Sono filtri modificabili per evitare domande sui tragitti brevi, non una misura medica dello sforzo. Fuori orario serve sempre la tua conferma; senza calorie disponibili non considero la camminata cardio in automatico.").font(.caption).foregroundStyle(PivotTheme.muted)
                 }
-        Toggle("Includi i dati Salute nei backup e resoconti", isOn: Binding(get: { settings.includeHealthInExports == true }, set: { settings.includeHealthInExports = $0 }))
-        Text("Senza questa scelta i dati importati restano locali. I backup esterni non sono cifrati da Pivot: non condividerli pubblicamente.").font(.caption).foregroundStyle(PivotTheme.muted)
+        Toggle("Includi Salute nei resoconti", isOn: Binding(get: { settings.includeHealthInExports == true }, set: { settings.includeHealthInExports = $0 }))
+        Text("Nei backup esterni sono esclusi dati importati da Salute, profilo forza e rank derivati. I backup JSON non sono cifrati da Pivot; note e documenti possono contenere dati personali.").font(.caption).foregroundStyle(PivotTheme.muted)
         Toggle("Includi la chat con Pivot nei resoconti", isOn: Binding(get: { settings.includeCoachInReports != false }, set: { settings.includeCoachInReports = $0 }))
     }
     }
@@ -143,7 +143,7 @@ struct SettingsView: View {
         DisclosureGroup("Gestisci backup e ripristino") {
             VStack(alignment: .leading, spacing: 16) {
                 Button("Aggiorna copia esterna") { store.backupNow() }.disabled(store.locked)
-                Button("Esporta backup completo") {
+                Button("Esporta backup") {
                     Task {
                         do { exportFile = try await store.exportURL(); exporting = true }
                         catch { message = error.localizedDescription }

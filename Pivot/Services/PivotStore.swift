@@ -222,7 +222,7 @@ final class PivotStore: ObservableObject {
     }
     private nonisolated static func performExternalBackup(_ snapshot: AppData, bookmark: Data, documents: URL) -> BackupResult {
         do {
-            let bytes = try BackupCodec.encode(StudyFiles.completeBackup(HealthImport.exportData(snapshot), directory: documents))
+            let bytes = try BackupCodec.encode(StudyFiles.completeBackup(HealthImport.exportData(snapshot, allowHealth: false), directory: documents))
             var stale = false
             let folder = try URL(resolvingBookmarkData: bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &stale)
             let access = folder.startAccessingSecurityScopedResource()
@@ -255,9 +255,12 @@ final class PivotStore: ObservableObject {
 
     func exportURL() async throws -> URL {
         guard !isLoading, await flushPendingWrites() else { throw BackupError.invalidData }
-        let snapshot = data, sourceFile = file, pdfDirectory = documentsDirectory, isLocked = locked
+        let snapshot = data, pdfDirectory = documentsDirectory, isLocked = locked
         return try await Task.detached(priority: .utility) {
-            let bytes = isLocked ? try Data(contentsOf: sourceFile) : try BackupCodec.encode(StudyFiles.completeBackup(HealthImport.exportData(snapshot), directory: pdfDirectory))
+            // A corrupted local file must not bypass the privacy filter. Recovery
+            // of that original is a separate explicit operation, never a backup.
+            guard !isLocked else { throw BackupError.invalidData }
+            let bytes = try BackupCodec.encode(StudyFiles.completeBackup(HealthImport.exportData(snapshot, allowHealth: false), directory: pdfDirectory))
             let destination = FileManager.default.temporaryDirectory.appendingPathComponent("Backup Pivot.json")
             try bytes.write(to: destination, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             return destination
