@@ -1,6 +1,7 @@
 import XCTest
 
 final class BackupPrivacyInteractionTests: XCTestCase {
+    override func tearDownWithError() throws { attachFailureDiagnostics("backup"); try super.tearDownWithError() }
     private func app() -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()

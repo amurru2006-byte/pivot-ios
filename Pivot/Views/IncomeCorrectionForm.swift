@@ -7,6 +7,7 @@ struct IncomeCorrectionForm: View {
     var paymentID: UUID? = nil
     @State private var amount = ""
     @State private var message: String?
+    private var entry: IncomeEntry? { store.data.income.first { $0.id == incomeID } }
     private var original: Int? {
         if let paymentID { return store.data.payments.first { $0.id == paymentID && $0.incomeID == incomeID }?.amountCents }
         return store.data.income.first { $0.id == incomeID }?.amountCents
@@ -15,11 +16,20 @@ struct IncomeCorrectionForm: View {
         NavigationStack {
             PivotScreen {
                 PivotHeader(title: paymentID == nil ? "Correggi compenso" : "Correggi incasso",
-                            subtitle: paymentID == nil ? "Quanto era dovuto per questa lezione? Gli incassi già ricevuti non cambiano." : "Quanto hai ricevuto davvero in questo pagamento? La data e gli altri incassi non cambiano.")
+                            subtitle: paymentID == nil ? "Quanto era dovuto?" : "Quanto hai ricevuto in questo pagamento?")
                 if let original {
                     Text("Importo attuale: \(Money.display(original))")
                     TextField("Importo corretto in euro", text: $amount).keyboardType(.decimalPad).accessibilityIdentifier("income-corrected-amount")
-                    Text("La correzione viene conservata nello storico. Nessun conguaglio sarà aggiunto alle prossime lezioni.").font(.caption).foregroundStyle(PivotTheme.muted)
+                    if let entry, let value = Money.cents(from: amount) {
+                        let due = paymentID == nil ? value : entry.amountCents
+                        let received = paymentID == nil ? entry.paidCents : entry.paidCents - original + value
+                        PivotCard {
+                            LabeledContent("Dovuto", value: Money.display(due))
+                            LabeledContent("Ricevuto", value: Money.display(received))
+                            LabeledContent("Da incassare", value: Money.display(max(0, due - received)))
+                                .foregroundStyle(PivotTheme.amber).accessibilityIdentifier("income-correction-residual")
+                        }
+                    }
                     if let message { Text(message).foregroundStyle(PivotTheme.amber).accessibilityIdentifier("income-correction-error") }
                     Button("Salva correzione") { save() }.buttonStyle(PivotPrimaryButton()).accessibilityIdentifier("income-correction-save").disabled(store.locked || Money.cents(from: amount) == nil)
                 } else { Text("Il record non è più disponibile.") }

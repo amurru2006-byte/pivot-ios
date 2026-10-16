@@ -55,7 +55,7 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
         reveal(kept, app: app); XCTAssertFalse(app.buttons["client-detail-55555555-5555-4555-8555-555555555552"].exists)
         kept.tap(); XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "1 lezioni registrate")).firstMatch.waitForExistence(timeout: 5))
         app.navigationBars.buttons.firstMatch.tap()
-        let add = app.buttons["Aggiungi studente"]; reveal(add, app: app); add.tap()
+        let add = app.buttons["Aggiungi contatto"]; reveal(add, app: app); add.tap()
         replace(app.textFields["client-name"], with: "Marta Test", app: app)
         XCTAssertTrue(app.staticTexts["client-update-existing"].waitForExistence(timeout: 5))
         replace(app.textFields["client-rate"], with: "20", app: app)
@@ -92,5 +92,36 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
         reveal(app.buttons["income-correction-save"], app: app); app.buttons["income-correction-save"].tap()
         XCTAssertTrue(app.staticTexts["income-correction-error"].waitForExistence(timeout: 5)); app.buttons["Annulla"].tap()
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Totale 20")).firstMatch.waitForExistence(timeout: 5))
+    }
+
+    func testContactPeriodsGraphAndAddPartialReceiptKeepFullHistory() {
+        let app = launch(); merge(app)
+        let received = app.staticTexts["client-income-received"]
+        scrollControlIntoView(received, in: app); XCTAssertTrue(received.label.contains("15,00"))
+        let due = app.staticTexts["client-income-outstanding"]
+        XCTAssertTrue(due.label.contains("5,00"))
+        let period = app.segmentedControls["client-income-period"]
+        scrollControlIntoView(period, in: app); period.buttons["Mese"].tap()
+        XCTAssertTrue(received.label.contains("15,00")); XCTAssertTrue(due.label.contains("5,00"))
+        period.buttons["Tutto"].tap(); XCTAssertTrue(received.label.contains("15,00"))
+        let graph = app.buttons["client-income-page-1"]
+        scrollControlIntoView(graph, in: app); graph.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["client-income-chart"].firstMatch.waitForExistence(timeout: 8))
+        let add = app.buttons["client-add-activity"]
+        scrollControlIntoView(add, in: app); add.tap()
+        replace(app.textFields["income-manual-compensation"], with: "20", app: app)
+        let hasReceipt = app.switches["income-manual-has-receipt"]
+        scrollControlIntoView(hasReceipt, in: app)
+        let actualSwitch = hasReceipt.switches.firstMatch
+        if actualSwitch.exists { actualSwitch.tap() } else { hasReceipt.tap() }
+        replace(app.textFields["income-manual-received"], with: "15", app: app)
+        let save = app.buttons["income-manual-save"]
+        scrollControlIntoView(save, in: app); XCTAssertTrue(save.isEnabled); save.tap()
+        let summary = app.buttons["client-income-page-0"]
+        scrollControlIntoView(summary, in: app); summary.tap()
+        scrollControlIntoView(received, in: app); XCTAssertTrue(received.label.contains("30,00"))
+        XCTAssertTrue(due.label.contains("10,00"))
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "contact-summary-partial-receipt"; screenshot.lifetime = .keepAlways; add(screenshot)
     }
 }

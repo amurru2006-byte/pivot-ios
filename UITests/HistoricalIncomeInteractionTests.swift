@@ -1,6 +1,7 @@
 import XCTest
 
 final class HistoricalIncomeInteractionTests: XCTestCase {
+    override func tearDownWithError() throws { attachFailureDiagnostics("historical-income"); try super.tearDownWithError() }
     func testLocalReviewCancelImportAndRelaunchKeepFundsSeparate() {
         continueAfterFailure = false
         let app = XCUIApplication()

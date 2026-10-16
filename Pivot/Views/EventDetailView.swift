@@ -380,7 +380,7 @@ struct EventDetailView: View {
                 }
                 TextField("Importo concordato in euro (anche 0)", text: $lessonAmount).keyboardType(.decimalPad).accessibilityIdentifier("lesson-amount")
                 if record.timingFromCalendar == true, let client = selectedClient, client.rateCents > 0 {
-                    Text("Compenso suggerito dalla tariffa salvata: \(Money.display(client.rateCents))/ora. Correggilo se avete concordato un importo diverso; nessun pagamento è dato per ricevuto.").font(.caption).foregroundStyle(PivotTheme.muted)
+                    Text("Compenso suggerito: \(Money.display(client.rateCents))\(client.billingMode == .hourly ? "/ora" : ""). Nessun pagamento è dato per ricevuto.").font(.caption).foregroundStyle(PivotTheme.muted)
                 }
                 Toggle("Ho già ricevuto un pagamento", isOn: $received)
                 if received {
@@ -435,8 +435,8 @@ struct EventDetailView: View {
     }
     private func suggestLessonAmount() {
         guard lessonAmount.isEmpty, linkedIncome == nil, [.tutoring, .work].contains(event.kind),
-              let client = selectedClient, client.rateCents > 0, record.activeMinutes > 0 else { return }
-        let cents = Money.lessonAmount(rateCents: client.rateCents, minutes: record.activeMinutes)
+              let client = selectedClient, client.rateCents > 0, client.billingMode == .fixed || record.activeMinutes > 0 else { return }
+        let cents = client.billingMode == .fixed ? client.rateCents : Money.lessonAmount(rateCents: client.rateCents, minutes: record.activeMinutes)
         lessonAmount = String(format: "%.2f", Double(cents) / 100).replacingOccurrences(of: ".", with: ",")
     }
     @discardableResult private func save() -> Bool {

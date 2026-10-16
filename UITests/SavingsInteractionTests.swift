@@ -1,6 +1,7 @@
 import XCTest
 
 final class SavingsInteractionTests: XCTestCase {
+    override func tearDownWithError() throws { attachFailureDiagnostics("savings"); try super.tearDownWithError() }
     func testGoalReservationLimitRealExpenseReleaseAndRelaunch() {
         continueAfterFailure = false
         let app = XCUIApplication()

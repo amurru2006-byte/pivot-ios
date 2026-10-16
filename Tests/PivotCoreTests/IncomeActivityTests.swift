@@ -96,4 +96,36 @@ final class IncomeActivityTests: XCTestCase {
         try SavingsAccounting.initialize(data: &data)
         XCTAssertEqual(try SavingsAccounting.balance(data.savingsBudget!, payments: data.payments).freeCents, 0)
     }
+
+    func testOneContactCanHaveDifferentActivitiesWithoutChangingItsDefault() throws {
+        var data = AppData(); let client = Client(name: "Contatto di prova", rateCents: 2000); data.clients = [client]
+        try ManualIncome.register(id: UUID(), client: client, date: date, minutes: 60, amountCents: 2000,
+            receivedCents: 2000, paymentDate: date, notes: "Contributo di prova", activity: .gift, data: &data)
+        XCTAssertEqual(data.clients[0].activityKind, .lesson)
+        XCTAssertEqual(data.income[0].activityKind, .gift); XCTAssertEqual(data.income[0].minutes, 0)
+        _ = try register(client: client, data: &data)
+        XCTAssertEqual(data.income[1].activityKind, .lesson); XCTAssertEqual(data.income[1].minutes, 60)
+        XCTAssertEqual(try IncomeAnalytics.total(IncomeAnalytics.receipts(clientID: client.id, data: data), period: .all), 3500)
+    }
+    func testFixedCalendarWorkRecordsAgreedAmountWithoutInventingHoursOrTax() throws {
+        var data = AppData(); let client = Client(name: "Lavoro di prova", rateCents: 2000, activity: .work, billing: .fixed)
+        data.clients = [client]
+        let event = CalendarItem(id: "fixed-work-test", eventIdentifier: "fixed-work-test", calendarIdentifier: "work-test",
+            calendarTitle: "Lavoro", title: "Lavoro di prova", start: date, end: date.addingTimeInterval(7200),
+            location: "", notes: "", colorHex: "123456", isAllDay: false, writable: true, kind: .work)
+        var record = EventRecord(id: event.id, snapshot: event, activeMinutes: 120)
+        XCTAssertNotNil(TutoringLedger.register(event: event, record: &record, client: client, amountCents: 2000,
+            collectedCents: 1500, paymentDate: date, data: &data))
+        XCTAssertEqual(data.income[0].minutes, 0); XCTAssertEqual(data.income[0].amountCents, 2000)
+        XCTAssertEqual(data.income[0].paidCents, 1500); XCTAssertEqual(data.income[0].outstandingCents, 500)
+        XCTAssertNoThrow(try BackupCodec.decode(BackupCodec.encodeCompact(data)))
+    }
+    func testNonTutoringContactCannotBecomeAHistoricalPaidLesson() {
+        var data = AppData(); let client = Client(name: "Progetto di prova", rateCents: 2000, activity: .work, billing: .fixed)
+        data.clients = [client]
+        let event = CalendarItem(id: "meeting-test", eventIdentifier: "meeting-test", calendarIdentifier: "work-test", calendarTitle: "Lavoro",
+            title: client.name, start: date, end: date.addingTimeInterval(3600), location: "", notes: "", colorHex: "123456", isAllDay: false, writable: true, kind: .work)
+        XCTAssertThrowsError(try HistoricalIncome.quote(event, clientID: client.id, year: 2026, now: date.addingTimeInterval(7200), data: data))
+        XCTAssertTrue(data.income.isEmpty)
+    }
 }

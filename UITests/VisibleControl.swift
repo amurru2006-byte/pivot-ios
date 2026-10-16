@@ -1,6 +1,14 @@
 import XCTest
 
 extension XCTestCase {
+    func attachFailureDiagnostics(_ name: String) {
+        guard (testRun?.failureCount ?? 0) > 0 else { return }
+        let app = XCUIApplication()
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = name + "-failure"; screenshot.lifetime = .keepAlways; add(screenshot)
+        let hierarchy = XCTAttachment(string: app.debugDescription)
+        hierarchy.name = name + "-hierarchy"; hierarchy.lifetime = .keepAlways; add(hierarchy)
+    }
     /// iOS 26 can report an off-screen or navigation-bar-covered SwiftUI control
     /// as hittable. Check real viewport geometry BEFORE querying hittability;
     /// keep the ordinary element tap and the caller's behavioural assertions.

@@ -8,7 +8,7 @@ PIVOT_UI_RESULT=build/interaction-tests.xcresult
 PIVOT_SIM_ENTITLEMENTS=build/simulator-entitlements.plist
 case "$PIVOT_UI_ONLY_TESTING" in
   '') ;;
-  PivotUITests/OnlineCoachInteractionTests|v8-privacy-regression|v8-savings-regression|v8-history-regression)
+  PivotUITests/OnlineCoachInteractionTests|v8-privacy-regression|v8-savings-regression|v8-history-regression|v8-contacts-regression)
     PIVOT_PREVIEW_OUTPUT=build/Previews/OnlinePrivacy
     PIVOT_UI_BUILD_LOG=build/online-privacy-build.log
     PIVOT_UI_LOG=build/online-privacy-tests.log
@@ -83,7 +83,16 @@ PIVOT_UI_TEST_COMMAND=(
   -derivedDataPath build/DerivedData -parallel-testing-enabled NO
   -resultBundlePath "$PIVOT_UI_RESULT" "${PIVOT_SIM_SIGNING[@]}" test
 )
-if [ "$PIVOT_UI_ONLY_TESTING" = v8-history-regression ]; then
+if [ "$PIVOT_UI_ONLY_TESTING" = v8-contacts-regression ]; then
+  PIVOT_UI_TEST_COMMAND+=(
+    -only-testing:PivotUITests/OnlineCoachInteractionTests
+    -only-testing:PivotUITests/BackupPrivacyInteractionTests
+    -only-testing:PivotUITests/SavingsInteractionTests
+    -only-testing:PivotUITests/HistoricalIncomeInteractionTests
+    -only-testing:PivotUITests/IncomeCorrectionInteractionTests
+    -only-testing:PivotUITests/PivotInteractionTests/testIncomeSummarySwipesToChart
+  )
+elif [ "$PIVOT_UI_ONLY_TESTING" = v8-history-regression ]; then
   PIVOT_UI_TEST_COMMAND+=(
     -only-testing:PivotUITests/OnlineCoachInteractionTests
     -only-testing:PivotUITests/BackupPrivacyInteractionTests
