@@ -47,8 +47,8 @@ extension XCTestCase {
                 scroll = visible.first { container in
                     if !identifier.isEmpty { return container.descendants(matching: .any).matching(identifier: identifier).firstMatch.exists }
                     return container.descendants(matching: type).matching(NSPredicate(format: "label == %@", label)).firstMatch.exists
-                } ?? visible.first
-            } else { scroll = visible.first }
+                } ?? visible.last
+            } else { scroll = visible.last }
             if finite && frame.minY < top + 8 {
                 if let scroll { scroll.swipeDown(velocity: .slow) } else { app.swipeDown(velocity: .slow) }
             } else {

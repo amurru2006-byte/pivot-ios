@@ -17,7 +17,10 @@ final class HistoricalIncomeInteractionTests: XCTestCase {
         let review = app.buttons["history-review"]
         scrollControlIntoView(review, in: app); XCTAssertTrue(review.isEnabled); review.tap()
         let confirm = app.buttons["history-confirm-import"]
-        XCTAssertTrue(confirm.waitForExistence(timeout: 8)); XCTAssertFalse(confirm.isEnabled)
+        XCTAssertTrue(app.navigationBars["Conferma lo storico"].waitForExistence(timeout: 8))
+        // Form virtualizes its lower rows; the disabled confirmation action
+        // does not enter the AX tree until its collection is scrolled.
+        scrollControlIntoView(confirm, in: app); XCTAssertFalse(confirm.isEnabled)
         app.buttons["Annulla"].tap()
         scrollControlIntoView(review, in: app); review.tap()
         let paid = app.switches["history-paid-confirmation"]

@@ -56,7 +56,8 @@ jobs:
         run: |
           case "$PIVOT_QA_BRANCH" in
             refs/heads/codex/pivot-v8-backup-ui-fix) PIVOT_UI_ONLY_TESTING=PivotUITests/BackupPrivacyInteractionTests ;;
-            refs/heads/codex/pivot-v8-contacts-ui|refs/heads/codex/pivot-v8-entrate-ui) PIVOT_UI_ONLY_TESTING=v8-contacts-regression ;;
+            refs/heads/codex/pivot-v8-entrate-ui) PIVOT_UI_ONLY_TESTING=v8-income-final-regression ;;
+            refs/heads/codex/pivot-v8-contacts-ui) PIVOT_UI_ONLY_TESTING=v8-contacts-regression ;;
             refs/heads/codex/pivot-v8-history-ui) PIVOT_UI_ONLY_TESTING=v8-history-regression ;;
             refs/heads/codex/pivot-v8-savings-ui) PIVOT_UI_ONLY_TESTING=v8-savings-regression ;;
             refs/heads/codex/pivot-v8-backup) PIVOT_UI_ONLY_TESTING=v8-privacy-regression ;;
