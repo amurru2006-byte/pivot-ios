@@ -122,6 +122,6 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
         scrollControlIntoView(received, in: app); XCTAssertTrue(received.label.contains("30,00"))
         XCTAssertTrue(due.label.contains("10,00"))
         let screenshot = XCTAttachment(screenshot: app.screenshot())
-        screenshot.name = "contact-summary-partial-receipt"; screenshot.lifetime = .keepAlways; add(screenshot)
+        screenshot.name = "contact-summary-partial-receipt"; screenshot.lifetime = .keepAlways; self.add(screenshot)
     }
 }
