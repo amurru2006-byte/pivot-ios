@@ -1,6 +1,7 @@
 import XCTest
 
 final class OnlineCoachInteractionTests: XCTestCase {
+    override func tearDownWithError() throws { attachFailureDiagnostics("online-coach"); try super.tearDownWithError() }
     func testOnlineReviewRequiresConfirmationAndCancelPreservesComposer() {
         continueAfterFailure = false
         let app = XCUIApplication()
@@ -8,7 +9,7 @@ final class OnlineCoachInteractionTests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["open-pivot-coach"].waitForExistence(timeout: 15)); app.buttons["open-pivot-coach"].tap()
         let input = app.descendants(matching: .any)["coach-message-input"]
-        for _ in 0..<12 { if input.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(input.waitForExistence(timeout: 8)); scrollControlIntoView(input, in: app, maxSwipes: 12)
         XCTAssertTrue(input.isHittable); input.tap(); input.typeText("Dopo cena, contattami a prova@example.test")
         if app.buttons["Fine"].waitForExistence(timeout: 3) { app.buttons["Fine"].tap() }
         app.buttons["coach-send"].tap()
@@ -36,12 +37,12 @@ final class OnlineCoachInteractionTests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["open-pivot-coach"].waitForExistence(timeout: 15)); app.buttons["open-pivot-coach"].tap()
         let input = app.descendants(matching: .any)["coach-message-input"]
-        for _ in 0..<12 { if input.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(input.waitForExistence(timeout: 8)); scrollControlIntoView(input, in: app, maxSwipes: 12)
         XCTAssertTrue(input.isHittable); input.tap(); input.typeText("Preferisco studiare con esercizi brevi")
         let done = app.buttons["Fine"]
         if done.waitForExistence(timeout: 3) { done.tap() }
         let send = app.buttons["coach-send"]
-        for _ in 0..<5 { if send.isHittable { break }; app.swipeUp() }
+        scrollControlIntoView(send, in: app)
         XCTAssertTrue(send.isHittable); send.tap()
         XCTAssertTrue(app.descendants(matching: .any)["coach-planning-progress"].waitForExistence(timeout: 8))
         let local = app.buttons["coach-online-local-toggle"]
@@ -51,10 +52,10 @@ final class OnlineCoachInteractionTests: XCTestCase {
         wait(for: [localMode], timeout: 5)
         XCTAssertEqual(mode.label, "Base locale")
         XCTAssertFalse(app.staticTexts["coach-online-error"].exists)
-        for _ in 0..<12 { if input.isHittable { break }; app.swipeUp() }
+        scrollControlIntoView(input, in: app, maxSwipes: 12)
         XCTAssertEqual(input.value as? String, "Preferisco studiare con esercizi brevi")
         XCTAssertFalse(app.descendants(matching: .any)["coach-planning-progress"].exists)
-        for _ in 0..<5 { if send.isHittable { break }; app.swipeUp() }
+        scrollControlIntoView(send, in: app)
         XCTAssertTrue(send.isEnabled); send.tap()
         XCTAssertTrue(app.staticTexts["Preferisco studiare con esercizi brevi"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.staticTexts["coach-online-error"].exists)
@@ -73,7 +74,7 @@ final class OnlineCoachInteractionTests: XCTestCase {
         // Require the exact composer identifier, then test real typing and value.
         let input = app.descendants(matching: .any)["coach-message-input"]
         XCTAssertTrue(input.waitForExistence(timeout: 8))
-        for _ in 0..<8 { if input.isHittable { break }; app.swipeUp() }
+        scrollControlIntoView(input, in: app)
         XCTAssertTrue(input.isHittable); input.tap(); input.typeText("Preferisco dopo cena")
         if app.keyboards.firstMatch.exists {
             XCTAssertTrue(app.buttons["Fine"].waitForExistence(timeout: 8)); app.buttons["Fine"].tap()
@@ -97,7 +98,7 @@ final class OnlineCoachInteractionTests: XCTestCase {
         XCTAssertTrue(app.buttons["open-pivot-coach"].waitForExistence(timeout: 15)); app.buttons["open-pivot-coach"].tap()
         let settings = app.buttons["coach-online-settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 8))
-        for _ in 0..<5 { if settings.isHittable { break }; app.swipeUp() }
+        scrollControlIntoView(settings, in: app)
         XCTAssertTrue(settings.isHittable); settings.tap()
         XCTAssertTrue(app.secureTextFields["online-coach-token"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.buttons["online-coach-save"].isEnabled)

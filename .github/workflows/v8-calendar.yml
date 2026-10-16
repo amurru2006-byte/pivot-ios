@@ -46,17 +46,10 @@ jobs:
           security.mkdir(parents=True, exist_ok=True)
           (security / 'macros.json').write_text(json.dumps(approved, indent=2))
           PY
-      - name: Verifica anticipata QR e portachiavi del simulatore
-        env:
-          PIVOT_UI_ONLY_TESTING: PivotUITests/OnlineCoachSetupInteractionTests
-        run: bash Scripts/preview-ui.sh
-      - name: Verifica anticipata dei tre percorsi UI corretti su iOS moderno
-        env:
-          PIVOT_UI_ONLY_TESTING: v8-modern-regression
-        run: bash Scripts/preview-ui.sh
-      # Keep consecutive Debug simulator builds together: switching to
-      # iphoneos Release first rebuilt the full native dependency twice.
-      # No regression is skipped; Release still gates packaging below.
+      # The complete suite includes all four protected-QR tests and all three
+      # modern-UI regression paths. Execute them once here rather than rebuilding
+      # and repeating the same seven tests in two preliminary invocations.
+      # No unique regression is skipped; Release still gates packaging below.
       - name: Regressione UI completa su iPhone simulato
         run: bash Scripts/preview-ui.sh
       - name: Compila app senza firma

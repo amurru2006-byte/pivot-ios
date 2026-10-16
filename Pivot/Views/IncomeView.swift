@@ -23,13 +23,6 @@ private struct IncomeChartPoint: Identifiable {
     var euros: Double { Double(amountCents) / 100 }
 }
 
-private struct IncomePageHeight: PreferenceKey {
-    static var defaultValue: [Int: CGFloat] = [:]
-    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
-        value.merge(nextValue()) { _, current in current }
-    }
-}
-
 struct IncomeView: View {
     @EnvironmentObject var store: PivotStore
     @EnvironmentObject var agenda: AgendaService
@@ -166,13 +159,13 @@ struct IncomeView: View {
             GeometryReader { geometry in
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 0) {
-                        balance.frame(width: geometry.size.width)
+                        balance(width: geometry.size.width)
                             .frame(height: carouselHeight, alignment: .center).id(0)
                             .accessibilityHidden(balancePage != 0)
-                        measuredIncomePage(2) { SavingsPanel(cardHeight: max(300, carouselHeights[0] ?? 300)) }
+                        measuredIncomePage(2, width: geometry.size.width) { SavingsPanel(cardHeight: max(300, carouselHeights[0] ?? 300)) }
                             .frame(width: geometry.size.width).frame(height: carouselHeight, alignment: .top).id(2)
                             .accessibilityHidden(balancePage != 2)
-                        incomeChart.frame(width: geometry.size.width)
+                        incomeChart(width: geometry.size.width)
                             .frame(height: carouselHeight, alignment: .top).id(1)
                             .accessibilityHidden(balancePage != 1)
                     }.scrollTargetLayout()
@@ -184,16 +177,10 @@ struct IncomeView: View {
                 .scrollPosition(id: Binding<Int?>(get: { balancePage }, set: { if let page = $0 { balancePage = page } }))
                 .accessibilityLabel("Riepilogo, Salvadanaio e grafico delle entrate, scorri orizzontalmente")
                 .accessibilityIdentifier("income-carousel")
+                .modifier(IncomeCarouselDiagnostics(page: balancePage, heights: carouselHeights, height: carouselHeight))
             }
             .frame(height: carouselHeight)
             .animation(.easeInOut(duration: 0.22), value: carouselHeight)
-            .onPreferenceChange(IncomePageHeight.self) { heights in
-                // Initial unconstrained layouts can briefly report a taller page.
-                // Retaining that maximum forever leaves an empty, oversized carousel.
-                for (page, height) in heights where height > 0 {
-                    if abs((carouselHeights[page] ?? 0) - height) > 1 { carouselHeights[page] = height }
-                }
-            }
 
             // Navigation lives outside the cards: it cannot cover chart labels
             // or the explanation, even with larger accessibility text.
@@ -216,15 +203,18 @@ struct IncomeView: View {
             .accessibilityAddTraits(balancePage == page ? .isSelected : [])
             .accessibilityIdentifier("income-page-\(page)")
     }
-    private func measuredIncomePage<Content: View>(_ page: Int, @ViewBuilder content: () -> Content) -> some View {
-        content().fixedSize(horizontal: false, vertical: true)
-            .background(GeometryReader { geometry in
-                Color.clear.preference(key: IncomePageHeight.self, value: [page: geometry.size.height])
-            })
-            .frame(maxWidth: .infinity, alignment: .leading)
+    private func measuredIncomePage<Content: View>(_ page: Int, width: CGFloat, @ViewBuilder content: () -> Content) -> some View {
+        // Measure the actual page at its final width, independently of the
+        // horizontal stack's tallest neighbour or an initial ideal-size probe.
+        content().frame(width: width, alignment: .topLeading)
+            .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.height } action: { height in
+                guard height.isFinite, height > 0, abs((carouselHeights[page] ?? 0) - height) > 1 else { return }
+                carouselHeights[page] = height
+            }
     }
-    private var balance: some View {
-        measuredIncomePage(0) {
+    private func balance(width: CGFloat) -> some View {
+        measuredIncomePage(0, width: width) {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
                 Label {
@@ -254,8 +244,8 @@ struct IncomeView: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("income-summary")
     }
-    private var incomeChart: some View {
-        measuredIncomePage(1) {
+    private func incomeChart(width: CGFloat) -> some View {
+        measuredIncomePage(1, width: width) {
         VStack(alignment: .leading, spacing: 12) {
             Label {
                 Text("Andamento incassi").accessibilityIdentifier("income-chart-title")
@@ -328,6 +318,19 @@ struct IncomeView: View {
     private func avatar(_ name: String) -> some View {
         Text(String(name.prefix(1)).uppercased()).font(.system(.headline, design: .rounded)).foregroundStyle(PivotTheme.blue)
             .frame(width: 42, height: 42).background(PivotTheme.blue.opacity(0.1), in: Circle())
+    }
+}
+
+private struct IncomeCarouselDiagnostics: ViewModifier {
+    let page: Int
+    let heights: [Int: CGFloat]
+    let height: CGFloat
+    @ViewBuilder func body(content: Content) -> some View {
+        #if DEBUG && targetEnvironment(simulator)
+        content.accessibilityValue("layout page=\(page) viewport=\(height) summary=\(heights[0] ?? 0) savings=\(heights[2] ?? 0) chart=\(heights[1] ?? 0)")
+        #else
+        content
+        #endif
     }
 }
 

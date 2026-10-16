@@ -27,6 +27,12 @@ manifest/hash/bundle/widget/entitlement inspection on the actual resulting IPA.
 The package is a sideload candidate and still requires the user's existing
 AltStore signing procedure. Never bundle AI credentials or user fixtures.
 
+The full simulator suite includes the four protected-QR tests and the three
+modern-UI regression paths. They run once within that complete suite, not again
+in duplicate preliminary builds. A separate three-case diagnostic run covers
+the last observed income-history, carousel and composer visibility failures;
+passing that subset alone never authorizes packaging.
+
 Do not replace the installed 0.8.0 or previous archived releases until the new
 artifact is verified. Preserve existing backups and training documents. No real
 calendar/ledger migration takes place on the development computer.
