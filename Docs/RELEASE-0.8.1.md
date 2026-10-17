@@ -33,6 +33,12 @@ in duplicate preliminary builds. A separate three-case diagnostic run covers
 the last observed income-history, carousel and composer visibility failures;
 passing that subset alone never authorizes packaging.
 
+The release suite is partitioned into four free standard-runner jobs: finance
+(14), workout (12), profile (16), and protected pairing (4). A source-driven
+validator rejects missing, duplicate or unknown tests, then verifies every real
+passing result without skips. Release depends on every group and verifies their
+logs from the same workflow run again before building the iPhone package.
+
 Do not replace the installed 0.8.0 or previous archived releases until the new
 artifact is verified. Preserve existing backups and training documents. No real
 calendar/ledger migration takes place on the development computer.

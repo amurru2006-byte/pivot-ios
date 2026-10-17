@@ -1,0 +1,42 @@
+{
+  "finance": [
+    "BackupPrivacyInteractionTests",
+    "HistoricalIncomeInteractionTests",
+    "IncomeCorrectionInteractionTests",
+    "OnlineCoachInteractionTests",
+    "SavingsInteractionTests",
+    "PivotInteractionTests/testIncomeSummarySwipesToChart"
+  ],
+  "workout": [
+    "PivotInteractionTests/testDayHistoryCorrectsCompletedWorkoutWithoutStartingRecoveryAndPersists",
+    "PivotInteractionTests/testDayHistoryConfirmsDeletionOfRealAndEmptyWorkoutsAndPersists",
+    "PivotInteractionTests/testFinishFromBottomAutomaticallyOpensPDFAndKeepsEndOnReopen",
+    "PivotInteractionTests/testPDFWriteFailureKeepsWorkoutAndAllowsRetry",
+    "PivotInteractionTests/testLiveActivityLayoutKeepsLargeButtonsWithinSystemHeight",
+    "PivotInteractionTests/testRecoveryStaysReachableAtEighthExerciseAndLastSet",
+    "PivotInteractionTests/testCompactTrainingRowsProtectPlanAndDeleteExtraSets",
+    "PivotInteractionTests/testWorkoutIntentActionsPersistBothSidesAndRestState",
+    "PivotInteractionTests/testTrainingPDFUsesActualRendererAndSyntheticWeeklyData",
+    "PivotInteractionTests/testTrainingPDFImportSetLoggingAndPersistence",
+    "PivotInteractionTests/testTrainingRevisionStatisticsAndOfflineExtraPickerAreReachable",
+    "PivotInteractionTests/testAlarmProbeIsExplicitAndDoesNotStartOnOpening"
+  ],
+  "profile": [
+    "PivotInteractionTests/testSerie7RankPopupUsesTheReceivedSecondCrestAndDoesNotRepeat",
+    "PivotInteractionTests/testSerie7SevenRankSlotsAndManualProfilePersistWithoutInventedBirthDate",
+    "PivotInteractionTests/testSerie7PRCelebrationCanBeClosedAndDoesNotRepeatOnReopen",
+    "PivotInteractionTests/testSerie7DeepLinkReplacesWorkoutPageAndZeroHoldIsSkipped",
+    "PivotInteractionTests/testAutofilledActivityRetainsManualCorrectionAfterRelaunch",
+    "PivotInteractionTests/testWeeklyHabitAndOneReceiptForPreviousLessonPersist",
+    "PivotInteractionTests/testCalendarStudentIsRecognizedAndPaymentUsesSavedPerson",
+    "PivotInteractionTests/testSettingsSectionsAndDictationButtonAreReachable",
+    "PivotInteractionTests/testQuickOutcomeSaveReturnsHomeAndKeepsCompletedActivityInHistory",
+    "PivotInteractionTests/testCoachConversationPersistsWithoutDownloadingAI",
+    "PivotInteractionTests/testTabsAndActivityButtonsRespondDuringCalendarImport",
+    "PivotInteractionTests/testStudyPDFImportOpenAndPersistenceAcrossRelaunch",
+    "TrainingConcernInteractionTests",
+    "TrainingPhaseInteractionTests",
+    "TrainingRepProgressionInteractionTests"
+  ],
+  "pairing": ["OnlineCoachSetupInteractionTests"]
+}

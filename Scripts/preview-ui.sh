@@ -6,8 +6,19 @@ PIVOT_UI_BUILD_LOG=build/preview-build.log
 PIVOT_UI_LOG=build/interaction-tests.log
 PIVOT_UI_RESULT=build/interaction-tests.xcresult
 PIVOT_SIM_ENTITLEMENTS=build/simulator-entitlements.plist
+PIVOT_RELEASE_SHARD=
 case "$PIVOT_UI_ONLY_TESTING" in
   '') ;;
+  v8-release-finance|v8-release-workout|v8-release-profile|v8-release-pairing)
+    PIVOT_RELEASE_SHARD=${PIVOT_UI_ONLY_TESTING#v8-release-}
+    PIVOT_PREVIEW_OUTPUT=build/Previews/Release-$PIVOT_RELEASE_SHARD
+    PIVOT_UI_BUILD_LOG=build/release-$PIVOT_RELEASE_SHARD-build.log
+    PIVOT_UI_LOG=build/release-$PIVOT_RELEASE_SHARD-tests.log
+    PIVOT_UI_RESULT=build/release-$PIVOT_RELEASE_SHARD-tests.xcresult
+    PIVOT_SIM_ENTITLEMENTS=build/release-$PIVOT_RELEASE_SHARD-simulator-entitlements.plist
+    # Validate full coverage before any expensive build; no arbitrary filter.
+    PIVOT_RELEASE_FLAGS=$(python3 Scripts/ui_release_shards.py --shard "$PIVOT_RELEASE_SHARD")
+    ;;
   PivotUITests/OnlineCoachInteractionTests|PivotUITests/BackupPrivacyInteractionTests|v8-privacy-regression|v8-savings-regression|v8-history-regression|v8-contacts-regression|v8-income-final-regression)
     PIVOT_PREVIEW_OUTPUT=build/Previews/OnlinePrivacy
     PIVOT_UI_BUILD_LOG=build/online-privacy-build.log
@@ -66,7 +77,7 @@ xcrun simctl boot "$PIVOT_SIMULATOR" || true
 xcrun simctl bootstatus "$PIVOT_SIMULATOR" -b
 xcrun simctl status_bar "$PIVOT_SIMULATOR" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
 xcrun simctl install "$PIVOT_SIMULATOR" "$PIVOT_SIM_APP"
-if [ -z "$PIVOT_UI_ONLY_TESTING" ]; then
+if [ -z "$PIVOT_UI_ONLY_TESTING" ] || [ "$PIVOT_RELEASE_SHARD" = profile ]; then
   for PIVOT_SCREEN in today coach income settings tutoring launch income-warning income-red duplicates birthday workout-widget strength-ranks; do
     xcrun simctl terminate "$PIVOT_SIMULATOR" app.pivot.personal || true
     xcrun simctl launch "$PIVOT_SIMULATOR" app.pivot.personal --preview "--screen=$PIVOT_SCREEN"
@@ -91,7 +102,11 @@ PIVOT_UI_TEST_COMMAND=(
   -derivedDataPath build/DerivedData -parallel-testing-enabled NO
   -resultBundlePath "$PIVOT_UI_RESULT" "${PIVOT_SIM_SIGNING[@]}" test
 )
-if [ "$PIVOT_UI_ONLY_TESTING" = v8-income-final-regression ]; then
+if [ -n "$PIVOT_RELEASE_SHARD" ]; then
+  while IFS= read -r PIVOT_TEST_FLAG; do
+    PIVOT_UI_TEST_COMMAND+=("$PIVOT_TEST_FLAG")
+  done <<< "$PIVOT_RELEASE_FLAGS"
+elif [ "$PIVOT_UI_ONLY_TESTING" = v8-income-final-regression ]; then
   # Diagnose the three observed failures first; the release workflow still
   # requires every UI test, including the eleven already-green focused cases.
   PIVOT_UI_TEST_COMMAND+=(
@@ -142,16 +157,19 @@ fi
 "${PIVOT_UI_TEST_COMMAND[@]}" 2>&1 | tee "$PIVOT_UI_LOG" | awk '
   /Test Case|Test Suite|Executed [0-9]+ tests|error:|\*\* (TEST|BUILD)/ { print; fflush() }
 ' || PIVOT_UI_TEST_STATUS=$?
+if [ -n "$PIVOT_RELEASE_SHARD" ] && [ "$PIVOT_UI_TEST_STATUS" -eq 0 ]; then
+  python3 Scripts/ui_release_shards.py --shard "$PIVOT_RELEASE_SHARD" --verify-log "$PIVOT_UI_LOG" || PIVOT_UI_TEST_STATUS=1
+fi
 if [ -d "$PIVOT_UI_RESULT" ]; then
   xcrun xcresulttool export attachments --path "$PIVOT_UI_RESULT" --output-path "$PIVOT_PREVIEW_OUTPUT/Interactions" || {
     if [ "$PIVOT_UI_TEST_STATUS" -eq 0 ]; then PIVOT_UI_TEST_STATUS=1; fi
   }
 fi
 PIVOT_APP_DATA=$(xcrun simctl get_app_container "$PIVOT_SIMULATOR" app.pivot.personal data)
-if [ -z "$PIVOT_UI_ONLY_TESTING" ] && [ -f "$PIVOT_APP_DATA/Documents/Pivot-QA-report.pdf" ]; then
+if { [ -z "$PIVOT_UI_ONLY_TESTING" ] || [ "$PIVOT_RELEASE_SHARD" = workout ]; } && [ -f "$PIVOT_APP_DATA/Documents/Pivot-QA-report.pdf" ]; then
   cp "$PIVOT_APP_DATA/Documents/Pivot-QA-report.pdf" build/Pivot-QA-report.pdf
 fi
-if [ -z "$PIVOT_UI_ONLY_TESTING" ] && [ -f "$PIVOT_APP_DATA/Documents/Pivot-QA-finalization.pdf" ]; then
+if { [ -z "$PIVOT_UI_ONLY_TESTING" ] || [ "$PIVOT_RELEASE_SHARD" = workout ]; } && [ -f "$PIVOT_APP_DATA/Documents/Pivot-QA-finalization.pdf" ]; then
   cp "$PIVOT_APP_DATA/Documents/Pivot-QA-finalization.pdf" build/Pivot-QA-finalization.pdf
 fi
 exit "$PIVOT_UI_TEST_STATUS"
