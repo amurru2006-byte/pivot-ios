@@ -285,3 +285,46 @@ test('server binds each response identity and rejects provider-authored identity
     assert.equal(rejected.status,502); assert.equal(rejected.headers.get('X-Pivot-Failure-Class'),'response_fields');
   }
 });
+
+test('v2 creates only a bounded draft and replaces claims of applied changes', async () => {
+  const body={...fixture(),version:2,purpose:'conversation',message:'Crea una chiamata di prova dalle22 a mezzanotte oggi'};
+  const generated={mode:'create',eventIDs:[],reply:'Ho creato tutto',rewrittenMessage:null,
+    draft:{title:'Chiamata di prova',start:'2026-10-08T22:00:00+02:00',end:'2026-10-09T00:00:00+02:00',calendarHint:'Personale',notes:'',endEstimated:false}};
+  const response=await handle(request(body),await environment(),{clock,fetchProvider:async(url,init)=>{
+    const sent=JSON.parse(init.body);
+    assert.equal(sent.response_format.json_schema.name,'pivot_coach_v2');
+    assert.equal(sent.response_format.json_schema.strict,true);
+    return upstream(generated);
+  }});
+  assert.equal(response.status,200);
+  const value=await response.json();
+  assert.equal(value.version,2); assert.equal(value.draft.title,'Chiamata di prova');
+  assert.match(value.reply,/nessun evento è stato creato/);
+  assert.equal(Date.parse(value.draft.end)-Date.parse(value.draft.start),7200000);
+});
+
+test('v2 rewrite accepts long text but cannot create calendar actions', async () => {
+  const body={...fixture(),version:2,purpose:'rewrite',message:'Devo studiare e cucinare. '.repeat(200),events:[],history:[]};
+  assert.equal(validRequest(body,now),true);
+  const generated={mode:'rewrite',eventIDs:[],reply:'Controlla il testo',draft:null,rewrittenMessage:body.message};
+  const response=await handle(request(body),await environment(),{clock,fetchProvider:async()=>upstream(generated)});
+  assert.equal(response.status,200); assert.equal((await response.json()).rewrittenMessage,body.message);
+  for(const change of [{mode:'conversation'},{eventIDs:['e0']},{draft:{}},{rewrittenMessage:null}]) {
+    const failed=await handle(request(body),await environment(),{clock,fetchProvider:async()=>upstream({...generated,...change})});
+    assert.equal(failed.status,502);
+  }
+});
+
+test('v2 rejects malformed drafts, extra capabilities and mixed protocol identities', async () => {
+  const body={...fixture(),version:2,purpose:'conversation'};
+  const generated={mode:'create',eventIDs:[],reply:'Bozza',rewrittenMessage:null,
+    draft:{title:'Prova',start:null,end:null,calendarHint:null,notes:'',endEstimated:false}};
+  for(const draft of [{...generated.draft,execute:true},{...generated.draft,start:'not a date'},
+    {...generated.draft,notes:'x'.repeat(3001)},{...generated.draft,calendarHint:77}]) {
+    const response=await handle(request(body),await environment(),{clock,fetchProvider:async()=>upstream({...generated,draft})});
+    assert.equal(response.status,502);
+  }
+  assert.equal(validRequest({...body,purpose:'execute'},now),false);
+  assert.equal(validRequest({...fixture(),purpose:'conversation'},now),false);
+  assert.equal(validRequest({...body,message:'x'.repeat(12001)},now),false);
+});

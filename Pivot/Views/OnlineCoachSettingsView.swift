@@ -13,6 +13,7 @@ struct OnlineCoachSettingsView: View {
     @State private var isUnlocking = false
     @State private var unlockTask: Task<Void, Never>?
     @State private var unlockGeneration = 0
+    @State private var editingConnection = false
     var body: some View {
         PivotScreen {
             PivotHeader(title: "AI online e privacy", subtitle: "Conversazione dentro Pivot, con base locale disponibile")
@@ -32,7 +33,7 @@ struct OnlineCoachSettingsView: View {
                     .font(.caption).foregroundStyle(PivotTheme.muted)
             }.accessibilityIdentifier("online-coach-privacy")
             PivotCard {
-                Text("Configurazione iniziale").font(.headline)
+                DisclosureGroup(online.isConfigured && setup == nil ? "Modifica collegamento" : "Configurazione iniziale", isExpanded: $editingConnection) {
                 if setup != nil {
                     Text("Dati ricevuti dal QR. Controlla l'indirizzo del tuo collegamento e leggi quali dati vengono inviati. Scansionare il QR non abilita l'AI e non cambia il Calendario.")
                         .font(.caption).accessibilityIdentifier("online-coach-qr-review")
@@ -68,6 +69,7 @@ struct OnlineCoachSettingsView: View {
                     }
                 }.buttonStyle(PivotPrimaryButton()).disabled(!consent || endpoint.isEmpty || token.isEmpty || isUnlocking)
                     .accessibilityIdentifier("online-coach-save")
+                }.accessibilityIdentifier("online-coach-edit")
                 if online.isConfigured {
                     Button("Scollega AI online", role: .destructive) { if online.disconnect() { token = "" } }
                         .buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("online-coach-disconnect")
@@ -87,6 +89,7 @@ struct OnlineCoachSettingsView: View {
         }.navigationTitle("AI online e privacy")
             .toolbar { if setup != nil { ToolbarItem(placement: .cancellationAction) { Button("Annulla") { token = ""; dismiss() } } } }
             .onAppear {
+                editingConnection = !online.isConfigured || setup != nil
                 if let setup, setup.isCurrent(at: Date()) { endpoint = setup.endpoint; token = ""; consent = false }
             }
             .onChange(of: scenePhase) { _, value in

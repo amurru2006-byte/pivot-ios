@@ -6,7 +6,10 @@ struct CoachCloudDisclosure: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Destinazione: Cloudflare → Groq").font(.headline)
-            Text("Il tuo messaggio").font(.subheadline.weight(.semibold))
+            Text(request.purpose == "rewrite" ? "Testo da riordinare" : "Il tuo messaggio").font(.subheadline.weight(.semibold))
+            if request.purpose == "rewrite" {
+                Text("Questa richiesta serve soltanto a riordinare il testo. Non crea un impegno e non invia calendario o conversazioni precedenti. I segnaposto privati saranno ripristinati sull'iPhone.").font(.caption)
+            }
             Text(request.message).textSelection(.enabled)
                 .accessibilityIdentifier("coach-online-reviewed-message")
             Text("Il testo viene filtrato, ma nomi o informazioni personali possono rimanere. I servizi online leggono ciò che invii. Per informazioni sanitarie usa la base locale.")

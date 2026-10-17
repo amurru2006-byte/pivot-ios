@@ -226,7 +226,7 @@ final class OnlineCoachService: ObservableObject {
             var body = Data()
             for try await byte in stream {
                 if Task.isCancelled || generation != currentGeneration { throw CancellationError() }
-                guard body.count < 8192 else { throw CoachOnlineFailure(kind: .invalidResponse, receivedAt: Date()) }
+                guard body.count < (snapshot.request.version == 2 ? 32_000 : 8192) else { throw CoachOnlineFailure(kind: .invalidResponse, receivedAt: Date()) }
                 body.append(byte)
             }
             guard generation == currentGeneration, !Task.isCancelled else { throw CancellationError() }

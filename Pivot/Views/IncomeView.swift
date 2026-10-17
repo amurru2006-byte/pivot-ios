@@ -37,6 +37,8 @@ struct IncomeView: View {
     @State private var carouselHeights: [Int: CGFloat] = [:]
     @State private var chartRange: IncomeChartRange = .year
     @State private var chartStyle: IncomeChartStyle = .bars
+    @State private var showAllReceipts = false
+    private var visibleReceipts: [Payment] { showAllReceipts ? monthPayments : Array(monthPayments.prefix(5)) }
     var currentYear: Int { PivotDate.calendar.component(.year, from: Date()) }
     var year: Int { selectedYear ?? currentYear }
     var ledger: AnnualLedger { store.data.ledger ?? AnnualLedger() }
@@ -90,7 +92,7 @@ struct IncomeView: View {
                     if monthPayments.isEmpty { EmptyCard(title: "I tuoi incassi, tutti qui", message: "Quando registri un pagamento, lo ritrovi in questa lista.", icon: "eurosign.arrow.circlepath") }
                     else {
                         PivotCard {
-                            ForEach(monthPayments) { payment in
+                            ForEach(visibleReceipts) { payment in
                                 NavigationLink { IncomeDetailView(entryID: payment.incomeID) } label: { HStack(spacing: 12) {
                                     avatar(payment.clientName)
                                     VStack(alignment: .leading, spacing: 4) {
@@ -102,7 +104,11 @@ struct IncomeView: View {
                                     Image(systemName: "chevron.right").font(.caption).foregroundStyle(PivotTheme.muted)
                                 }.frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
                                 }.buttonStyle(.plain).accessibilityIdentifier("receipt-detail-" + payment.id.uuidString)
-                                if payment.id != monthPayments.last?.id { Divider().overlay(.white.opacity(0.05)) }
+                                if payment.id != visibleReceipts.last?.id { Divider().overlay(.white.opacity(0.05)) }
+                            }
+                            if monthPayments.count > 5 {
+                                Button(showAllReceipts ? "Mostra meno" : "Mostra tutto") { showAllReceipts.toggle() }
+                                    .accessibilityIdentifier("income-receipts-expand")
                             }
                         }
                     }
@@ -160,7 +166,7 @@ struct IncomeView: View {
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 0) {
                         balance(width: geometry.size.width)
-                            .frame(height: carouselHeight, alignment: .center).id(0)
+                            .frame(height: carouselHeight, alignment: .top).id(0)
                             .accessibilityHidden(balancePage != 0)
                         measuredIncomePage(2, width: geometry.size.width) { SavingsPanel(cardHeight: max(300, carouselHeights[0] ?? 300)) }
                             .frame(width: geometry.size.width).frame(height: carouselHeight, alignment: .top).id(2)
@@ -548,6 +554,9 @@ struct IncomeDetailView: View {
                         ForEach(payments) { p in
                             HStack { Text(p.date.map { DisplayDate.label($0, format: "d MMM yyyy") } ?? "\(p.year ?? 0) · Data incasso non nota").foregroundStyle(PivotTheme.muted); Spacer(); Text("+ \(Money.display(p.amountCents))").foregroundStyle(PivotTheme.accent) }.font(.subheadline)
                             Button("Correggi questo incasso") { editingReceipt = p }.font(.subheadline).accessibilityIdentifier("income-edit-receipt-" + p.id.uuidString).disabled(store.locked)
+                            if entry.historicalSource?.receiptID == p.id, entry.historicalSource?.paymentDateAssumed == true {
+                                Text("Data impostata alla data della lezione.").font(.caption).foregroundStyle(PivotTheme.muted)
+                            }
                         }
                     }
                 }
