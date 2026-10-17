@@ -19,7 +19,7 @@ case "$PIVOT_UI_ONLY_TESTING" in
     # Validate full coverage before any expensive build; no arbitrary filter.
     PIVOT_RELEASE_FLAGS=$(python3 Scripts/ui_release_shards.py --shard "$PIVOT_RELEASE_SHARD")
     ;;
-  PivotUITests/OnlineCoachInteractionTests|PivotUITests/BackupPrivacyInteractionTests|v8-privacy-regression|v8-savings-regression|v8-history-regression|v8-contacts-regression|v8-income-final-regression)
+  PivotUITests/OnlineCoachInteractionTests|PivotUITests/BackupPrivacyInteractionTests|v8-privacy-regression|v8-savings-regression|v8-history-regression|v8-contacts-regression|v8-income-final-regression|v8-training-controls-regression)
     PIVOT_PREVIEW_OUTPUT=build/Previews/OnlinePrivacy
     PIVOT_UI_BUILD_LOG=build/online-privacy-build.log
     PIVOT_UI_LOG=build/online-privacy-tests.log
@@ -106,6 +106,13 @@ if [ -n "$PIVOT_RELEASE_SHARD" ]; then
   while IFS= read -r PIVOT_TEST_FLAG; do
     PIVOT_UI_TEST_COMMAND+=("$PIVOT_TEST_FLAG")
   done <<< "$PIVOT_RELEASE_FLAGS"
+elif [ "$PIVOT_UI_ONLY_TESTING" = v8-training-controls-regression ]; then
+  # Diagnose the two observed control failures without rerunning unrelated UI.
+  # The release workflow still requires all 46 native cases without skips.
+  PIVOT_UI_TEST_COMMAND+=(
+    -only-testing:PivotUITests/PivotInteractionTests/testTrainingPDFImportSetLoggingAndPersistence
+    -only-testing:PivotUITests/TrainingConcernInteractionTests/testPainLinksTwoMovementsWithoutStartingWorkoutResolvesAndPersists
+  )
 elif [ "$PIVOT_UI_ONLY_TESTING" = v8-income-final-regression ]; then
   # Diagnose the three observed failures first; the release workflow still
   # requires every UI test, including the eleven already-green focused cases.

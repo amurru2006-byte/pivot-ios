@@ -1,6 +1,11 @@
 import XCTest
 
 final class TrainingConcernInteractionTests: XCTestCase {
+    override func tearDown() {
+        attachFailureDiagnostics("training-concern")
+        super.tearDown()
+    }
+
     private func reveal(_ element: XCUIElement, in app: XCUIApplication, up: Bool = true) {
         for _ in 0..<24 {
             if element.isHittable { break }
@@ -66,9 +71,13 @@ final class TrainingConcernInteractionTests: XCTestCase {
         }
         XCTAssertLessThan(toggle.frame.maxY, app.frame.maxY - 65, app.debugDescription)
         XCTAssertEqual(toggle.value as? String, value ? "0" : "1", app.debugDescription)
+        let before = XCTAttachment(screenshot: app.screenshot())
+        before.name = "concern-resolved-before-tap"; before.lifetime = .keepAlways; add(before)
         // SwiftUI exposes the labelled row as a switch; its midpoint is the
         // label, not the native switch at the trailing edge. Tap the control.
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.88, dy: 0.5)).tap()
+        let after = XCTAttachment(screenshot: app.screenshot())
+        after.name = "concern-resolved-after-tap"; after.lifetime = .keepAlways; add(after)
         let selected = NSPredicate(format: "value == %@", value ? "1" : "0")
         expectation(for: selected, evaluatedWith: toggle)
         waitForExpectations(timeout: 8)
