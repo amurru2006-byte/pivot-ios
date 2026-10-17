@@ -73,17 +73,20 @@ final class TrainingConcernInteractionTests: XCTestCase {
         XCTAssertEqual(toggle.value as? String, value ? "0" : "1", app.debugDescription)
         let before = XCTAttachment(screenshot: app.screenshot())
         before.name = "concern-resolved-before-tap"; before.lifetime = .keepAlways; add(before)
-        // AX exposes the entire labelled row, not the native track's bounds.
-        // The before/after recording showed a fixed 0.88 point enabling the
-        // switch but leaving it enabled on the reverse operation. Target the
-        // requested side of the track, away from the moving thumb, once.
-        // The exact AX state and both persisted transitions remain required.
-        toggle.coordinate(withNormalizedOffset: CGVector(dx: value ? 0.93 : 0.83, dy: 0.5)).tap()
+        // The failure hierarchy exposes a labelled 361x52 wrapper Switch and
+        // a separate 63x28 UIKit Switch inside it. Query and tap that native
+        // control instead of guessing coordinates on the labelled wrapper.
+        let control = toggle.switches.firstMatch
+        XCTAssertTrue(control.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertLessThan(control.frame.width, toggle.frame.width, app.debugDescription)
+        XCTAssertTrue(control.isHittable, app.debugDescription)
+        control.tap()
         let after = XCTAttachment(screenshot: app.screenshot())
         after.name = "concern-resolved-after-tap"; after.lifetime = .keepAlways; add(after)
         let selected = NSPredicate(format: "value == %@", value ? "1" : "0")
         expectation(for: selected, evaluatedWith: toggle)
         waitForExpectations(timeout: 8)
+        XCTAssertEqual(control.value as? String, value ? "1" : "0", app.debugDescription)
     }
     private func verifyFromRoot(_ app: XCUIApplication, resolved: Bool = false) {
         let verify = app.buttons["concern-verify"]
