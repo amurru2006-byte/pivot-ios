@@ -54,7 +54,7 @@ struct CoachCalendarDraftView: View {
                     calendarID = CoachCalendarDraft.selectedCalendar(hint: draft.calendarHint, choices: choices.map { ($0.id, $0.title) },
                         aliases: store.data.settings.calendarCreationAliases ?? [:], preferred: store.data.settings.preferredNewEventCalendarID) ?? ""
                 }
-                .confirmationDialog("Creare questo impegno nel Calendario?", isPresented: $confirm, titleVisibility: .visible) {
+                .alert("Creare questo impegno nel Calendario?", isPresented: $confirm) {
                     Button("Crea nel Calendario") { save() }.accessibilityIdentifier("coach-create-confirm")
                     Button("Annulla", role: .cancel) { }
                 } message: {
