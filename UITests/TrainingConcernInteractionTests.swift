@@ -73,9 +73,12 @@ final class TrainingConcernInteractionTests: XCTestCase {
         XCTAssertEqual(toggle.value as? String, value ? "0" : "1", app.debugDescription)
         let before = XCTAttachment(screenshot: app.screenshot())
         before.name = "concern-resolved-before-tap"; before.lifetime = .keepAlways; add(before)
-        // SwiftUI exposes the labelled row as a switch; its midpoint is the
-        // label, not the native switch at the trailing edge. Tap the control.
-        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.88, dy: 0.5)).tap()
+        // AX exposes the entire labelled row, not the native track's bounds.
+        // The before/after recording showed a fixed 0.88 point enabling the
+        // switch but leaving it enabled on the reverse operation. Target the
+        // requested side of the track, away from the moving thumb, once.
+        // The exact AX state and both persisted transitions remain required.
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: value ? 0.93 : 0.83, dy: 0.5)).tap()
         let after = XCTAttachment(screenshot: app.screenshot())
         after.name = "concern-resolved-after-tap"; after.lifetime = .keepAlways; add(after)
         let selected = NSPredicate(format: "value == %@", value ? "1" : "0")
