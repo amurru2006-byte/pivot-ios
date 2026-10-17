@@ -116,6 +116,47 @@ final class TrainingConcernTests: XCTestCase {
         XCTAssertEqual(removed.training?.concerns, [report])
         XCTAssertEqual(TrainingConcerns.active(for: first, in: removed.training!).count, 1)
     }
+    func testDeletingConcernRemovesWarningsWithoutChangingTraining() throws {
+        var lib = library(); let report = concern()
+        lib.concerns = [report]; lib.tips[first.id] = "Promemoria TEST"
+        let removed = try TrainingConcerns.removing(report, from: lib)
+        XCTAssertTrue(removed.concerns?.isEmpty == true)
+        XCTAssertTrue(TrainingConcerns.active(for: first, in: removed).isEmpty)
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+        XCTAssertEqual(try encoder.encode(removed.plans), try encoder.encode(lib.plans))
+        XCTAssertEqual(removed.activePlanID, lib.activePlanID)
+        XCTAssertEqual(removed.sessions, lib.sessions)
+        XCTAssertEqual(removed.tips, lib.tips)
+        XCTAssertEqual(removed.achievements, lib.achievements)
+        XCTAssertEqual(lib.concerns, [report])
+    }
+    func testDeletingResolvedConcernPreservesOtherReportsAndBackup() throws {
+        var report = concern(); report.resolvedAt = now
+        var other = concern(); other.id = UUID(); other.area = "Altra zona TEST"
+        var data = AppData(); data.training = .init(concerns: [report, other])
+        let oldBackup = try BackupCodec.encode(data)
+        data.training = try TrainingConcerns.removing(report, from: data.training!)
+        let decoded = try BackupCodec.decode(BackupCodec.encode(data))
+        XCTAssertEqual(decoded.training?.concerns, [other])
+        XCTAssertEqual(TrainingConcerns.active(for: first, in: decoded.training!).map(\.id), [other.id])
+        XCTAssertEqual(try BackupCodec.decode(oldBackup).training?.concerns, [report, other])
+    }
+    func testStaleEditorCannotDeleteAnUpdatedConcern() throws {
+        let report = concern(); var updated = report; updated.notes = "Modifica successiva TEST"
+        let lib = TrainingLibrary(concerns: [updated])
+        XCTAssertThrowsError(try TrainingConcerns.removing(report, from: lib)) { error in
+            guard case TrainingConcerns.ConcernError.changed = error else { return XCTFail("Unexpected error") }
+        }
+        XCTAssertEqual(lib.concerns, [updated])
+    }
+    func testDeletionCanBeRetriedWithoutResurrectingReport() throws {
+        let report = concern(), lib = TrainingLibrary(concerns: [concern()])
+        let removed = try TrainingConcerns.removing(report, from: .init(concerns: [report]))
+        XCTAssertTrue(try TrainingConcerns.removing(report, from: removed).concerns?.isEmpty == true)
+        XCTAssertEqual(try TrainingConcerns.removing(report, from: lib).concerns, lib.concerns)
+        XCTAssertNil(try TrainingConcerns.removing(report, from: .init()).concerns)
+        XCTAssertThrowsError(try TrainingConcerns.saving(report, expected: report, in: removed, now: now))
+    }
     func testHealthReportsAreNotAddedToTrainingTextExport() {
         var lib = library(), report = concern(); report.notes = "PRIVATE-SYMPTOM-TEST"; report.professionalGuidance = "PRIVATE-GUIDANCE-TEST"
         lib.concerns = [report]

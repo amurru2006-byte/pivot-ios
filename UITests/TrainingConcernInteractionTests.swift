@@ -14,10 +14,10 @@ final class TrainingConcernInteractionTests: XCTestCase {
         }
         XCTAssertTrue(element.isHittable, app.debugDescription)
     }
-    private func prepare(injury: Bool = false) -> XCUIApplication {
+    private func prepare(injury: Bool = false, deletion: Bool = false) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["--interaction-test", "--training-concern-test"] + (injury ? ["--reported-injury-test"] : [])
+        app.launchArguments = ["--interaction-test", "--training-concern-test"] + (injury ? ["--reported-injury-test"] : []) + (deletion ? ["--concern-deletion-test"] : [])
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 15)); app.tabBars.buttons["Palestra"].tap()
         let fixture = app.buttons["concern-fixture"]
@@ -87,6 +87,7 @@ final class TrainingConcernInteractionTests: XCTestCase {
         expectation(for: selected, evaluatedWith: toggle)
         waitForExpectations(timeout: 8)
         XCTAssertEqual(control.value as? String, value ? "1" : "0", app.debugDescription)
+        XCTAssertEqual(app.staticTexts["concern-state"].label, value ? "Stato: non più presente" : "Stato: da tenere presente")
     }
     private func verifyFromRoot(_ app: XCUIApplication, resolved: Bool = false) {
         let verify = app.buttons["concern-verify"]
@@ -125,6 +126,42 @@ final class TrainingConcernInteractionTests: XCTestCase {
         XCTAssertTrue(app.textFields["concern-area"].waitForNonExistence(timeout: 8))
         app.navigationBars["Dolori e infortuni"].buttons.element(boundBy: 0).tap()
         verifyFromRoot(app)
+    }
+    func testDeletionRequiresConfirmationRemovesWarningsAndPersists() {
+        let app = prepare(deletion: true)
+        openReport(app)
+        XCTAssertFalse(app.buttons["concern-delete"].exists)
+        fillAndSave(app)
+        let warning = app.buttons["concern-warning-concern-first"]
+        reveal(warning, in: app, up: false); warning.tap()
+        let remove = app.buttons["concern-delete"]
+        reveal(remove, in: app); remove.tap()
+        let confirmation = app.alerts["Eliminare la segnalazione?"]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        confirmation.buttons["Annulla"].tap()
+        XCTAssertTrue(confirmation.waitForNonExistence(timeout: 5))
+        app.buttons["Annulla"].tap()
+        XCTAssertTrue(app.navigationBars["Allenamento"].waitForExistence(timeout: 10))
+        XCTAssertTrue(warning.exists)
+        reveal(warning, in: app, up: false); warning.tap()
+        reveal(remove, in: app); remove.tap()
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        confirmation.buttons["Elimina"].tap()
+        XCTAssertTrue(app.textFields["concern-area"].waitForNonExistence(timeout: 20))
+        XCTAssertFalse(app.buttons["concern-warning-concern-first"].exists)
+        XCTAssertFalse(app.buttons["concern-warning-concern-second"].exists)
+        app.navigationBars["Allenamento"].buttons.element(boundBy: 0).tap()
+        let verify = app.buttons["concern-verify"]
+        reveal(verify, in: app); verify.tap()
+        XCTAssertTrue(app.staticTexts["Eliminazione verificata · allenamenti conservati"].waitForExistence(timeout: 8))
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 15)); app.tabBars.buttons["Palestra"].tap()
+        reveal(verify, in: app); verify.tap()
+        XCTAssertTrue(app.staticTexts["Eliminazione verificata · allenamenti conservati"].waitForExistence(timeout: 8))
+        let list = app.buttons["training-concerns"]
+        reveal(list, in: app, up: false); list.tap()
+        XCTAssertTrue(app.staticTexts["Nessuna segnalazione"].waitForExistence(timeout: 8), app.debugDescription)
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "concern-open-")).firstMatch.exists)
     }
     func testReportedInjuryCanBeCancelledAndSavedWithoutChangingTraining() {
         let app = prepare(injury: true)

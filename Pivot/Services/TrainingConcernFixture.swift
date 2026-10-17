@@ -9,13 +9,19 @@ enum TrainingConcernFixture {
         guard WorkoutRuntime.store.change({ $0.training = .init(plans: [plan], activePlanID: plan.id) }),
               await WorkoutRuntime.store.flushWorkoutChanges() else { throw TrainingError.invalidPlan }
     }
-    static func verify(kind: TrainingConcernKind) async throws -> String {
+    static func verify(kind: TrainingConcernKind, deleted: Bool = false) async throws -> String {
         let store = WorkoutRuntime.store
         guard let library = store.data.training, library.sessions.isEmpty,
               library.achievements?.isEmpty ?? true,
               let plan = library.activePlan, plan.payload.days[0].exercises.count == 2,
-              plan.payload.days[0].exercises.allSatisfy({ $0.sets == 1 && $0.reps == "6" }),
-              let report = library.concerns?.first, library.concerns?.count == 1,
+              plan.payload.days[0].exercises.allSatisfy({ $0.sets == 1 && $0.reps == "6" }) else { throw TrainingError.invalidPlan }
+        if deleted {
+            guard library.concerns?.isEmpty == true,
+                  plan.payload.days[0].exercises.allSatisfy({ TrainingConcerns.active(for: $0, in: library).isEmpty }),
+                  await store.flushWorkoutChanges() else { throw TrainingError.invalidPlan }
+            return "Eliminazione verificata · allenamenti conservati"
+        }
+        guard let report = library.concerns?.first, library.concerns?.count == 1,
               report.kind == kind, report.area == "Zona TEST", report.exercises.count == 2,
               TrainingConcerns.active(for: plan.payload.days[0].exercises[0], in: library).count == (report.isActive ? 1 : 0),
               TrainingConcerns.active(for: plan.payload.days[0].exercises[1], in: library).count == (report.isActive ? 1 : 0),

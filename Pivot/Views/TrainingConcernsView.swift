@@ -59,6 +59,8 @@ struct TrainingConcernEditor: View {
     @State private var concern: TrainingConcern
     @State private var expected: TrainingConcern?
     @State private var busy = false
+    @State private var confirmingDelete = false
+    @State private var deletionPending = false
     @State private var message: String?
     @FocusState private var focusedField: Field?
     let additionalExercises: [TrainingExercise]
@@ -134,13 +136,26 @@ struct TrainingConcernEditor: View {
                 } header: { Text("Indicazioni del professionista") }
                 Section {
                     Toggle("Non più presente", isOn: Binding(get: { !concern.isActive }, set: { concern.resolvedAt = $0 ? max(Date(), concern.observedAt) : nil }))
+                        .tint(PivotTheme.accent)
                         .accessibilityIdentifier("concern-resolved")
+                    Text(concern.isActive ? "Stato: da tenere presente" : "Stato: non più presente")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(concern.isActive ? PivotTheme.amber : PivotTheme.accent)
+                        .accessibilityIdentifier("concern-state")
                     Text("Resta nello storico e puoi riattivarla. Segnarla non più presente rimuove gli avvisi, ma non equivale a un’autorizzazione medica al rientro.")
                         .font(.caption).foregroundStyle(PivotTheme.muted)
                     Text("Resta nel backup personale di Pivot. Non viene aggiunta ai PDF per il personal o inviata automaticamente al Coach.")
                         .font(.caption).foregroundStyle(PivotTheme.muted)
                     if let message { Text(message).foregroundStyle(PivotTheme.amber).accessibilityIdentifier("concern-save-message") }
                     if busy { ProgressView("Salvo la segnalazione…") }
+                }
+                if expected != nil {
+                    Section {
+                        Button(deletionPending ? "Riprova eliminazione" : "Elimina segnalazione", role: .destructive) {
+                            focusedField = nil
+                            confirmingDelete = true
+                        }.accessibilityIdentifier("concern-delete")
+                    }
                 }
             }.scrollDismissesKeyboard(.interactively)
                 .navigationTitle(expected == nil ? "Segnala" : "Aggiorna segnalazione")
@@ -154,10 +169,16 @@ struct TrainingConcernEditor: View {
                     ToolbarItem(placement: .cancellationAction) { Button("Annulla") { dismiss() }.disabled(busy) }
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Salva") { Task { await save() } }
-                            .disabled(busy || store.locked || store.isRestoring || concern.area.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .disabled(busy || deletionPending || store.locked || store.isRestoring || concern.area.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                             .accessibilityIdentifier("concern-save")
                     }
                 }.interactiveDismissDisabled(busy)
+                .alert("Eliminare la segnalazione?", isPresented: $confirmingDelete) {
+                    Button("Elimina", role: .destructive) { Task { await delete() } }
+                    Button("Annulla", role: .cancel) { }
+                } message: {
+                    Text("Rimuove questa segnalazione e i suoi avvisi, anche dallo storico. Non modifica gli allenamenti. Le copie di backup già create restano invariate.")
+                }
         }
     }
     private func save() async {
@@ -167,6 +188,16 @@ struct TrainingConcernEditor: View {
             concern = result.concern; expected = result.concern
             if result.persisted { dismiss() }
             else { message = "Segnalazione conservata in memoria, ma non ancora su disco. Tieni Pivot aperto e riprova Salva, oppure Riprova nelle Impostazioni." }
+        } catch { message = error.localizedDescription }
+    }
+    private func delete() async {
+        guard let expected else { return }
+        busy = true; defer { busy = false }
+        do {
+            let persisted = try await store.deleteTrainingConcern(expected)
+            deletionPending = true
+            if persisted { dismiss() }
+            else { message = "Segnalazione rimossa in memoria, ma non ancora su disco. Tieni Pivot aperto e riprova l’eliminazione, oppure Riprova nelle Impostazioni." }
         } catch { message = error.localizedDescription }
     }
 }
