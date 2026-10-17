@@ -84,6 +84,7 @@ final class OnlineCoachService: ObservableObject {
     static var interactionTestNamespace: String? { OnlineCoachKeychain.interactionNamespace }
     // Only a closed operation and numeric OSStatus, never a query, value or raw error.
     @Published private(set) var keychainTestDiagnostic: String?
+    @Published private(set) var interactionRequestCount = 0
     #endif
     static let settingsChanged = Notification.Name("pivot-online-coach-settings-changed")
     @Published private(set) var isConfigured = false
@@ -183,6 +184,7 @@ final class OnlineCoachService: ObservableObject {
         if let failure, let seconds = failure.remaining(at: Date()), seconds > 0 { throw failure }
         #if DEBUG && targetEnvironment(simulator)
         if preflightFixture || reviewFixture {
+            interactionRequestCount += 1
             // A cancelled preflight must never reach this synthetic provider failure.
             let value = CoachOnlineFailure(kind: .invalidResponse, receivedAt: Date())
             failure = value; throw value

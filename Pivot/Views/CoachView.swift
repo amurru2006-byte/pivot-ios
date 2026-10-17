@@ -28,6 +28,8 @@ struct CoachView: View {
     @StateObject private var onlineCoach = OnlineCoachService()
     @State private var useLocal = false
     @State private var onlineReview: OnlineCoachReview?
+    @State private var lastAuthorizedRequest: CoachV8Request?
+    @State private var showOnlineData = false
     @Environment(\.scenePhase) private var scenePhase
     @State private var dictationComposer = DictationTextComposer()
     private var reviews: [WorkoutReview] { (store.data.workoutReviews ?? []).filter { !$0.dismissed && !$0.resolved } }
@@ -193,7 +195,9 @@ struct CoachView: View {
             if phase == .background { cancelTurn() }
         }
         .onAppear { onlineCoach.reload() }
-        .onReceive(NotificationCenter.default.publisher(for: OnlineCoachService.settingsChanged)) { _ in cancelTurn(); onlineCoach.reload() }
+        .onReceive(NotificationCenter.default.publisher(for: OnlineCoachService.settingsChanged)) { _ in
+            store.onlineConversationPermission.revoke(); cancelTurn(); onlineCoach.reload()
+        }
         .onDisappear { dictation.stop(); coachModel.pauseAndUnload(); cancelTurn() }
         .toolbar { Button { Task { await calendar.refresh(settings: store.data.settings) } } label: { Image(systemName: "arrow.clockwise") } }
         .sheet(item: $responseRecord, onDismiss: {
@@ -205,18 +209,11 @@ struct CoachView: View {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        Text("Destinazione: Pivot Coach su Cloudflare → Groq").font(.headline)
-                        Text("Controlla il testo prima di inviarlo. Il filtro oscura dati riconoscibili, ma può lasciare nomi, indirizzi o informazioni sensibili. Per parlare di salute usa la base locale.")
+                        Text("Autorizza questa conversazione").font(.headline)
+                        Text("Questo messaggio e i successivi messaggi online di oggi useranno le categorie di dati indicate sotto, senza chiedere conferma ogni volta. Vale finché Pivot resta in esecuzione; puoi interrompere gli invii diretti dal Coach. Le modifiche al calendario richiedono sempre una conferma separata.")
                             .font(.subheadline)
-                        Text(review.snapshot.request.message).textSelection(.enabled)
-                            .accessibilityIdentifier("coach-online-reviewed-message")
-                        Text("\(review.snapshot.request.events.count) eventi con alias e orari · \(review.snapshot.request.history.count) messaggi recenti · nessuna memoria")
-                            .font(.caption)
-                        DisclosureGroup("Tutti i dati della richiesta") {
-                            Text(String(decoding: review.snapshot.encodedRequest, as: UTF8.self))
-                                .font(.caption.monospaced()).textSelection(.enabled)
-                        }
-                        Button("Conferma invio online") { sendReviewed(review) }
+                        CoachCloudDisclosure(request: review.snapshot.request)
+                        Button("Autorizza conversazione e invia") { sendReviewed(review) }
                             .buttonStyle(PivotPrimaryButton()).accessibilityIdentifier("coach-online-approve")
                         Button("Annulla e modifica") { onlineReview = nil }
                             .buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("coach-online-review-cancel")
@@ -225,10 +222,23 @@ struct CoachView: View {
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Annulla") { onlineReview = nil } } }
             }.interactiveDismissDisabled(false)
         }
+        .sheet(isPresented: $showOnlineData) {
+            NavigationStack {
+                ScrollView {
+                    if let request = lastAuthorizedRequest {
+                        CoachCloudDisclosure(request: request).padding()
+                    } else {
+                        Text("Nessuna richiesta autorizzata in questa schermata. Il primo invio ti mostrerà il messaggio e i dati inclusi.").padding()
+                    }
+                }.navigationTitle("Ultima richiesta autorizzata")
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Chiudi") { showOnlineData = false } } }
+            }
+        }
         .confirmationDialog("Eliminare questa conversazione? Anche il resoconto non la includerà più.", isPresented: $deleteHistory, titleVisibility: .visible) {
             Button("Elimina", role: .destructive) {
                 let key = PivotDate.key(historyDay)
                 store.change { data in var coach = data.coachState; coach.messages.removeAll { $0.dayKey == key }; data.coachState = coach }
+                if key == PivotDate.key(Date()) { store.onlineConversationPermission.revoke() }
             }
         }
     }
@@ -237,9 +247,23 @@ struct CoachView: View {
         PivotCard(tint: PivotTheme.blue) {
             Label(onlineCoach.isConfigured && !useLocal ? "AI online" : "Base locale", systemImage: onlineCoach.isConfigured && !useLocal ? "network" : "iphone")
                 .font(.headline).accessibilityIdentifier("coach-online-mode")
+            #if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.arguments.contains("--online-coach-review-test") {
+                Text("Richieste sintetiche: \(onlineCoach.interactionRequestCount)")
+                    .accessibilityIdentifier("coach-online-fixture-requests")
+            }
+            #endif
             if onlineCoach.isConfigured && !useLocal {
                 Text("Primo collegamento: proposte per pranzo e palestra di oggi. Recuperi su altri giorni e tragitti automatici non sono ancora disponibili.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
+                Button("Dati inviati") { showOnlineData = true }
+                    .accessibilityIdentifier("coach-online-data")
+                if store.onlineConversationPermission.allows(dayKey: PivotDate.key(Date())) {
+                    Text("Invii diretti autorizzati per questa conversazione.").font(.caption).foregroundStyle(PivotTheme.accent)
+                        .accessibilityIdentifier("coach-online-conversation-authorized")
+                    Button("Interrompi invii diretti") { store.onlineConversationPermission.revoke(); cancelTurn() }
+                        .accessibilityIdentifier("coach-online-revoke")
+                }
             }
             if let failure = onlineCoach.failure {
                 Text(failure.errorDescription ?? "AI online non disponibile").font(.subheadline)
@@ -257,7 +281,9 @@ struct CoachView: View {
                 }
             }
             if onlineCoach.isConfigured {
-                Button(useLocal ? "Usa AI online" : "Continua con la base locale") { useLocal.toggle(); cancelTurn() }
+                Button(useLocal ? "Usa AI online" : "Continua con la base locale") {
+                    store.onlineConversationPermission.revoke(); useLocal.toggle(); cancelTurn()
+                }
                     .buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("coach-online-local-toggle")
                 Text("La base locale usa le regole di pianificazione disponibili; non ha la stessa comprensione della conversazione online.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
@@ -274,6 +300,7 @@ struct CoachView: View {
     private var dictationContext: [String] {
         var values = ["Pivot", "palestra", "allenamento", "sonno", "sveglia", "calendario", "università", "ripetizioni"]
         values.append(contentsOf: store.data.clients.map(\.name))
+        values.append(contentsOf: calendar.choices.map(\.title))
         values.append(contentsOf: agenda.planned.filter { abs($0.start.timeIntervalSinceNow) < 14 * 86_400 }.map(\.title))
         var seen = Set<String>()
         return values.compactMap { value in
@@ -375,6 +402,7 @@ struct CoachView: View {
     private func sendReviewed(_ review: OnlineCoachReview) {
         onlineReview = nil
         guard !isPlanning, !store.locked, !useLocal, onlineCoach.isConfigured else { return }
+        store.onlineConversationPermission.authorize(dayKey: review.snapshot.request.dayKey)
         turnGeneration += 1
         let generation = turnGeneration
         isPlanning = true
@@ -385,7 +413,7 @@ struct CoachView: View {
         }
     }
     private func sendInBackground(_ text: String, targetID: String?) async {
-        let clean = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(3000))
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty, !store.locked, !coachModel.isGenerating, !Task.isCancelled else { return }
         let now = Date()
         historyDay = now
@@ -451,6 +479,7 @@ struct CoachView: View {
     private func sendOnline(_ clean: String, now: Date, approved: CoachV8Snapshot? = nil) async {
         do {
             try Task.checkCancellation()
+            var authorizedSnapshot = approved
             if let approved {
                 await calendar.refresh(settings: store.data.settings)
                 try Task.checkCancellation()
@@ -475,11 +504,18 @@ struct CoachView: View {
                 }.value
                 try Task.checkCancellation()
                 guard snapshot.isCurrent(events: calendar.events, data: store.data, now: Date()) else { throw CoachV8Error.staleContext }
-                onlineReview = .init(snapshot: snapshot, originalMessage: clean)
-                return
+                if store.onlineConversationPermission.allows(dayKey: snapshot.request.dayKey) {
+                    authorizedSnapshot = snapshot
+                } else {
+                    onlineReview = .init(snapshot: snapshot, originalMessage: clean)
+                    return
+                }
             }
-            guard let snapshot = approved else { throw CoachV8Error.staleContext }
-            // Send the exact reviewed bytes, never silently rebuild the context.
+            guard let snapshot = authorizedSnapshot,
+                  store.onlineConversationPermission.allows(dayKey: snapshot.request.dayKey) else { throw CoachV8Error.staleContext }
+            // First message: exact reviewed bytes. Following messages: the same
+            // bounded data policy, authorized for this conversation, freshly checked.
+            lastAuthorizedRequest = snapshot.request
             let response = try await onlineCoach.ask(snapshot)
             guard !store.locked, !store.isRestoring, !Task.isCancelled else { return }
             let currentData = store.data, currentEvents = calendar.events, currentTime = Date()

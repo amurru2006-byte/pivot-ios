@@ -1,6 +1,63 @@
 import XCTest
 
 final class OnlineCoachInteractionTests: XCTestCase {
+    func testConversationPermissionAvoidsRepeatedReviewAndCanBeRevoked() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--interaction-test", "--online-coach-review-test"]
+        app.launch()
+        XCTAssertTrue(app.buttons["open-pivot-coach"].waitForExistence(timeout: 15)); app.buttons["open-pivot-coach"].tap()
+        let input = app.descendants(matching: .any)["coach-message-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 8)); scrollControlIntoView(input, in: app, maxSwipes: 12)
+        input.tap(); input.typeText("Vorrei organizzare lo studio")
+        if app.buttons["Fine"].waitForExistence(timeout: 3) { app.buttons["Fine"].tap() }
+        let send = app.buttons["coach-send"]
+        scrollControlIntoView(send, in: app); send.tap()
+        let approve = app.buttons["coach-online-approve"]
+        XCTAssertTrue(approve.waitForExistence(timeout: 12)); scrollControlIntoView(approve, in: app); approve.tap()
+        let counter = app.staticTexts["coach-online-fixture-requests"]
+        let first = expectation(for: NSPredicate(format: "label == %@", "Richieste sintetiche: 1"), evaluatedWith: counter)
+        wait(for: [first], timeout: 12)
+        scrollControlIntoView(input, in: app, maxSwipes: 12)
+        input.tap(); input.typeText(" e cucinare")
+        if app.buttons["Fine"].waitForExistence(timeout: 3) { app.buttons["Fine"].tap() }
+        scrollControlIntoView(send, in: app); send.tap()
+        let second = expectation(for: NSPredicate(format: "label == %@", "Richieste sintetiche: 2"), evaluatedWith: counter)
+        wait(for: [second], timeout: 12)
+        XCTAssertFalse(approve.exists)
+        let data = app.buttons["coach-online-data"]
+        scrollControlIntoView(data, in: app, maxSwipes: 12); data.tap()
+        XCTAssertTrue(app.staticTexts["coach-online-reviewed-message"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["coach-online-reviewed-message"].label.contains("cucinare"))
+        app.buttons["Chiudi"].tap()
+        let revoke = app.buttons["coach-online-revoke"]
+        scrollControlIntoView(revoke, in: app); revoke.tap()
+        scrollControlIntoView(send, in: app, maxSwipes: 12); send.tap()
+        XCTAssertTrue(approve.waitForExistence(timeout: 12))
+        let cancel = app.buttons["coach-online-review-cancel"]
+        scrollControlIntoView(cancel, in: app); cancel.tap()
+        XCTAssertEqual(counter.label, "Richieste sintetiche: 2")
+    }
+
+    func testDictationPauseKeepsEarlierPhraseAndTypedPrefix() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--interaction-test", "--dictation-pause-test"]
+        app.launch()
+        XCTAssertTrue(app.buttons["open-pivot-coach"].waitForExistence(timeout: 15)); app.buttons["open-pivot-coach"].tap()
+        let input = app.descendants(matching: .any)["coach-message-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 8)); scrollControlIntoView(input, in: app, maxSwipes: 12)
+        input.tap(); input.typeText("Appunti:")
+        if app.buttons["Fine"].waitForExistence(timeout: 3) { app.buttons["Fine"].tap() }
+        let dictate = app.buttons["coach-dictation"]
+        scrollControlIntoView(dictate, in: app); dictate.tap()
+        let accumulated = expectation(for: NSPredicate(format: "value CONTAINS %@", "Appunti: Prima devo studiare. Poi fare la spesa."), evaluatedWith: input)
+        wait(for: [accumulated], timeout: 12)
+        dictate.tap()
+        XCTAssertEqual(input.value as? String, "Appunti: Prima devo studiare. Poi fare la spesa.")
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "dictation-preserved-after-pause"; shot.lifetime = .keepAlways; add(shot)
+    }
+
     override func tearDownWithError() throws { attachFailureDiagnostics("online-coach"); try super.tearDownWithError() }
     func testOnlineReviewRequiresConfirmationAndCancelPreservesComposer() {
         continueAfterFailure = false

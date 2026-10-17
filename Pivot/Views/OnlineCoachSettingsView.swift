@@ -24,7 +24,7 @@ struct OnlineCoachSettingsView: View {
             PivotCard {
                 Label(online.isConfigured ? "Collegamento configurato" : "Collegamento da configurare", systemImage: "lock.shield")
                     .font(.headline).accessibilityIdentifier("online-coach-configuration-status")
-                Text("Prima di ogni invio puoi controllare la richiesta destinata a Cloudflare e Groq: messaggio filtrato, fino a sei messaggi recenti ammissibili della chat online di oggi e calendario con alias, categorie e orari. Memorie, conversazioni locali, titoli e note degli eventi non vengono aggiunti. Stati e spostamenti riconoscibili come derivati da Salute restano locali.")
+                Text("All'inizio della conversazione autorizzi gli invii a Cloudflare e Groq; i messaggi successivi di oggi partono senza conferme ripetute finché Pivot resta in esecuzione. Puoi interrompere gli invii diretti e consultare Dati inviati nel Coach. Sono inclusi messaggio filtrato, fino a sei messaggi recenti ammissibili della chat online di oggi e calendario con alias, categorie e orari. Memorie, conversazioni locali, titoli e note degli eventi non vengono aggiunti. Stati e spostamenti riconoscibili come derivati da Salute restano locali.")
                     .font(.subheadline)
                 Text("Il filtro non garantisce l’anonimato: controlla anche i messaggi recenti e non inviare informazioni sanitarie. Il servizio AI legge il contenuto: HTTPS protegge il trasporto, non lo nasconde al servizio. Va verificata la mancata conservazione dei contenuti nell’account del servizio.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)

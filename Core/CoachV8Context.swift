@@ -66,7 +66,7 @@ enum CoachV8Error: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidResponse: return "La risposta AI non supera i controlli. Nessuna modifica preparata."
-        case .contextTooLarge: return "Il contesto è troppo ampio per questo primo collegamento AI. Usa le regole locali."
+        case .contextTooLarge: return "Il messaggio o il calendario supera i limiti di questo collegamento AI. Il testo resta qui e non viene tagliato: dividi il messaggio o usa la base locale."
         case .emptyMessage: return "Scrivi un messaggio prima di inviare."
         case .staleContext: return "La richiesta è scaduta o i dati sono cambiati. Prepara una nuova anteprima."
         }

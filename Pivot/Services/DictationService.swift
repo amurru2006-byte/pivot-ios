@@ -17,11 +17,16 @@ final class DictationService: ObservableObject {
     private var starting = false
     private var generation = 0
     private var segmentGeneration = 0
-    private var committedTranscript = ""
+    private var transcriptBuffer = SpeechTranscriptBuffer()
     private var contextualPhrases: [String] = []
 
     func start(contextualPhrases: [String] = []) async {
         guard !isListening, !starting else { return }
+        #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--dictation-pause-test") {
+            startInteractionFixture(); return
+        }
+        #endif
         starting = true; defer { starting = false }
         let permissionToken = generation
         let permission = await withCheckedContinuation { continuation in
@@ -45,7 +50,7 @@ final class DictationService: ObservableObject {
             stop()
             message = nil
             transcript = ""
-            committedTranscript = ""
+            transcriptBuffer = SpeechTranscriptBuffer()
             self.contextualPhrases = Array(contextualPhrases.prefix(100))
             self.recognizer = recognizer
             let session = AVAudioSession.sharedInstance()
@@ -55,8 +60,9 @@ final class DictationService: ObservableObject {
             let recordingToken = generation
             try beginRecognitionSegment(recordingToken: recordingToken)
             timeout = Task { [weak self] in
-                do { try await Task.sleep(nanoseconds: 90_000_000_000) } catch { return }
+                do { try await Task.sleep(nanoseconds: 900_000_000_000) } catch { return }
                 guard !Task.isCancelled else { return }
+                self?.message = "Dettatura terminata dopo 15 minuti. Il testo è conservato: puoi continuare premendo Detta."
                 self?.stop()
             }
         } catch {
@@ -101,9 +107,13 @@ final class DictationService: ObservableObject {
                 guard let self, self.isListening, self.generation == recordingToken, self.segmentGeneration == segmentToken else { return }
                 if let result {
                     let segment = result.bestTranscription.formattedString.trimmingCharacters(in: .whitespacesAndNewlines)
-                    self.transcript = self.joined(self.committedTranscript, segment)
+                    let segments = result.bestTranscription.segments
+                    let first = segments.first?.timestamp
+                    let end = segments.last.map { $0.timestamp + $0.duration }
+                    let utteranceFinished = result.isFinal || (result.speechRecognitionMetadata?.speechDuration ?? 0) > 0
+                    self.publishHypothesis(segment, start: first, end: end, utteranceFinished: utteranceFinished)
                     if result.isFinal {
-                        self.committedTranscript = self.transcript
+                        self.transcriptBuffer.finishSegment()
                         do { try self.beginRecognitionSegment(recordingToken: recordingToken) }
                         catch { self.message = "La dettatura si è interrotta: \(error.localizedDescription)"; self.stop() }
                         return
@@ -127,11 +137,24 @@ final class DictationService: ObservableObject {
         request = nil
     }
 
-    private func joined(_ left: String, _ right: String) -> String {
-        let first = left.trimmingCharacters(in: .whitespacesAndNewlines)
-        let second = right.trimmingCharacters(in: .whitespacesAndNewlines)
-        if first.isEmpty { return second }
-        if second.isEmpty { return first }
-        return first + " " + second
+    private func publishHypothesis(_ text: String, start: TimeInterval?, end: TimeInterval?, utteranceFinished: Bool) {
+        transcript = transcriptBuffer.update(text, start: start, end: end, utteranceFinished: utteranceFinished)
     }
+
+    #if DEBUG && targetEnvironment(simulator)
+    private func startInteractionFixture() {
+        stop(); message = nil; transcript = ""; transcriptBuffer = SpeechTranscriptBuffer()
+        isListening = true
+        publishHypothesis("Prima devo studiare.", start: 0, end: 2, utteranceFinished: true)
+        timeout = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { return }
+            guard let self, self.isListening, !Task.isCancelled else { return }
+            self.publishHypothesis("Poi fare la", start: 0, end: 1, utteranceFinished: false)
+            do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
+            guard self.isListening, !Task.isCancelled else { return }
+            self.publishHypothesis("Poi fare la spesa.", start: 0, end: 2, utteranceFinished: true)
+        }
+    }
+    #endif
+
 }
