@@ -41,10 +41,11 @@ final class OnlineCoachInteractionTests: XCTestCase {
         XCTAssertEqual(app.textFields["coach-create-title"].value as? String, "Impegno di prova")
         let review = app.buttons["coach-create-review"]
         scrollControlIntoView(review, in: app); review.tap()
-        let create = app.buttons["Crea nel Calendario"]
+        let confirmation = app.alerts["Creare questo impegno nel Calendario?"]
+        let create = confirmation.buttons["Crea nel Calendario"]
         XCTAssertTrue(create.waitForExistence(timeout: 12))
-        let cancellations = app.buttons.matching(NSPredicate(format: "label == %@", "Annulla")).allElementsBoundByIndex
-        guard let cancel = cancellations.last(where: { $0.isHittable }) else { XCTFail("Manca Annulla nella conferma"); return }
+        let cancel = confirmation.buttons["Annulla"]
+        XCTAssertTrue(cancel.waitForExistence(timeout: 8), "La conferma deve permettere di annullare prima di scrivere")
         cancel.tap()
         XCTAssertTrue(app.navigationBars["Nuovo impegno"].exists)
         scrollControlIntoView(review, in: app); review.tap()

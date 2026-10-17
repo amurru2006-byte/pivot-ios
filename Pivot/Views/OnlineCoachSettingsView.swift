@@ -26,14 +26,14 @@ struct OnlineCoachSettingsView: View {
                 Label(online.isConfigured ? "Collegamento configurato" : "Collegamento da configurare", systemImage: "lock.shield")
                     .font(.headline).accessibilityIdentifier("online-coach-configuration-status")
                 Text("All'inizio della conversazione autorizzi gli invii a Cloudflare e Groq; i messaggi successivi di oggi partono senza conferme ripetute finché Pivot resta in esecuzione. Puoi interrompere gli invii diretti e consultare Dati inviati nel Coach. Sono inclusi messaggio filtrato, fino a sei messaggi recenti ammissibili della chat online di oggi e calendario con alias, categorie e orari. Memorie, conversazioni locali, titoli e note degli eventi non vengono aggiunti. Stati e spostamenti riconoscibili come derivati da Salute restano locali.")
-                    .font(.subheadline)
+                    .font(.subheadline).accessibilityIdentifier("online-coach-privacy")
                 Text("Il filtro non garantisce l’anonimato: controlla anche i messaggi recenti e non inviare informazioni sanitarie. Il servizio AI legge il contenuto: HTTPS protegge il trasporto, non lo nasconde al servizio. Va verificata la mancata conservazione dei contenuti nell’account del servizio.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
                 Text("Il token resta nel portachiavi di questo iPhone, senza sincronizzazione iCloud. Non viene incluso nel backup Pivot. Nessun servizio a pagamento si attiva quando finisce la quota.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
-            }.accessibilityIdentifier("online-coach-privacy")
+            }
             PivotCard {
-                DisclosureGroup(online.isConfigured && setup == nil ? "Modifica collegamento" : "Configurazione iniziale", isExpanded: $editingConnection) {
+                DisclosureGroup(isExpanded: $editingConnection) {
                 if setup != nil {
                     Text("Dati ricevuti dal QR. Controlla l'indirizzo del tuo collegamento e leggi quali dati vengono inviati. Scansionare il QR non abilita l'AI e non cambia il Calendario.")
                         .font(.caption).accessibilityIdentifier("online-coach-qr-review")
@@ -69,7 +69,12 @@ struct OnlineCoachSettingsView: View {
                     }
                 }.buttonStyle(PivotPrimaryButton()).disabled(!consent || endpoint.isEmpty || token.isEmpty || isUnlocking)
                     .accessibilityIdentifier("online-coach-save")
-                }.accessibilityIdentifier("online-coach-edit")
+                } label: {
+                    // Put the identifier on the label, not the container: SwiftUI
+                    // otherwise replaces the identifiers of its secure fields.
+                    Text(online.isConfigured && setup == nil ? "Modifica collegamento" : "Configurazione iniziale")
+                        .accessibilityIdentifier("online-coach-edit")
+                }
                 if online.isConfigured {
                     Button("Scollega AI online", role: .destructive) { if online.disconnect() { token = "" } }
                         .buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("online-coach-disconnect")
