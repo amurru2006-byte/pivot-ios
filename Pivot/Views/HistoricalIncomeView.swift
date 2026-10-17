@@ -16,6 +16,7 @@ struct HistoricalIncomeView: View {
     @State private var review: Review?
     @State private var message: String?
     @State private var task: Task<Void, Never>?
+    @State private var completingDates = false
 
     private struct Review: Identifiable {
         let id = UUID()
@@ -39,6 +40,14 @@ struct HistoricalIncomeView: View {
         NavigationStack {
             PivotScreen {
                 PivotHeader(title: "Recupera le lezioni", subtitle: "Dal calendario al tuo registro.")
+                if store.data.income.contains(where: { entry in
+                    guard let source = entry.historicalSource, source.receivedYear == year else { return false }
+                    return store.data.payments.contains { $0.id == source.receiptID && $0.date == nil }
+                }) {
+                    Button("Completa date delle lezioni già recuperate") { completingDates = true }
+                        .buttonStyle(PivotSecondaryButton()).disabled(store.locked || loading)
+                        .accessibilityIdentifier("history-complete-dates")
+                }
                 PivotCard {
                     Picker("Anno", selection: $year) {
                         ForEach(Array(2026...max(2026, PivotDate.calendar.component(.year, from: Date()))).reversed(), id: \.self) { Text(String($0)).tag($0) }
@@ -81,6 +90,18 @@ struct HistoricalIncomeView: View {
                 }
                 .sheet(isPresented: $addingClient) { ClientForm() }
                 .sheet(item: $review) { value in HistoricalIncomeConfirmation(review: value.quotes, result: value.result, before: value.before, after: value.after) { await confirm(value) } }
+                .confirmationDialog("Usare la data delle lezioni per gli incassi senza data?", isPresented: $completingDates, titleVisibility: .visible) {
+                    Button("Completa date") {
+                        var next = store.data
+                        do {
+                            let count = try HistoricalIncome.completePaymentDates(year: year, data: &next)
+                            if store.change({ $0 = next }) { message = "\(count) date completate. Importi e fondi disponibili invariati." }
+                        } catch { message = error.localizedDescription }
+                    }
+                    Button("Annulla", role: .cancel) { }
+                } message: {
+                    Text("Solo per le lezioni importate nell'anno scelto: l'incasso senza data userà il giorno della lezione. Non aggiunge soldi e non cambia gli incassi normali.")
+                }
         }
     }
 
@@ -138,7 +159,7 @@ struct HistoricalIncomeView: View {
             do {
                 let result = try await Task.detached(priority: .userInitiated) {
                     var copy = original
-                    return try HistoricalIncome.apply(items, freshEvents: items.map(\.event), now: Date(), data: &copy)
+                    return try HistoricalIncome.apply(items, freshEvents: items.map(\.event), now: Date(), assumePaidOnActivityDate: true, data: &copy)
                 }.value
                 try Task.checkCancellation()
                 guard version == store.data.updatedAt else { throw HistoricalIncomeError.changed }
@@ -157,7 +178,7 @@ struct HistoricalIncomeView: View {
             let fresh = EventCoalescer.unique(raw, data: original)
             let updated = try await Task.detached(priority: .userInitiated) {
                 var next = original
-                let result = try HistoricalIncome.apply(value.quotes, freshEvents: fresh, now: Date(), expectedAnnualTotal: value.before, data: &next)
+                let result = try HistoricalIncome.apply(value.quotes, freshEvents: fresh, now: Date(), expectedAnnualTotal: value.before, assumePaidOnActivityDate: true, data: &next)
                 return (next, result)
             }.value
             try Task.checkCancellation()
@@ -196,7 +217,7 @@ private struct HistoricalIncomeConfirmation: View {
                 }
                 Section {
                     Toggle("Confermo: queste lezioni sono state svolte e già pagate nell’anno scelto", isOn: $paid).accessibilityIdentifier("history-paid-confirmation")
-                    Text("Il giorno dell’incasso rimane sconosciuto. Questi importi non saranno assegnati a un mese senza una data reale.").font(.caption)
+                    Text("Per queste lezioni già pagate userò la data della lezione come data predefinita dell'incasso. È una tua convenzione di registrazione, non una data bancaria verificata.").font(.caption)
                 }
                 Section("Lezioni selezionate") {
                     ForEach(review) { item in

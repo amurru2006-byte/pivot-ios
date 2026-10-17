@@ -7,6 +7,7 @@ struct HistoricalIncomeSource: Codable, Equatable {
     var receivedYear: Int
     var receiptID: UUID
     var importedAt: Date
+    var paymentDateAssumed: Bool? = nil
 }
 
 enum HistoricalIncomeError: LocalizedError {
@@ -92,7 +93,7 @@ enum HistoricalIncome {
     /// Re-evaluate against a fresh EventKit snapshot and latest store. Atomic on failure.
     /// Repeating an identical confirmed batch is harmless; no destructive deduplication.
     @discardableResult static func apply(_ quotes: [Quote], freshEvents: [CalendarItem], now: Date,
-        expectedAnnualTotal: Int? = nil, data: inout AppData) throws -> Result {
+        expectedAnnualTotal: Int? = nil, assumePaidOnActivityDate: Bool = false, data: inout AppData) throws -> Result {
         guard !quotes.isEmpty, quotes.count <= 10_000, Set(quotes.map(\.id)).count == quotes.count else { throw HistoricalIncomeError.invalid }
         if let expectedAnnualTotal {
             guard Set(quotes.map(\.year)).count == 1,
@@ -127,12 +128,13 @@ enum HistoricalIncome {
             ledger.openingCents[yearKey, default: 0] -= covered
             let receiptID = UUID()
             let source = HistoricalIncomeSource(event: item.event, rateCents: item.rateCents,
-                openingAttributedCents: covered, receivedYear: item.year, receiptID: receiptID, importedAt: now)
+                openingAttributedCents: covered, receivedYear: item.year, receiptID: receiptID, importedAt: now,
+                paymentDateAssumed: assumePaidOnActivityDate ? true : nil)
             let entry = IncomeEntry(clientID: item.clientID, clientName: item.clientName, date: item.event.end,
                 minutes: item.minutes, amountCents: item.amountCents, paidCents: item.amountCents,
                 calendarEventID: item.id, historicalSource: source)
             next.income.append(entry)
-            next.payments.append(Payment(id: receiptID, incomeID: entry.id, clientName: item.clientName, date: nil,
+            next.payments.append(Payment(id: receiptID, incomeID: entry.id, clientName: item.clientName, date: assumePaidOnActivityDate ? item.event.start : nil,
                 amountCents: item.amountCents, excludedFromBudget: true, receivedYear: item.year))
             // Keep any independent diary notes/ratings intact. Do not invent actual times.
             let recordID = next.records.values.first { EventCoalescer.savedOccurrence($0.snapshot, item.event) }?.id ?? item.id
@@ -163,5 +165,23 @@ enum HistoricalIncome {
             // genuine payment toward this activity is a different, normal receipt.
             guard data.payments.contains(where: { $0.id == source.receiptID && $0.incomeID == entry.id && $0.excludedFromBudget == true }) else { throw BackupError.invalidData }
         }
+    }
+
+    /// Explicit repair only for this import's own undated, excluded receipt.
+    /// No new money, no opening allocation and no changes to normal receipts.
+    @discardableResult static func completePaymentDates(year: Int, data: inout AppData) throws -> Int {
+        var next = data, count = 0
+        for index in next.income.indices {
+            guard var source = next.income[index].historicalSource, source.receivedYear == year,
+                  let receipt = next.payments.firstIndex(where: { $0.id == source.receiptID && $0.incomeID == next.income[index].id }),
+                  next.payments[receipt].date == nil, next.payments[receipt].excludedFromBudget == true,
+                  next.payments[receipt].year == year,
+                  PivotDate.calendar.component(.year, from: source.event.start) == year else { continue }
+            next.payments[receipt].date = source.event.start
+            source.paymentDateAssumed = true; next.income[index].historicalSource = source; count += 1
+        }
+        try validate(next)
+        data = next
+        return count
     }
 }

@@ -2,6 +2,23 @@ import XCTest
 @testable import PivotCore
 
 final class HistoricalIncomeTests: XCTestCase {
+    func testExplicitActivityDatePolicyAndRepairKeepMoneyAndReceiptIdentity() throws {
+        var value = data(); let item = event()
+        try HistoricalIncome.apply([quote(item, data: value)], freshEvents: [item], now: now, data: &value)
+        let before = value.payments[0], total = value.ledger!.total(year: 2026, payments: value.payments)
+        XCTAssertEqual(try HistoricalIncome.completePaymentDates(year: 2026, data: &value), 1)
+        XCTAssertEqual(value.payments[0].id, before.id)
+        XCTAssertEqual(value.payments[0].amountCents, before.amountCents)
+        XCTAssertEqual(value.payments[0].excludedFromBudget, true)
+        XCTAssertEqual(value.payments[0].date, item.start)
+        XCTAssertEqual(value.ledger!.total(year: 2026, payments: value.payments), total)
+        XCTAssertEqual(try HistoricalIncome.completePaymentDates(year: 2026, data: &value), 0)
+        XCTAssertNoThrow(try BackupCodec.decode(BackupCodec.encodeCompact(value)))
+        var direct = data()
+        try HistoricalIncome.apply([quote(item, data: direct)], freshEvents: [item], now: now, assumePaidOnActivityDate: true, data: &direct)
+        XCTAssertEqual(direct.payments[0].date, item.start)
+        XCTAssertEqual(direct.income[0].historicalSource?.paymentDateAssumed, true)
+    }
     private let now = ISO8601DateFormatter().date(from: "2026-10-01T12:00:00Z")!
     private func date(_ value: String) -> Date { ISO8601DateFormatter().date(from: value)! }
     private func data() -> AppData {

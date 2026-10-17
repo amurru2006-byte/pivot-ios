@@ -6,7 +6,7 @@ enum CoachV8Planner {
                         events: [CalendarItem], data: AppData, now: Date) throws -> CoachTurnResult {
         guard snapshot.isCurrent(events: events, data: data, now: now) else { throw CoachV8Error.staleContext }
         // Validate even typed responses, not only network JSON.
-        guard response.version == 1, response.requestID == snapshot.request.requestID,
+        guard response.version == snapshot.request.version, response.requestID == snapshot.request.requestID,
               response.reply.count <= 1000, !response.reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               Set(response.eventIDs).count == response.eventIDs.count,
               (response.mode == .plan ? (1...2).contains(response.eventIDs.count) : response.eventIDs.isEmpty) else {

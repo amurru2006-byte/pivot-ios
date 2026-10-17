@@ -11,6 +11,7 @@ struct ClientIncomeOverview: View {
     @State private var month = PivotDate.calendar.component(.month, from: Date())
     @State private var page = 0
     @State private var style: Style = .bars
+    @State private var pageHeights: [Int: CGFloat] = [:]
     @ScaledMetric(relativeTo: .body) private var summaryHeight: CGFloat = 300
     @ScaledMetric(relativeTo: .body) private var chartHeight: CGFloat = 480
     private let monthLabels = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"]
@@ -23,7 +24,7 @@ struct ClientIncomeOverview: View {
     private var outstanding: Int? { try? IncomeAnalytics.outstanding(clientID: clientID, data: store.data) }
     private var undated: Int { (try? IncomeAnalytics.undated(year: year, payments: payments)) ?? 0 }
     private var points: [IncomeAnalytics.Month]? { try? IncomeAnalytics.months(year: year, payments: payments) }
-    private var height: CGFloat { page == 0 ? summaryHeight : chartHeight }
+    private var height: CGFloat { max(page == 0 ? summaryHeight : chartHeight, pageHeights[page] ?? 0) }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -41,9 +42,9 @@ struct ClientIncomeOverview: View {
             GeometryReader { geometry in
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 0) {
-                        summary.frame(width: geometry.size.width, height: summaryHeight, alignment: .top).id(0)
-                        graph.frame(width: geometry.size.width, height: chartHeight, alignment: .top).id(1)
-                    }.scrollTargetLayout()
+                        measured(0, width: geometry.size.width) { summary }.id(0).accessibilityHidden(page != 0)
+                        measured(1, width: geometry.size.width) { graph }.id(1).accessibilityHidden(page != 1)
+                    }.frame(height: height, alignment: .top).scrollTargetLayout()
                 }.frame(width: geometry.size.width, height: geometry.size.height).clipped()
                     .scrollIndicators(.hidden).scrollTargetBehavior(.paging)
                     .scrollPosition(id: Binding<Int?>(get: { page }, set: { if let value = $0 { page = value } }))
@@ -54,6 +55,13 @@ struct ClientIncomeOverview: View {
                 pageButton("Grafico", value: 1)
             }
         }
+    }
+    private func measured<Content: View>(_ page: Int, width: CGFloat, @ViewBuilder content: () -> Content) -> some View {
+        content().frame(width: width, alignment: .topLeading).fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measured in
+                guard measured.isFinite, measured > 0, abs((pageHeights[page] ?? 0) - measured) > 1 else { return }
+                pageHeights[page] = measured
+            }
     }
     private func pageButton(_ title: String, value: Int) -> some View {
         Button { withAnimation { page = value } } label: {
@@ -82,7 +90,6 @@ struct ClientIncomeOverview: View {
             if undated > 0 && range == .month {
                 Text("\(Money.display(undated)) nell’anno senza data d’incasso").font(.caption).foregroundStyle(PivotTheme.muted)
             }
-            Spacer(minLength: 0)
         }.padding(24).frame(maxWidth: .infinity, minHeight: summaryHeight, alignment: .topLeading)
             .background(LinearGradient(colors: [Color(pivotHex: "22493F"), Color(pivotHex: "1C2C41"), PivotTheme.surface], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 26))
             .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(PivotTheme.accent.opacity(0.18)))
@@ -111,7 +118,6 @@ struct ClientIncomeOverview: View {
                     .chartYAxisLabel("€").frame(height: 205).accessibilityIdentifier("client-income-chart")
             } else { Text("Importi da verificare").foregroundStyle(PivotTheme.amber) }
             if undated > 0 { Text("Senza data d’incasso: \(Money.display(undated))").font(.caption).foregroundStyle(PivotTheme.muted) }
-            Spacer(minLength: 0)
         }.padding(20).frame(maxWidth: .infinity, minHeight: chartHeight, alignment: .topLeading)
             .background(PivotTheme.surface, in: RoundedRectangle(cornerRadius: 26))
             .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(PivotTheme.blue.opacity(0.2)))

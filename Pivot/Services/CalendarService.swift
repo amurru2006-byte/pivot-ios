@@ -7,6 +7,8 @@ struct CalendarChoice: Identifiable, Equatable {
     var title: String
     var colorHex: String
     var holiday: Bool
+    var writable: Bool = false
+    var sourceTitle: String = ""
 }
 
 @MainActor
@@ -60,6 +62,14 @@ final class CalendarService: ObservableObject {
         isRefreshing = false
     }
     func apply(_ move: PlanMove, data: AppData) async throws { try await worker.apply(move, data: data) }
+    func reviewCreation(_ draft: CoachCalendarDraft, calendarID: String, settings: Settings) async throws -> [CalendarItem] {
+        try await worker.reviewCreation(draft, calendarID: calendarID, settings: settings)
+    }
+    func create(_ draft: CoachCalendarDraft, calendarID: String, expectedConflicts: [CalendarItem], settings: Settings) async throws -> (item: CalendarItem, existing: Bool) {
+        let result = try await worker.create(draft, calendarID: calendarID, expectedConflicts: expectedConflicts, settings: settings)
+        invalidateSnapshot(); await refresh(settings: settings, force: true)
+        return result
+    }
     // An explicit history query must not replace or enlarge the home agenda window.
     func incomeHistory(year: Int, calendarIDs: Set<String>, settings: Settings) async throws -> [CalendarItem] {
         let items = try await worker.incomeHistory(year: year, calendarIDs: calendarIDs, settings: settings)
@@ -93,6 +103,41 @@ private struct CalendarSnapshot {
 
 private actor CalendarWorker {
     private lazy var eventStore = EKEventStore()
+    func reviewCreation(_ draft: CoachCalendarDraft, calendarID: String, settings: Settings) throws -> [CalendarItem] {
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { throw CalendarFailure.noAccess }
+        guard draft.problem(now: Date(), calendarID: calendarID) == nil,
+              let calendar = eventStore.calendar(withIdentifier: calendarID), calendar.allowsContentModifications,
+              let start = draft.start, let end = draft.end else { throw CalendarFailure.notWritable }
+        let calendars = eventStore.calendars(for: .event).filter {
+            !settings.excludedCalendarIDs.contains($0.calendarIdentifier) && !settings.excludedCalendarTitles.contains($0.title)
+                && !(settings.excludeHolidays && Self.isHoliday($0.title))
+        }
+        guard !calendars.isEmpty else { return [] }
+        let predicate = eventStore.predicateForEvents(withStart: start, end: end, calendars: calendars)
+        return eventStore.events(matching: predicate).filter { $0.startDate < end && $0.endDate > start }
+            .map(Self.item).sorted { $0.id < $1.id }
+    }
+    func create(_ draft: CoachCalendarDraft, calendarID: String, expectedConflicts: [CalendarItem], settings: Settings) throws -> (item: CalendarItem, existing: Bool) {
+        let fresh = try reviewCreation(draft, calendarID: calendarID, settings: settings)
+        guard let target = eventStore.calendar(withIdentifier: calendarID), target.allowsContentModifications,
+              let start = draft.start, let end = draft.end else { throw CalendarFailure.notWritable }
+        let marker = URL(string: "pivot://created/" + draft.id.uuidString)!
+        let predicate = eventStore.predicateForEvents(withStart: start, end: end, calendars: [target])
+        // A retry after save succeeded must not create another copy, even if the
+        // previous UI acknowledgement or local conversation write failed.
+        if let existing = eventStore.events(matching: predicate).first(where: {
+            $0.url == marker || ($0.startDate == start && $0.endDate == end &&
+                EventCoalescer.normalized($0.title ?? "") == EventCoalescer.normalized(draft.title))
+        }) { return (Self.item(existing), true) }
+        guard fresh == expectedConflicts else { throw CalendarFailure.changed }
+        try Task.checkCancellation()
+        let event = EKEvent(eventStore: eventStore)
+        event.calendar = target; event.title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        event.startDate = start; event.endDate = end; event.timeZone = PivotDate.calendar.timeZone
+        event.notes = draft.notes; event.url = marker
+        try eventStore.save(event, span: .thisEvent, commit: true)
+        return (Self.item(event), false)
+    }
     func requestAccess() async throws -> Bool { try await eventStore.requestFullAccessToEvents() }
     func incomeHistory(year: Int, calendarIDs: Set<String>, settings: Settings) throws -> [CalendarItem] {
         assert(!Thread.isMainThread, "Calendar history must not block touch handling")
@@ -129,7 +174,7 @@ private actor CalendarWorker {
         let hasAccess = EKEventStore.authorizationStatus(for: .event) == .fullAccess
         guard hasAccess else { return CalendarSnapshot(hasAccess: false, choices: [], events: []) }
         let calendars = eventStore.calendars(for: .event)
-        let choices = calendars.map { c in CalendarChoice(id: c.calendarIdentifier, title: c.title, colorHex: Self.hex(c.cgColor), holiday: Self.isHoliday(c.title)) }
+        let choices = calendars.map { c in CalendarChoice(id: c.calendarIdentifier, title: c.title, colorHex: Self.hex(c.cgColor), holiday: Self.isHoliday(c.title), writable: c.allowsContentModifications, sourceTitle: c.source.title) }
         let selected = calendars.filter { c in
             !settings.excludedCalendarIDs.contains(c.calendarIdentifier) && !settings.excludedCalendarTitles.contains(c.title) && !(settings.excludeHolidays && Self.isHoliday(c.title))
         }

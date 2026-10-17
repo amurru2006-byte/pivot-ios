@@ -319,6 +319,7 @@ struct Settings: Codable, Equatable {
     var cardioReviewMinimumCalories: Int? = nil
     // -1 explicitly disables a target; absent energy defaults to the editable 7/10.
     var ratingTargets: [String: Int]? = nil
+    var preferredNewEventCalendarID: String? = nil
 }
 
 struct AppData: Codable {

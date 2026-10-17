@@ -119,6 +119,10 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
         let summary = app.buttons["client-income-page-0"]
         scrollControlIntoView(summary, in: app); summary.tap()
         scrollControlIntoView(received, in: app); XCTAssertTrue(received.label.contains("30,00"))
+        let carousel = app.descendants(matching: .any)["client-income-carousel"].firstMatch
+        XCTAssertTrue(carousel.exists)
+        XCTAssertGreaterThanOrEqual(received.frame.minY, carousel.frame.minY - 1)
+        XCTAssertLessThanOrEqual(received.frame.maxY, carousel.frame.maxY + 1)
         XCTAssertTrue(due.label.contains("10,00"))
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "contact-summary-partial-receipt"; screenshot.lifetime = .keepAlways; self.add(screenshot)

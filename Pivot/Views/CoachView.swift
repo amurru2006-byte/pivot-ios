@@ -3,6 +3,7 @@ import SwiftUI
 private struct OnlineCoachReview: Identifiable {
     let snapshot: CoachV8Snapshot
     let originalMessage: String
+    var rewrite: CoachRewriteDraft? = nil
     var id: String { snapshot.request.requestID }
 }
 
@@ -30,6 +31,8 @@ struct CoachView: View {
     @State private var onlineReview: OnlineCoachReview?
     @State private var lastAuthorizedRequest: CoachV8Request?
     @State private var showOnlineData = false
+    @State private var calendarDraft: CoachCalendarDraft?
+    @State private var originalDictation: String?
     @Environment(\.scenePhase) private var scenePhase
     @State private var dictationComposer = DictationTextComposer()
     private var reviews: [WorkoutReview] { (store.data.workoutReviews ?? []).filter { !$0.dismissed && !$0.resolved } }
@@ -138,7 +141,7 @@ struct CoachView: View {
                     .lineLimit(2...6).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 14))
                 HStack {
                     Button {
-                        if dictation.isListening { dictation.stop() }
+                        if dictation.isListening { finishDictation() }
                         else {
                             dictationComposer.begin(currentText: input)
                             Task { await dictation.start(contextualPhrases: dictationContext) }
@@ -149,6 +152,16 @@ struct CoachView: View {
                     .buttonStyle(PivotPrimaryButton()).disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.locked || coachModel.isGenerating || isPlanning)
                 }
                 if isPlanning { ProgressView("Controllo il programma…").accessibilityIdentifier("coach-planning-progress") }
+                if onlineCoach.isConfigured && !useLocal {
+                    Button("Riordina testo") { startRewrite() }
+                        .disabled(isPlanning || dictation.isListening || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier("coach-rewrite")
+                }
+                if let originalDictation {
+                    Button("Ripristina testo originale") { input = originalDictation; self.originalDictation = nil }
+                        .disabled(isPlanning || dictation.isListening)
+                        .accessibilityIdentifier("coach-rewrite-undo")
+                }
                 if dictation.isListening { Text("Dettatura attiva · continua anche dopo una pausa; controlla il testo prima di inviare").font(.caption).foregroundStyle(PivotTheme.accent) }
                 if let status = dictation.message { Text(status).font(.caption).foregroundStyle(PivotTheme.amber) }
                 if coachModel.isGenerating {
@@ -210,7 +223,7 @@ struct CoachView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         Text("Autorizza questa conversazione").font(.headline)
-                        Text("Questo messaggio e i successivi messaggi online di oggi useranno le categorie di dati indicate sotto, senza chiedere conferma ogni volta. Vale finché Pivot resta in esecuzione; puoi interrompere gli invii diretti dal Coach. Le modifiche al calendario richiedono sempre una conferma separata.")
+                        Text("Questo messaggio, il suo eventuale riordino e i successivi messaggi online di oggi useranno le categorie di dati indicate sotto, senza chiedere conferma ogni volta. Vale finché Pivot resta in esecuzione; puoi interrompere gli invii diretti dal Coach. Le modifiche al calendario richiedono sempre una conferma separata.")
                             .font(.subheadline)
                         CoachCloudDisclosure(request: review.snapshot.request)
                         Button("Autorizza conversazione e invia") { sendReviewed(review) }
@@ -234,6 +247,15 @@ struct CoachView: View {
                     .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Chiudi") { showOnlineData = false } } }
             }
         }
+        .sheet(item: $calendarDraft) { draft in
+            CoachCalendarDraftView(draft: draft) { event, existing in
+                let text = existing ? "Questo impegno era già presente: non ne ho creata un'altra copia." : "Impegno creato nel Calendario: \(event.title)."
+                let saved = store.change { data in
+                    data.coachState.messages.append(.init(dayKey: PivotDate.key(Date()), role: .coach, text: text, onlineHistoryEligible: false))
+                }
+                message = saved ? text : text + " Non riesco ancora a salvare il resoconto in Pivot."
+            }
+        }
         .confirmationDialog("Eliminare questa conversazione? Anche il resoconto non la includerà più.", isPresented: $deleteHistory, titleVisibility: .visible) {
             Button("Elimina", role: .destructive) {
                 let key = PivotDate.key(historyDay)
@@ -254,7 +276,7 @@ struct CoachView: View {
             }
             #endif
             if onlineCoach.isConfigured && !useLocal {
-                Text("Primo collegamento: proposte per pranzo e palestra di oggi. Recuperi su altri giorni e tragitti automatici non sono ancora disponibili.")
+                Text("Conversazione, riordino del testo e bozze per nuovi impegni. Spostamenti verificati per pranzo e palestra di oggi; recuperi multigiorno, cancellazioni e tragitti automatici non sono ancora disponibili.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
                 Button("Dati inviati") { showOnlineData = true }
                     .accessibilityIdentifier("coach-online-data")
@@ -392,6 +414,31 @@ struct CoachView: View {
             isPlanning = false; turnTask = nil
         }
     }
+    private func finishDictation() {
+        dictation.stop()
+        input = dictationComposer.apply(transcript: dictation.transcript, to: input)
+        #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--dictation-pause-test") { return }
+        #endif
+        startRewrite()
+    }
+
+    private func startRewrite() {
+        let clean = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, !isPlanning, !dictation.isListening, !store.locked else { return }
+        guard onlineCoach.isConfigured, !useLocal else {
+            message = "Il dettato è conservato. Per riordinarlo con l'AI serve il collegamento online."; return
+        }
+        turnGeneration += 1
+        let generation = turnGeneration
+        isPlanning = true; message = nil
+        turnTask = Task {
+            await sendOnline(clean, now: Date(), purpose: "rewrite")
+            guard generation == turnGeneration else { return }
+            isPlanning = false; turnTask = nil
+        }
+    }
+
     private func cancelTurn() {
         turnGeneration += 1
         turnTask?.cancel(); turnTask = nil; isPlanning = false
@@ -407,7 +454,8 @@ struct CoachView: View {
         let generation = turnGeneration
         isPlanning = true
         turnTask = Task {
-            await sendOnline(review.originalMessage, now: review.snapshot.request.now, approved: review.snapshot)
+            await sendOnline(review.originalMessage, now: review.snapshot.request.now, approved: review.snapshot,
+                             purpose: review.snapshot.request.purpose ?? "conversation", rewrite: review.rewrite)
             guard generation == turnGeneration else { return }
             isPlanning = false; turnTask = nil
         }
@@ -476,10 +524,12 @@ struct CoachView: View {
         message = result.options.isEmpty ? "Nessuna modifica è stata preparata." : nil
     }
 
-    private func sendOnline(_ clean: String, now: Date, approved: CoachV8Snapshot? = nil) async {
+    private func sendOnline(_ clean: String, now: Date, approved: CoachV8Snapshot? = nil,
+                            purpose: String = "conversation", rewrite: CoachRewriteDraft? = nil) async {
         do {
             try Task.checkCancellation()
             var authorizedSnapshot = approved
+            var rewriteDraft = rewrite
             if let approved {
                 await calendar.refresh(settings: store.data.settings)
                 try Task.checkCancellation()
@@ -499,15 +549,18 @@ struct CoachView: View {
                 #endif
                 try Task.checkCancellation()
                 let snapshotData = store.data, events = calendar.events
+                let preparedRewrite = purpose == "rewrite" ? CoachRewriteDraft(original: clean, events: events, data: snapshotData) : nil
+                let outbound = preparedRewrite?.message ?? clean
                 let snapshot = try await Task.detached(priority: .userInitiated) {
-                    try CoachV8Snapshot.make(message: clean, events: events, data: snapshotData, now: now)
+                    try CoachV8Snapshot.make(message: outbound, events: events, data: snapshotData, now: now, purpose: purpose)
                 }.value
+                rewriteDraft = preparedRewrite
                 try Task.checkCancellation()
                 guard snapshot.isCurrent(events: calendar.events, data: store.data, now: Date()) else { throw CoachV8Error.staleContext }
                 if store.onlineConversationPermission.allows(dayKey: snapshot.request.dayKey) {
                     authorizedSnapshot = snapshot
                 } else {
-                    onlineReview = .init(snapshot: snapshot, originalMessage: clean)
+                    onlineReview = .init(snapshot: snapshot, originalMessage: clean, rewrite: preparedRewrite)
                     return
                 }
             }
@@ -518,6 +571,16 @@ struct CoachView: View {
             lastAuthorizedRequest = snapshot.request
             let response = try await onlineCoach.ask(snapshot)
             guard !store.locked, !store.isRestoring, !Task.isCancelled else { return }
+            if purpose == "rewrite" {
+                guard response.mode == .rewrite, let rewriteDraft, let rewritten = response.rewrittenMessage else { throw CoachV8Error.invalidResponse }
+                let restored = try rewriteDraft.restore(rewritten)
+                guard input.trimmingCharacters(in: .whitespacesAndNewlines) == clean else {
+                    message = "Hai modificato il testo durante il riordino: non l'ho sovrascritto. Puoi riprovare."; return
+                }
+                originalDictation = clean; input = restored
+                message = "Testo riordinato. Controllalo prima di premere Invia."
+                return
+            }
             let currentData = store.data, currentEvents = calendar.events, currentTime = Date()
             let result = try await Task.detached(priority: .userInitiated) {
                 try CoachV8Planner.preview(response, snapshot: snapshot, events: currentEvents, data: currentData, now: currentTime)
@@ -538,8 +601,18 @@ struct CoachView: View {
                 return
             }
             try Task.checkCancellation()
-            if input.trimmingCharacters(in: .whitespacesAndNewlines) == clean { input = "" }
-            message = result.options.isEmpty ? "Nessuna modifica è stata preparata." : nil
+            if input.trimmingCharacters(in: .whitespacesAndNewlines) == clean { input = ""; originalDictation = nil }
+            if var draft = response.draft, response.mode == .create {
+                for (index, client) in store.data.clients.enumerated() {
+                    let alias = "[contatto \(index + 1)]"
+                    draft.title = draft.title.replacingOccurrences(of: alias, with: client.name)
+                    draft.notes = draft.notes.replacingOccurrences(of: alias, with: client.name)
+                    draft.calendarHint = draft.calendarHint?.replacingOccurrences(of: alias, with: client.name)
+                }
+                calendarDraft = draft
+            }
+            message = response.mode == .create ? "Bozza pronta: controllala prima di creare l'impegno." :
+                (result.options.isEmpty ? "Nessuna modifica è stata preparata." : nil)
         } catch let failure as CoachOnlineFailure {
             guard !Task.isCancelled else { return }
             // Keep the composer intact; retries are manual and never queued invisibly.

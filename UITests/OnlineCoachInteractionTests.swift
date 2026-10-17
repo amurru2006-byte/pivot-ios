@@ -157,6 +157,8 @@ final class OnlineCoachInteractionTests: XCTestCase {
         XCTAssertTrue(settings.waitForExistence(timeout: 8))
         scrollControlIntoView(settings, in: app)
         XCTAssertTrue(settings.isHittable); settings.tap()
+        let edit = app.descendants(matching: .any)["online-coach-edit"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 8)); scrollControlIntoView(edit, in: app); edit.tap()
         XCTAssertTrue(app.secureTextFields["online-coach-token"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.buttons["online-coach-save"].isEnabled)
         XCTAssertTrue(app.switches["online-coach-consent"].exists)
