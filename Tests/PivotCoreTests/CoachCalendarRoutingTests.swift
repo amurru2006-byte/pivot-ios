@@ -108,4 +108,9 @@ final class CoachCalendarRoutingTests: XCTestCase {
             XCTAssertNil(CoachCalendarRouting.suggest(title: "Visita in città", hint: nil, choices: choices, settings: settings, context: context).calendarID)
         }
     }
+    func testSuggestedAssociationDoesNotMixDestinationAndParticipant() {
+        XCTAssertEqual(CoachCalendarRouting.suggestedTopic(title: "Città QA con Persona Esempio", hint: nil), "Persona Esempio")
+        XCTAssertEqual(CoachCalendarRouting.suggestedTopic(title: "Vai a trovare Persona Esempio domani", hint: nil), "Persona Esempio")
+        XCTAssertEqual(CoachCalendarRouting.suggestedTopic(title: "Un impegno generico", hint: nil), "")
+    }
 }

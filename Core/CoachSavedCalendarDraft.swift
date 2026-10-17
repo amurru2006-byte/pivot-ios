@@ -15,7 +15,8 @@ struct CoachSavedCalendarDraft: Codable, Identifiable {
 enum CoachDraftStore {
     static func valid(_ coach: CoachState) -> Bool {
         let drafts = coach.calendarDrafts ?? []
-        guard Set(drafts.map(\.id)).count == drafts.count else { return false }
+        guard Set(drafts.map(\.id)).count == drafts.count,
+              Set(drafts.map(\.messageID)).count == drafts.count else { return false }
         let messages = Dictionary(coach.messages.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return drafts.allSatisfy { saved in
             guard let message = messages[saved.messageID], message.role == .coach, message.dayKey == saved.dayKey,
