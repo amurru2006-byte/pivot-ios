@@ -5,6 +5,8 @@ import UIKit
 
 @MainActor
 final class PivotStore: ObservableObject {
+    // Memory-only: a new process/day requires an initial cloud explanation.
+    @Published var onlineConversationPermission = CoachConversationPermission()
     @Published private(set) var data = AppData()
     @Published var error: String?
     @Published private(set) var locked = false
