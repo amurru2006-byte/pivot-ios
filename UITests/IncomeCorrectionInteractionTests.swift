@@ -11,10 +11,10 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
         }
         try super.tearDownWithError()
     }
-    private func launch() -> XCUIApplication {
+    private func launch(extra: [String] = []) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["--interaction-test", "--financial-corrections-test"]
+        app.launchArguments = ["--interaction-test", "--financial-corrections-test"] + extra
         app.launchEnvironment["PIVOT_QA_FINANCE_ID"] = UUID().uuidString
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Entrate"].waitForExistence(timeout: 15)); app.tabBars.buttons["Entrate"].tap()
@@ -22,6 +22,20 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
     }
     private func reveal(_ element: XCUIElement, app: XCUIApplication, up: Bool = true) {
         scrollControlIntoView(element, in: app)
+    }
+    func testRecentReceiptsExpandAndCollapseWithoutChangingTotals() {
+        let app = launch(extra: ["--receipts-list-test"])
+        let total = app.staticTexts["income-summary-total"]
+        XCTAssertTrue(total.waitForExistence(timeout: 8)); let before = total.label
+        let expand = app.buttons["income-receipts-expand"]
+        scrollControlIntoView(expand, in: app, maxSwipes: 15)
+        let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "receipt-detail-"))
+        XCTAssertEqual(rows.count, 5)
+        XCTAssertEqual(expand.label, "Mostra tutto"); expand.tap()
+        XCTAssertEqual(rows.count, 7)
+        scrollControlIntoView(expand, in: app, maxSwipes: 15)
+        XCTAssertEqual(expand.label, "Mostra meno"); expand.tap()
+        XCTAssertEqual(rows.count, 5); XCTAssertEqual(total.label, before)
     }
     private func replace(_ field: XCUIElement, with value: String, app: XCUIApplication) {
         reveal(field, app: app); field.tap()

@@ -103,7 +103,17 @@ private struct CalendarSnapshot {
 
 private actor CalendarWorker {
     private lazy var eventStore = EKEventStore()
+    #if DEBUG && targetEnvironment(simulator)
+    private var creationFixture: Bool { ProcessInfo.processInfo.arguments.contains("--coach-calendar-create-test") }
+    private var createdFixtureItems: [CalendarItem] = []
+    #endif
     func reviewCreation(_ draft: CoachCalendarDraft, calendarID: String, settings: Settings) throws -> [CalendarItem] {
+        #if DEBUG && targetEnvironment(simulator)
+        if creationFixture {
+            guard calendarID == "create-fixture", draft.problem(now: Date(), calendarID: calendarID) == nil else { throw CalendarFailure.notWritable }
+            return createdFixtureItems.filter { $0.start < draft.end! && $0.end > draft.start! }.sorted { $0.id < $1.id }
+        }
+        #endif
         guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { throw CalendarFailure.noAccess }
         guard draft.problem(now: Date(), calendarID: calendarID) == nil,
               let calendar = eventStore.calendar(withIdentifier: calendarID), calendar.allowsContentModifications,
@@ -119,6 +129,16 @@ private actor CalendarWorker {
     }
     func create(_ draft: CoachCalendarDraft, calendarID: String, expectedConflicts: [CalendarItem], settings: Settings) throws -> (item: CalendarItem, existing: Bool) {
         let fresh = try reviewCreation(draft, calendarID: calendarID, settings: settings)
+        #if DEBUG && targetEnvironment(simulator)
+        if creationFixture {
+            if let existing = createdFixtureItems.first(where: { $0.title == draft.title && $0.start == draft.start && $0.end == draft.end }) { return (existing, true) }
+            guard fresh == expectedConflicts else { throw CalendarFailure.changed }
+            let item = CalendarItem(id: draft.id.uuidString, eventIdentifier: draft.id.uuidString, calendarIdentifier: calendarID,
+                                    calendarTitle: "Personale test", title: draft.title, start: draft.start!, end: draft.end!,
+                                    location: "", notes: draft.notes, colorHex: "7EE6CD", isAllDay: false, writable: true, kind: .other)
+            createdFixtureItems.append(item); return (item, false)
+        }
+        #endif
         guard let target = eventStore.calendar(withIdentifier: calendarID), target.allowsContentModifications,
               let start = draft.start, let end = draft.end else { throw CalendarFailure.notWritable }
         let marker = URL(string: "pivot://created/" + draft.id.uuidString)!
@@ -264,6 +284,9 @@ private actor CalendarWorker {
     }
     #if DEBUG && targetEnvironment(simulator)
     private func interactionSnapshot() -> CalendarSnapshot {
+        if creationFixture {
+            return .init(hasAccess: true, choices: [.init(id: "create-fixture", title: "Personale test", colorHex: "7EE6CD", holiday: false, writable: true)], events: createdFixtureItems)
+        }
         if ProcessInfo.processInfo.arguments.contains("--history-test") {
             return CalendarSnapshot(hasAccess: true, choices: [.init(id: "history-fixture", title: "Lavoro", colorHex: "7EE6CD", holiday: false)], events: [])
         }

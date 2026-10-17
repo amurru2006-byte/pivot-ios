@@ -53,6 +53,7 @@ final class PivotStore: ObservableObject {
     init() {
         var storageName = "Pivot"
         #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--online-coach-action-test") { storageName = "PivotCoachActionTests" }
         if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--history-test"),
            let value = ProcessInfo.processInfo.environment["PIVOT_QA_HISTORY_ID"], let id = UUID(uuidString: value) { storageName = "PivotHistoryQA-" + id.uuidString }
         if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--savings-test"),
@@ -117,6 +118,13 @@ final class PivotStore: ObservableObject {
                 change { data in
                     data.clients = [client, duplicate]; data.income = [entry]
                     data.payments = [Payment(id: UUID(uuidString: "55555555-5555-4555-8555-555555555554")!, incomeID: entry.id, clientName: entry.clientName, date: entry.date, amountCents: 1500)]
+                    if ProcessInfo.processInfo.arguments.contains("--receipts-list-test") {
+                        for offset in 1...6 {
+                            let other = IncomeEntry(clientID: client.id, clientName: client.name, date: Date().addingTimeInterval(Double(-offset * 60)), minutes: 0, amountCents: 100, paidCents: 100)
+                            data.income.append(other)
+                            data.payments.append(Payment(incomeID: other.id, clientName: client.name, date: other.date, amountCents: 100))
+                        }
+                    }
                 }
             }
             if !locked, ProcessInfo.processInfo.arguments.contains("--student-recognition-test"), data.clients.isEmpty {

@@ -106,8 +106,8 @@ jobs:
         with:
           name: Pivot-V8-iPhone-candidate
           path: |
-            build/Pivot-0.8.1.ipa
-            build/Pivot-0.8.1-manifest.json
+            build/Pivot-0.8.2.ipa
+            build/Pivot-0.8.2-manifest.json
             build/packaged-entitlements.plist
             build/ui-release-verification.json
           retention-days: 1
