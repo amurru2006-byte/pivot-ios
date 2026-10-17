@@ -1,7 +1,7 @@
 name: Verifica calendario e AI online V8
 on:
   push:
-    branches: ['codex/pivot-v8-calendar', 'codex/pivot-v8-workout-audio', 'codex/pivot-v8-entrate-081']
+    branches: ['codex/pivot-v8-calendar', 'codex/pivot-v8-workout-audio', 'codex/pivot-v8-entrate-081', 'codex/pivot-v8-arm-081']
   workflow_dispatch:
 permissions:
   contents: read
@@ -39,7 +39,9 @@ jobs:
           if-no-files-found: error
   ui:
     needs: core
-    runs-on: macos-15-intel
+    # Standard M1 runner, free for public repositories. Keep native simulator
+    # execution independent of the Intel Core/Release packaging environment.
+    runs-on: macos-15
     timeout-minutes: 180
     strategy:
       fail-fast: false
