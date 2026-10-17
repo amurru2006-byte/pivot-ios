@@ -54,6 +54,10 @@ final class PivotStore: ObservableObject {
         var storageName = "Pivot"
         #if DEBUG && targetEnvironment(simulator)
         if ProcessInfo.processInfo.arguments.contains("--online-coach-action-test") { storageName = "PivotCoachActionTests" }
+        if ProcessInfo.processInfo.arguments.contains("--online-coach-action-test"),
+           let value = ProcessInfo.processInfo.environment["PIVOT_QA_COACH_ACTION_ID"], let id = UUID(uuidString: value) {
+            storageName = "PivotCoachActionQA-" + id.uuidString
+        }
         if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--history-test"),
            let value = ProcessInfo.processInfo.environment["PIVOT_QA_HISTORY_ID"], let id = UUID(uuidString: value) { storageName = "PivotHistoryQA-" + id.uuidString }
         if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--savings-test"),

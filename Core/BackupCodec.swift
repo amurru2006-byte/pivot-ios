@@ -29,6 +29,7 @@ enum BackupCodec {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         var data = try decoder.decode(AppData.self, from: bytes)
+        guard CoachCalendarRouting.valid(data.settings) else { throw BackupError.invalidData }
         try StudyFiles.validateBackup(data)
         try data.training?.validate()
         try data.strengthProfile?.validate()
@@ -102,6 +103,7 @@ enum BackupCodec {
             guard draft.source.kind == .workout, draft.end.map({ $0 > draft.start }) ?? true else { throw BackupError.invalidData }
         }
         if let coach = data.coach {
+            guard CoachDraftStore.valid(coach) else { throw BackupError.invalidData }
             guard Set(coach.messages.map(\.id)).count == coach.messages.count,
                   Set(coach.options.map(\.id)).count == coach.options.count,
                   Set(coach.pendingCalendarChanges.map(\.id)).count == coach.pendingCalendarChanges.count,
