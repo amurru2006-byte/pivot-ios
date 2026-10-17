@@ -37,6 +37,7 @@ struct IncomeView: View {
     @State private var carouselHeights: [Int: CGFloat] = [:]
     @State private var chartRange: IncomeChartRange = .year
     @State private var chartStyle: IncomeChartStyle = .bars
+    @State private var selectedBar: String?
     @State private var showAllReceipts = false
     private var visibleReceipts: [Payment] { showAllReceipts ? monthPayments : Array(monthPayments.prefix(5)) }
     var currentYear: Int { PivotDate.calendar.component(.year, from: Date()) }
@@ -53,8 +54,8 @@ struct IncomeView: View {
     }
     var outstanding: [IncomeEntry] { store.data.income.filter { $0.outstandingCents > 0 }.sorted { $0.date < $1.date } }
     private var carouselHeight: CGFloat {
-        let minimum: CGFloat = balancePage == 1 ? 480 : 300
-        return max(minimum, carouselHeights[balancePage] ?? minimum)
+        // Fallback only until measurement: no permanent padding to a taller page.
+        carouselHeights[balancePage] ?? (balancePage == 1 ? 360 : 280)
     }
     var body: some View {
         NavigationStack {
@@ -89,6 +90,11 @@ struct IncomeView: View {
                 }
                 VStack(alignment: .leading, spacing: 14) {
                     SectionHeading(title: "Ultimi incassi", detail: String(year))
+                    if monthPayments.count > 5 {
+                        Button(showAllReceipts ? "Mostra meno" : "Mostra tutto") { showAllReceipts.toggle() }
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .accessibilityIdentifier("income-receipts-expand")
+                    }
                     if monthPayments.isEmpty { EmptyCard(title: "I tuoi incassi, tutti qui", message: "Quando registri un pagamento, lo ritrovi in questa lista.", icon: "eurosign.arrow.circlepath") }
                     else {
                         PivotCard {
@@ -105,10 +111,6 @@ struct IncomeView: View {
                                 }.frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
                                 }.buttonStyle(.plain).accessibilityIdentifier("receipt-detail-" + payment.id.uuidString)
                                 if payment.id != visibleReceipts.last?.id { Divider().overlay(.white.opacity(0.05)) }
-                            }
-                            if monthPayments.count > 5 {
-                                Button(showAllReceipts ? "Mostra meno" : "Mostra tutto") { showAllReceipts.toggle() }
-                                    .accessibilityIdentifier("income-receipts-expand")
                             }
                         }
                     }
@@ -158,6 +160,9 @@ struct IncomeView: View {
                 .sheet(isPresented: $importingHistory) { HistoricalIncomeView() }
                 .sheet(isPresented: $exporting) { if let exportFile { ShareSheet(items: [exportFile]) } }
                 .sheet(isPresented: $editingOpening) { OpeningIncomeForm(year: year) }
+                .onChange(of: chartRange) { _, _ in selectedBar = nil }
+                .onChange(of: year) { _, _ in selectedBar = nil }
+                .onChange(of: chartStyle) { _, _ in selectedBar = nil }
         }
     }
     private var balanceCarousel: some View {
@@ -168,7 +173,7 @@ struct IncomeView: View {
                         balance(width: geometry.size.width)
                             .frame(height: carouselHeight, alignment: .top).id(0)
                             .accessibilityHidden(balancePage != 0)
-                        measuredIncomePage(2, width: geometry.size.width) { SavingsPanel(cardHeight: max(300, carouselHeights[0] ?? 300)) }
+                        measuredIncomePage(2, width: geometry.size.width) { SavingsPanel(cardHeight: carouselHeights[0] ?? 280) }
                             .frame(width: geometry.size.width).frame(height: carouselHeight, alignment: .top).id(2)
                             .accessibilityHidden(balancePage != 2)
                         incomeChart(width: geometry.size.width)
@@ -266,10 +271,16 @@ struct IncomeView: View {
             if chartPoints.allSatisfy({ $0.amountCents == 0 }) {
                 ContentUnavailableView("Nessun incasso datato", systemImage: "chart.bar", description: Text("Registra un pagamento per costruire il grafico."))
             } else {
+                if chartStyle == .bars, let point = chartPoints.first(where: { $0.label == selectedBar }) {
+                    IncomeBarReadout(label: point.label, cents: point.amountCents,
+                                     identifier: "income-bar-value") { selectedBar = nil }
+                }
                 Chart(chartPoints) { point in
                     switch chartStyle {
                     case .bars:
                         BarMark(x: .value("Periodo", point.label), y: .value("Euro", point.euros)).foregroundStyle(PivotTheme.accent.gradient)
+                            .opacity(selectedBar == nil || selectedBar == point.label ? 1 : 0.4)
+                            .accessibilityLabel(Text(point.label)).accessibilityValue(Text(Money.display(point.amountCents)))
                     case .line:
                         LineMark(x: .value("Periodo", point.label), y: .value("Euro", point.euros)).foregroundStyle(PivotTheme.blue).interpolationMethod(.catmullRom)
                         PointMark(x: .value("Periodo", point.label), y: .value("Euro", point.euros)).foregroundStyle(PivotTheme.blue)
@@ -278,8 +289,15 @@ struct IncomeView: View {
                         LineMark(x: .value("Periodo", point.label), y: .value("Euro", point.euros)).foregroundStyle(PivotTheme.blue)
                     }
                 }.chartYScale(domain: 0...max(1, (chartPoints.map(\.euros).max() ?? 0) * 1.15))
+                    .chartXSelection(value: $selectedBar)
+                    .chartGesture { proxy in
+                        SpatialTapGesture().onEnded { value in
+                            if chartStyle == .bars { proxy.selectXValue(at: value.location.x) }
+                        }
+                    }
                     .chartYAxisLabel("€").frame(height: 205)
                     .accessibilityIdentifier("income-chart-plot")
+                    .onChange(of: chartPoints.map(\.key)) { _, _ in selectedBar = nil }
             }
             Text(chartRange == .years ? "La vista annuale comprende anche gli importi pregressi." : "Giorni e mesi mostrano soltanto pagamenti con una data; l'importo pregresso resta nel totale annuale.")
                 .font(.caption2).foregroundStyle(PivotTheme.muted)
@@ -349,6 +367,7 @@ struct ClientForm: View {
     @State private var aliases = ""
     @State private var activity: IncomeActivityKind = .lesson
     @State private var billing: IncomeBilling = .hourly
+    @State private var defaults = ClientDefaults()
     @State private var message: String?
     var editingClient: Client? = nil
     private var existing: [Client] { ClientRegistry.named(name, clients: store.data.clients) }
@@ -376,6 +395,7 @@ struct ClientForm: View {
                     TextField("Altri nomi nel calendario, uno per riga", text: $aliases, axis: .vertical).lineLimit(2...4).accessibilityIdentifier("client-aliases")
                     Text("Aggiungi solo nomi che sai appartenere a questa persona. I casi ambigui richiedono una scelta; i nomi non vengono inviati all’AI online.").font(.caption).foregroundStyle(PivotTheme.muted)
                 }
+                PivotCard { ClientDefaultsFields(defaults: $defaults) }
                 if editingClient == nil && existing.count == 1 {
                     Text("Questo contatto esiste già: aggiornerò il profilo senza creare un doppione.").font(.subheadline).accessibilityIdentifier("client-update-existing")
                 } else if existing.contains(where: { $0.id != editingClient?.id }) {
@@ -388,14 +408,17 @@ struct ClientForm: View {
                     do {
                         try ClientRegistry.save(name: name, rateCents: cents, cadence: cadence,
                                                 aliases: aliases.components(separatedBy: .newlines), editingID: editingClient?.id,
-                                                activity: activity, billing: billing, data: &next)
+                                                activity: activity, billing: billing, defaults: defaults, data: &next)
                         if store.change({ $0 = next }) { dismiss() }
                     } catch { message = "Non ho creato un altro profilo. Scegli lo studente esistente o unisci prima i doppioni." }
-                }.buttonStyle(PivotPrimaryButton()).accessibilityIdentifier("client-save").disabled(store.locked || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || rateValue == nil)
+                }.buttonStyle(PivotPrimaryButton()).accessibilityIdentifier("client-save").disabled(store.locked || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || rateValue == nil || !defaults.isValid)
             }.navigationTitle("Contatto")
-                .onAppear { if let client = editingClient { name = client.name; rate = String(format: "%.2f", Double(client.rateCents) / 100); cadence = client.paymentCadence ?? .everyLesson; aliases = (client.calendarAliases ?? []).joined(separator: "\n"); activity = client.activityKind; billing = client.billingMode } }
+                .onAppear { if let client = editingClient { name = client.name; rate = String(format: "%.2f", Double(client.rateCents) / 100); cadence = client.paymentCadence ?? .everyLesson; aliases = (client.calendarAliases ?? []).joined(separator: "\n"); activity = client.activityKind; billing = client.billingMode; defaults = client.defaults ?? ClientDefaults() } }
                 .onChange(of: activity) { _, value in if value == .lesson { billing = .hourly }; if value == .gift { billing = .fixed } }
                 .onChange(of: name) { _, _ in
+                    if editingClient == nil, existing.count == 1, let client = existing.first {
+                        defaults = client.defaults ?? ClientDefaults()
+                    }
                     if editingClient == nil, existing.count == 1, rate.isEmpty, let client = existing.first {
                         rate = String(format: "%.2f", Double(client.rateCents) / 100); cadence = client.paymentCadence ?? .everyLesson; activity = client.activityKind; billing = client.billingMode
                     }
@@ -597,7 +620,7 @@ struct ClientDetailView: View {
     var body: some View {
         PivotScreen {
             PivotHeader(title: current.name, subtitle: current.activityKind == .lesson ? "\(Money.display(current.rateCents)) all'ora · \(entries.count) lezioni registrate" : "\(current.activityKind.label) · \(entries.count) attività registrate")
-            Button("Modifica nome e tariffa") { editingClient = true }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("client-edit").disabled(store.locked)
+            Button("Modifica contatto e predefiniti") { editingClient = true }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("client-edit").disabled(store.locked)
             if store.data.clients.count > 1 { Button("Unisci profili dello stesso contatto") { mergingClient = true }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("client-merge").disabled(store.locked) }
             ClientIncomeOverview(clientID: client.id)
             Button(current.activityKind == .lesson ? "Aggiungi lezione" : "Aggiungi attività") { addingActivity = true }

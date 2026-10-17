@@ -219,6 +219,8 @@ final class OnlineCoachInteractionTests: XCTestCase {
         XCTAssertTrue(app.secureTextFields["online-coach-token"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.buttons["online-coach-save"].isEnabled)
         XCTAssertTrue(app.switches["online-coach-consent"].exists)
+        XCTAssertTrue(app.staticTexts["online-coach-edit-explanation"].label.contains("già salvato"))
+        XCTAssertTrue(app.buttons["online-coach-disconnect"].exists)
         let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "v8-online-privacy-settings"; screenshot.lifetime = .keepAlways; add(screenshot)
     }
 }

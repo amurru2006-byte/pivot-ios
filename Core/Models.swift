@@ -202,6 +202,8 @@ struct Client: Codable, Identifiable, Equatable {
     var calendarAliases: [String]? = nil
     var activity: IncomeActivityKind? = nil
     var billing: IncomeBilling? = nil
+    // Optional for backwards-compatible backups; never changes past receipts.
+    var defaults: ClientDefaults? = nil
     var activityKind: IncomeActivityKind { activity ?? .lesson }
     var billingMode: IncomeBilling { activityKind == .gift ? .fixed : billing ?? .hourly }
 }

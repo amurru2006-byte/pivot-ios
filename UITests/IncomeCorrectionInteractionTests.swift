@@ -31,8 +31,11 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
         scrollControlIntoView(expand, in: app, maxSwipes: 15)
         let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "receipt-detail-"))
         XCTAssertEqual(rows.count, 5)
+        XCTAssertLessThanOrEqual(expand.frame.maxY, rows.element(boundBy: 0).frame.minY,
+                                 "Espandi e riduci devono essere sopra la lista")
         XCTAssertEqual(expand.label, "Mostra tutto"); expand.tap()
         XCTAssertEqual(rows.count, 7)
+        XCTAssertTrue(expand.isHittable, "Si deve poter richiudere senza attraversare tutte le righe")
         scrollControlIntoView(expand, in: app, maxSwipes: 15)
         XCTAssertEqual(expand.label, "Mostra meno"); expand.tap()
         XCTAssertEqual(rows.count, 5); XCTAssertEqual(total.label, before)
@@ -42,6 +45,68 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
         let current = field.value as? String ?? ""
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count) + value)
         if app.buttons["Fine"].waitForExistence(timeout: 2) { app.buttons["Fine"].tap() }
+    }
+    func testContactTodayRestoresCurrentMonthWithoutChangingMoney() {
+        let app = launch()
+        let contact = app.buttons["client-detail-55555555-5555-4555-8555-555555555551"]
+        reveal(contact, app: app); contact.tap()
+        let period = app.segmentedControls["client-income-period"]
+        reveal(period, app: app); period.buttons["Mese"].tap()
+        let received = app.staticTexts["client-income-received"]
+        XCTAssertTrue(received.waitForExistence(timeout: 8)); let before = received.label
+        let months = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"]
+        let currentMonth = Calendar.current.component(.month, from: Date())
+        let other = currentMonth == 1 ? "Feb" : "Gen"
+        let picker = app.buttons["client-income-month"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 5)); picker.tap()
+        let option = app.buttons[other]; XCTAssertTrue(option.waitForExistence(timeout: 5)); option.tap()
+        let today = app.buttons["client-income-today"]
+        reveal(today, app: app); today.tap()
+        XCTAssertTrue(picker.label.contains(months[currentMonth - 1]))
+        XCTAssertEqual(received.label, before)
+        XCTAssertEqual(period.buttons["Mese"].isSelected, true)
+    }
+    func testContactBarsKeepOnlyOneExactValueAndCanClearIt() {
+        let app = launch()
+        let contact = app.buttons["client-detail-55555555-5555-4555-8555-555555555551"]
+        reveal(contact, app: app); contact.tap()
+        let graph = app.buttons["client-income-page-1"]
+        reveal(graph, app: app); graph.tap()
+        let chart = app.descendants(matching: .any)["client-income-chart"].firstMatch
+        reveal(chart, app: app); XCTAssertTrue(chart.exists)
+        chart.coordinate(withNormalizedOffset: CGVector(dx: 0.04, dy: 0.5)).tap()
+        let value = app.staticTexts["client-income-bar-value"]
+        XCTAssertTrue(value.waitForExistence(timeout: 5)); let first = value.label
+        XCTAssertTrue(first.contains("Gen")); XCTAssertTrue(first.contains("€"))
+        chart.coordinate(withNormalizedOffset: CGVector(dx: 0.12, dy: 0.5)).tap()
+        XCTAssertTrue(value.label.contains("Feb")); XCTAssertNotEqual(value.label, first)
+        XCTAssertEqual(app.staticTexts.matching(identifier: "client-income-bar-value").count, 1)
+        let close = app.buttons["Chiudi valore selezionato"]
+        reveal(close, app: app); close.tap(); XCTAssertFalse(value.exists)
+    }
+    func testContactDefaultsAndMultipleOriginsPersistAfterRelaunch() {
+        let app = launch()
+        let contact = app.buttons["client-detail-55555555-5555-4555-8555-555555555551"]
+        reveal(contact, app: app); contact.tap(); app.buttons["client-edit"].tap()
+        let disclosure = app.buttons["Predefiniti e tragitti"]
+        reveal(disclosure, app: app); disclosure.tap()
+        let method = app.buttons["client-default-payment"]
+        reveal(method, app: app); method.tap(); app.buttons["Bonifico"].tap()
+        replace(app.textFields["client-default-destination"], with: "Luogo QA", app: app)
+        let add = app.buttons["client-origin-add"]
+        let fields = app.textFields.matching(NSPredicate(format: "identifier BEGINSWITH %@", "client-origin-name-"))
+        reveal(add, app: app); add.tap(); replace(fields.element(boundBy: 0), with: "Partenza A", app: app)
+        reveal(add, app: app); add.tap(); replace(fields.element(boundBy: 1), with: "Partenza B", app: app)
+        let save = app.buttons["client-save"]; reveal(save, app: app); XCTAssertTrue(save.isEnabled); save.tap()
+        XCTAssertTrue(app.buttons["client-edit"].waitForExistence(timeout: 5))
+        app.terminate(); app.launch(); app.tabBars.buttons["Entrate"].tap()
+        reveal(contact, app: app); contact.tap(); app.buttons["client-edit"].tap()
+        reveal(disclosure, app: app); disclosure.tap()
+        XCTAssertEqual(app.textFields["client-default-destination"].value as? String, "Luogo QA")
+        XCTAssertEqual(fields.count, 2)
+        XCTAssertEqual(fields.element(boundBy: 0).value as? String, "Partenza A")
+        XCTAssertEqual(fields.element(boundBy: 1).value as? String, "Partenza B")
+        XCTAssertTrue(method.label.contains("Bonifico"))
     }
     private func merge(_ app: XCUIApplication) {
         let target = app.buttons["client-detail-55555555-5555-4555-8555-555555555551"]
@@ -120,6 +185,8 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
         let graph = app.buttons["client-income-page-1"]
         scrollControlIntoView(graph, in: app); graph.tap()
         XCTAssertTrue(app.descendants(matching: .any)["client-income-chart"].firstMatch.waitForExistence(timeout: 8))
+        XCTAssertLessThanOrEqual(app.descendants(matching: .any)["client-income-carousel"].firstMatch.frame.height, 360,
+                                 "Il grafico sintetico non deve mantenere un minimo vuoto di480punti")
         let add = app.buttons["client-add-activity"]
         scrollControlIntoView(add, in: app); add.tap()
         replace(app.textFields["income-manual-compensation"], with: "20", app: app)
@@ -135,6 +202,7 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
         scrollControlIntoView(received, in: app); XCTAssertTrue(received.label.contains("30,00"))
         let carousel = app.descendants(matching: .any)["client-income-carousel"].firstMatch
         XCTAssertTrue(carousel.exists)
+        XCTAssertLessThanOrEqual(carousel.frame.height, 260, "Il riepilogo sintetico deve seguire i contenuti, non l'altezza del grafico")
         XCTAssertGreaterThanOrEqual(received.frame.minY, carousel.frame.minY - 1)
         XCTAssertLessThanOrEqual(received.frame.maxY, carousel.frame.maxY + 1)
         XCTAssertTrue(due.label.contains("10,00"))

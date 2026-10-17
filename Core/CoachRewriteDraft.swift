@@ -9,7 +9,7 @@ struct CoachRewriteDraft {
     init(original: String, events: [CalendarItem], data: AppData) {
         self.original = original
         var value = original, replacements: [String: String] = [:]
-        let names = data.clients.flatMap { [$0.name] + ($0.calendarAliases ?? []) } + events.map(\.location)
+        let names = data.clients.flatMap { [$0.name] + ($0.calendarAliases ?? []) } + CoachPrivacy.knownLocations(events: events, data: data)
         let escaped = Set(names.filter { $0.count >= 3 }).sorted { $0.count > $1.count }.map {
             "(?<![\\p{L}\\p{N}])" + NSRegularExpression.escapedPattern(for: $0) + "(?![\\p{L}\\p{N}])"
         }

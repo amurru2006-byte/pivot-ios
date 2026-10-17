@@ -62,7 +62,9 @@ struct EventDetailView: View {
                     Text(store.record(for: event).logistics?.place.label ?? "Luogo da confermare").font(.subheadline)
                     if let logistics = store.record(for: event).logistics {
                         if !logistics.address.isEmpty { Text(logistics.address).font(.caption).foregroundStyle(PivotTheme.muted) }
-                        if logistics.travelConfirmed {
+                        if let departure = logistics.departure { Text("Da \(departure.name) · \(departure.mode.label)").font(.caption).foregroundStyle(PivotTheme.muted) }
+                        if let method = logistics.paymentMethod, method != .unspecified { Text("Pagamento previsto: \(method.label)").font(.caption).foregroundStyle(PivotTheme.muted) }
+                        if logistics.travelConfirmed && logistics.isConfirmed(for: event) {
                             Text("Partenza: \(PivotDate.time(event.start.addingTimeInterval(-Double(logistics.travelBeforeMinutes) * 60)))").font(.subheadline).foregroundStyle(PivotTheme.accent)
                         }
                     }

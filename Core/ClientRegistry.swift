@@ -12,19 +12,20 @@ enum ClientRegistry {
     // Updating a tariff does not recalculate old lessons or receipts.
     @discardableResult static func save(name: String, rateCents: Int, cadence: PaymentCadence,
                                        aliases: [String] = [], editingID: UUID? = nil,
-                                       activity: IncomeActivityKind? = nil, billing: IncomeBilling? = nil, data: inout AppData) throws -> UUID {
+                                       activity: IncomeActivityKind? = nil, billing: IncomeBilling? = nil,
+                                       defaults: ClientDefaults? = nil, data: inout AppData) throws -> UUID {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, rateCents >= 0, rateCents <= 100_000_000 else { throw Failure.invalid }
+        guard !name.isEmpty, rateCents >= 0, rateCents <= 100_000_000, defaults?.isValid ?? true else { throw Failure.invalid }
         let matches = named(name, clients: data.clients)
         guard !matches.contains(where: { $0.id != editingID }), editingID != nil else {
             if editingID != nil || matches.count > 1 { throw Failure.ambiguous }
             if let existing = matches.first {
                 return try save(name: existing.name, rateCents: rateCents, cadence: cadence,
                                 aliases: (existing.calendarAliases ?? []) + aliases, editingID: existing.id,
-                                activity: activity, billing: billing, data: &data)
+                                activity: activity, billing: billing, defaults: defaults, data: &data)
             }
             let client = Client(name: name, rateCents: rateCents, paymentCadence: cadence,
-                                calendarAliases: cleanAliases(aliases, name: name), activity: activity, billing: billing)
+                                calendarAliases: cleanAliases(aliases, name: name), activity: activity, billing: billing, defaults: defaults)
             data.clients.append(client); return client.id
         }
         guard let index = data.clients.firstIndex(where: { $0.id == editingID }) else { throw Failure.missing }
@@ -35,6 +36,7 @@ enum ClientRegistry {
         data.clients[index].calendarAliases = cleanAliases(aliases + [formerName], name: name)
         if let activity { data.clients[index].activity = activity }
         if let billing { data.clients[index].billing = billing }
+        if let defaults { data.clients[index].defaults = defaults }
         return data.clients[index].id
     }
 
@@ -55,6 +57,11 @@ enum ClientRegistry {
               let source = data.clients.first(where: { $0.id == sourceID }),
               let targetIndex = data.clients.firstIndex(where: { $0.id == targetID }) else { throw Failure.missing }
         let target = data.clients[targetIndex]
+        // Do not silently discard conflicting per-contact preferences on merge.
+        let sourceDefaults = source.defaults == ClientDefaults() ? nil : source.defaults
+        let targetDefaults = target.defaults == ClientDefaults() ? nil : target.defaults
+        guard sourceDefaults == nil || targetDefaults == nil || sourceDefaults == targetDefaults else { throw Failure.ambiguous }
+        data.clients[targetIndex].defaults = targetDefaults ?? sourceDefaults
         data.clients[targetIndex].calendarAliases = cleanAliases(
             (target.calendarAliases ?? []) + [source.name] + (source.calendarAliases ?? []), name: target.name)
         let incomeIDs = Set(data.income.filter { $0.clientID == sourceID }.map(\.id))

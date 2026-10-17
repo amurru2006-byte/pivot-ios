@@ -3,6 +3,11 @@ import Foundation
 /// A minimizer, not a semantic anonymizer. The exact outgoing request must still
 /// be reviewed on-device; unknown names and sensitive prose can survive rules.
 enum CoachPrivacy {
+    static func knownLocations(events: [CalendarItem], data: AppData) -> [String] {
+        Array(Set(events.map(\.location) + data.clients.flatMap { client in
+            [client.defaults?.address ?? ""] + (client.defaults?.origins ?? []).map(\.address)
+        })).filter { $0.count >= 3 }
+    }
     static func text(_ text: String, events: [CalendarItem], data: AppData) -> String {
         var value = text
         var replacements: [(String, String)] = []
@@ -11,7 +16,7 @@ enum CoachPrivacy {
                 replacements.append((name, "[contatto \(index + 1)]"))
             }
         }
-        for location in Set(events.map(\.location)) where location.count >= 3 {
+        for location in knownLocations(events: events, data: data) {
             replacements.append((location, "[luogo]"))
         }
         // Longest first avoids exposing the tail of a name/address after a match.

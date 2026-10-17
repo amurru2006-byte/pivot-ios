@@ -46,8 +46,11 @@ struct OnlineCoachSettingsView: View {
                     Text(token.isEmpty ? "Il QR è cifrato: mostra il codice separato sul computer e inseriscilo qui. Il consenso resta una tua scelta." : "Token sbloccato, non mostrato. Ora puoi leggere e confermare il consenso.")
                         .font(.caption).accessibilityIdentifier("online-coach-unlock-status")
                 }
-                Text("Questi dati arriveranno dal collegamento personale predisposto per Pivot. Usa il token di Pivot, mai la chiave del provider AI.")
+                Text(online.isConfigured && setup == nil
+                     ? "Il collegamento è già salvato. I campi restano vuoti per sicurezza: compilali solo per sostituirlo. Per usare l’AI torna a Parla con Pivot."
+                     : "Questi dati arriveranno dal collegamento personale predisposto per Pivot. Usa il token di Pivot, mai la chiave del provider AI.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
+                    .accessibilityIdentifier("online-coach-edit-explanation")
                 TextField("Indirizzo HTTPS del collegamento", text: $endpoint)
                     .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
                     .accessibilityIdentifier("online-coach-endpoint")
@@ -65,6 +68,7 @@ struct OnlineCoachSettingsView: View {
                     }
                     if online.configure(endpoint: endpoint, token: token, consent: consent) {
                         token = ""; endpoint = ""; consent = false
+                        editingConnection = false
                         if setup != nil { dismiss() }
                     }
                 }.buttonStyle(PivotPrimaryButton()).disabled(!consent || endpoint.isEmpty || token.isEmpty || isUnlocking)
