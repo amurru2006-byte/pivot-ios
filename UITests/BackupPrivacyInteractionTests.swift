@@ -64,7 +64,16 @@ final class BackupPrivacyInteractionTests: XCTestCase {
     }
 
     private func enterSyntheticPassword(_ field: XCUIElement, in app: XCUIApplication) {
-        XCTAssertTrue(field.waitForExistence(timeout: 8)); scrollControlIntoView(field, in: app); field.tap()
+        let navigation = app.navigationBars["Proteggi il backup"]
+        XCTAssertTrue(navigation.waitForExistence(timeout: 8))
+        XCTAssertTrue(field.waitForExistence(timeout: 8))
+        // This is the first Form row. Dragging while the sheet is arriving can
+        // dismiss the sheet; wait for its own navigation/field geometry instead.
+        let visible = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: field)
+        XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 8), .completed)
+        XCTAssertGreaterThanOrEqual(field.frame.minY, navigation.frame.maxY + 8)
+        XCTAssertLessThan(field.frame.maxY, app.frame.maxY - 34)
+        field.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 8))
         field.typeText("Synthetic password only 42!")
         // Keep this behavioural assertion: a visible placeholder is not a successful edit.

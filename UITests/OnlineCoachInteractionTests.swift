@@ -42,11 +42,14 @@ final class OnlineCoachInteractionTests: XCTestCase {
         let review = app.buttons["coach-create-review"]
         scrollControlIntoView(review, in: app); review.tap()
         let confirmation = app.alerts["Creare questo impegno nel Calendario?"]
-        let create = confirmation.buttons["Crea nel Calendario"]
+        // iOS exposes both the native action and its nested SwiftUI button.
+        // They have the same frame; scope to this alert and one native match.
+        let create = confirmation.buttons.matching(identifier: "coach-create-confirm").firstMatch
         XCTAssertTrue(create.waitForExistence(timeout: 12))
         let cancel = confirmation.buttons["Annulla"]
         XCTAssertTrue(cancel.waitForExistence(timeout: 8), "La conferma deve permettere di annullare prima di scrivere")
         cancel.tap()
+        XCTAssertTrue(confirmation.waitForNonExistence(timeout: 8))
         XCTAssertTrue(app.navigationBars["Nuovo impegno"].exists)
         scrollControlIntoView(review, in: app); review.tap()
         XCTAssertTrue(create.waitForExistence(timeout: 12)); create.tap()
@@ -211,7 +214,7 @@ final class OnlineCoachInteractionTests: XCTestCase {
         XCTAssertTrue(settings.waitForExistence(timeout: 8))
         scrollControlIntoView(settings, in: app)
         XCTAssertTrue(settings.isHittable); settings.tap()
-        let edit = app.descendants(matching: .any)["online-coach-edit"]
+        let edit = app.buttons["online-coach-edit"]
         XCTAssertTrue(edit.waitForExistence(timeout: 8)); scrollControlIntoView(edit, in: app); edit.tap()
         XCTAssertTrue(app.secureTextFields["online-coach-token"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.buttons["online-coach-save"].isEnabled)
