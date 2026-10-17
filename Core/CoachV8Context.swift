@@ -129,7 +129,7 @@ struct CoachV8Snapshot {
             if item.kind == .meal && title.split(separator: " ").contains("pranzo") { category = .lunch }
             else if item.kind == .workout && CardioKind.suggested(item.title) == nil { category = .gym }
             else { category = .other }
-            let rule = data.rules[item.id] ?? .defaultRule(for: item)
+            let rule = EventRule.effective(for: item, data: data)
             return .init(id: alias, kind: item.kind, category: category,
                          status: calendarData.records[item.id]?.status ?? .pending,
                          start: item.start, end: item.end, durationMinutes: item.durationMinutes,

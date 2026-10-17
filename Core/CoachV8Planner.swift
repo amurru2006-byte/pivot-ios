@@ -36,7 +36,7 @@ enum CoachV8Planner {
             if data.moves.contains(where: { !$0.syncedToCalendar && $0.source.id == source.id }) {
                 return .init(reply: "C'è già una proposta per ‘\(source.title)’. Confermala o scartala prima di prepararne un'altra.", options: [])
             }
-            let rule = data.rules[source.id] ?? .defaultRule(for: source)
+            let rule = EventRule.effective(for: source, data: data)
             guard rule.flexibility != .fixed, rule.travelConfirmed else {
                 return .init(reply: "Prima di organizzare ‘\(source.title)’, conferma che sia spostabile e indica i tempi di tragitto nei dettagli dell'attività.", options: [], needsActivityClarification: true)
             }

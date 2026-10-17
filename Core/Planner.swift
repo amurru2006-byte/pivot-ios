@@ -12,7 +12,7 @@ enum Planner {
     // Buffers are user-confirmed durations, not invented routing estimates.
     static func recover(_ target: CalendarItem, events: [CalendarItem], data: AppData, now: Date, days: Int = 3) -> [RecoverySuggestion] {
         let calendar = PivotDate.calendar
-        let targetRule = data.rules[target.id] ?? .defaultRule(for: target)
+        let targetRule = EventRule.effective(for: target, data: data)
         guard targetRule.flexibility != .fixed, targetRule.travelConfirmed, !target.isAllDay else { return [] }
         let duration = target.end.timeIntervalSince(target.start)
         guard duration > 0 else { return [] }
@@ -23,7 +23,7 @@ enum Planner {
         // An unconfigured journey around another out-of-home event is not a zero-minute journey.
         guard !effective.contains(where: { item in
             item.id != target.id && !item.isAllDay && item.end > now && item.start < horizon
-                && !item.location.isEmpty && !(data.rules[item.id]?.travelConfirmed ?? false)
+                && !item.location.isEmpty && !EventRule.effective(for: item, data: data).travelConfirmed
         }) else { return [] }
         var results: [RecoverySuggestion] = []
         for day in 0..<max(1, min(days, 7)) {
@@ -33,7 +33,7 @@ enum Planner {
             var cursor = max(now, dayStart)
             let blocks = effective.filter { $0.id != target.id && !$0.isAllDay && $0.end > cursor && $0.start < dayEnd }
                 .map { item -> (Date, Date) in
-                    let rule = data.rules[item.id] ?? .defaultRule(for: item)
+                    let rule = EventRule.effective(for: item, data: data)
                     return (item.start.addingTimeInterval(-Double(rule.travelBeforeMinutes) * 60), item.end.addingTimeInterval(Double(rule.travelAfterMinutes) * 60))
                 }.sorted { $0.0 < $1.0 }
             for block in blocks + [(dayEnd, dayEnd)] {

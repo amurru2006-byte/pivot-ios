@@ -105,7 +105,7 @@ enum EventContext {
         for (a, b) in zip(appointments, appointments.dropFirst()) where a.end <= b.start {
             let first = EventCoalescer.normalized(a.location), second = EventCoalescer.normalized(b.location)
             guard !first.isEmpty, !second.isEmpty, first != second else { continue }
-            let ra = data.rules[a.id] ?? .defaultRule(for: a), rb = data.rules[b.id] ?? .defaultRule(for: b)
+            let ra = EventRule.effective(for: a, data: data), rb = EventRule.effective(for: b, data: data)
             let gap = b.start.timeIntervalSince(a.end) / 60
             if let minutes = data.contextAnswers?.last(where: { $0.id == key(a, b) })?.travelMinutes {
                 if gap < Double(minutes) { append(a, b, .travel, "Hai \(Int(gap)) min, ma il tragitto confermato richiede \(minutes) min.") }

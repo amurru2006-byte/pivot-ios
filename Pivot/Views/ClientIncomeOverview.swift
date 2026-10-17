@@ -33,7 +33,7 @@ struct ClientIncomeOverview: View {
                 Button("Oggi") {
                     let now = PivotDate.calendar.dateComponents([.year, .month], from: Date())
                     year = now.year ?? year; month = now.month ?? month
-                    selectedBar = nil
+                    range = .month; selectedBar = nil
                 }.font(.subheadline.weight(.semibold)).frame(minHeight: 44)
                     .accessibilityIdentifier("client-income-today")
                 if range == .month {

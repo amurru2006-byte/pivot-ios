@@ -113,4 +113,21 @@ final class ClientDefaultsTests: XCTestCase {
         let filtered = CoachPrivacy.text("Vado a Destinazione sintetica 42 da Indirizzo sintetico 11", events: [], data: data)
         XCTAssertFalse(filtered.contains("sintetica")); XCTAssertFalse(filtered.contains("sintetico"))
     }
+    func testChangedEventCannotReuseTravelConfirmationInPlannerOrCloudContext() throws {
+        let date = Date(timeIntervalSince1970: 1_780_000_000)
+        var event = CalendarItem(id: "qa", eventIdentifier: "qa", calendarIdentifier: "qa", calendarTitle: "QA",
+            title: "Lezione QA", start: date, end: date.addingTimeInterval(3600), location: "Luogo QA", notes: "", colorHex: "#FFFFFF", isAllDay: false, writable: true, kind: .tutoring)
+        var value = LessonLogistics(studentName: "QA", place: .studentHome, travelConfirmed: true, confirmedAt: date)
+        value.eventStartAtConfirmation = event.start; value.eventEndAtConfirmation = event.end
+        var data = AppData(); var record = EventRecord(id: event.id, snapshot: event); record.logistics = value
+        data.records[event.id] = record
+        data.rules[event.id] = EventRule(flexibility: .movable, minimumMinutes: 60, travelBeforeMinutes: 15, travelAfterMinutes: 10, travelConfirmed: true)
+        XCTAssertTrue(EventRule.effective(for: event, data: data).travelConfirmed)
+        event.start.addTimeInterval(600); event.end.addTimeInterval(600)
+        XCTAssertFalse(EventRule.effective(for: event, data: data).travelConfirmed)
+        XCTAssertTrue(Planner.recover(event, events: [event], data: data, now: date).isEmpty)
+        let snapshot = try CoachV8Snapshot.make(message: "Organizza la giornata", events: [event], data: data, now: date, purpose: "conversation")
+        XCTAssertFalse(snapshot.request.events[0].travelConfirmed)
+        XCTAssertEqual(data.rules[event.id]?.travelConfirmed, true, "Il controllo è una lettura conservativa, non una modifica nascosta")
+    }
 }
