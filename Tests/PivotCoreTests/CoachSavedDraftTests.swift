@@ -66,4 +66,14 @@ final class CoachSavedDraftTests: XCTestCase {
         var data = AppData(); data.coach = CoachState()
         XCTAssertNil(try BackupCodec.decode(BackupCodec.encodeCompact(data)).coachState.calendarDrafts)
     }
+    func testOriginalRequestLinkSurvivesBackupAndMustPointToUserMessage() throws {
+        var data = fixture(); let key = data.coachState.messages[0].dayKey
+        let user = CoachMessage(dayKey: key, role: .user, text: "Richiesta sintetica")
+        data.coach?.messages.append(user); data.coach?.calendarDrafts?[0].userMessageID = user.id
+        let restored = try BackupCodec.decode(BackupCodec.encodeCompact(data))
+        XCTAssertEqual(restored.coachState.calendarDrafts?[0].userMessageID, user.id)
+        let assistantID = data.coachState.messages[0].id
+        data.coach?.calendarDrafts?[0].userMessageID = assistantID
+        XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encodeCompact(data)))
+    }
 }

@@ -27,7 +27,7 @@ struct CoachCalendarPreferencesFields: View {
             Toggle("Ricorda un’associazione", isOn: $rememberTopic).accessibilityIdentifier("coach-routing-remember-topic")
             if rememberTopic {
                 TextField("Quando parlo di…", text: $topic).accessibilityIdentifier("coach-routing-topic")
-                Text("Proporrò il calendario selezionato quando queste parole compaiono nel titolo. Puoi correggere la scelta prima di salvare.")
+                Text("Proporrò il calendario selezionato quando queste parole compaiono nel titolo o nella richiesta. Puoi correggere la scelta prima di salvare.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
             }
             Button("Ricorda senza creare l’impegno", action: save)

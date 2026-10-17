@@ -18,7 +18,7 @@ enum CoachCalendarRouting {
     }
     enum Failure: Error { case invalid }
 
-    static func suggest(title: String, hint: String?, choices: [Choice], settings: Settings) -> Suggestion {
+    static func suggest(title: String, hint: String?, choices: [Choice], settings: Settings, context: String = "") -> Suggestion {
         let candidates: [Choice]
         if let source = settings.preferredNewEventSourceID, !source.isEmpty {
             candidates = choices.filter { $0.sourceID == source }
@@ -41,6 +41,19 @@ enum CoachCalendarRouting {
             guard !words.isEmpty else { continue }
             if titleWords.contains(" " + words + " ") || EventCoalescer.normalized(hint ?? "") == words {
                 matches.insert(id)
+            }
+        }
+        if matches.isEmpty {
+            let contextWords = " " + EventCoalescer.normalized(context) + " "
+            let contextTokens = Set(contextWords.split(separator: " ").map(String.init))
+            let negations: Set<String> = ["non", "senza", "invece", "anziche", "tranne"]
+            // Context is useful when the draft title omits the participant,
+            // but a negated/multi-destination request must not teach a guess.
+            if negations.isDisjoint(with: contextTokens) {
+                for (topic, id) in settings.calendarTopicRoutes ?? [:] {
+                    let words = EventCoalescer.normalized(topic)
+                    if !words.isEmpty && contextWords.contains(" " + words + " ") { matches.insert(id) }
+                }
             }
         }
         if !matches.isEmpty {
