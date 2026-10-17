@@ -320,6 +320,7 @@ struct Settings: Codable, Equatable {
     // -1 explicitly disables a target; absent energy defaults to the editable 7/10.
     var ratingTargets: [String: Int]? = nil
     var preferredNewEventCalendarID: String? = nil
+    var calendarCreationAliases: [String: String]? = nil
 }
 
 struct AppData: Codable {

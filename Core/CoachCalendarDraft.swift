@@ -27,11 +27,22 @@ struct CoachCalendarDraft: Codable, Equatable, Identifiable {
 
     static func matchingCalendarIDs(hint: String?, choices: [(id: String, title: String)]) -> [String] {
         guard let hint, !hint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
-        func normalized(_ text: String) -> String {
-            text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "it_IT"))
-                .split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
-        }
         // Never fuzzy-match a person's calendar or choose the first duplicate.
-        return choices.filter { normalized($0.title) == normalized(hint) }.map(\.id)
+        return choices.filter { normalizedCalendarHint($0.title) == normalizedCalendarHint(hint) }.map(\.id)
+    }
+
+    static func normalizedCalendarHint(_ text: String) -> String {
+        text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "it_IT"))
+            .split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+    }
+
+    static func selectedCalendar(hint: String?, choices: [(id: String, title: String)], aliases: [String: String], preferred: String?) -> String? {
+        if let hint, !normalizedCalendarHint(hint).isEmpty {
+            if let saved = aliases[normalizedCalendarHint(hint)], choices.contains(where: { $0.id == saved }) { return saved }
+            let matches = matchingCalendarIDs(hint: hint, choices: choices)
+            return matches.count == 1 ? matches[0] : nil
+        }
+        if let preferred, choices.contains(where: { $0.id == preferred }) { return preferred }
+        return choices.count == 1 ? choices[0].id : nil
     }
 }
