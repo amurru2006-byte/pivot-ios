@@ -28,6 +28,11 @@ final class CoachActionDraftTests: XCTestCase {
         XCTAssertEqual(CoachCalendarDraft.matchingCalendarIDs(hint: "PERSONALE", choices: choices), ["a", "b"])
         XCTAssertTrue(CoachCalendarDraft.matchingCalendarIDs(hint: "Pers", choices: choices).isEmpty)
     }
+    func testDuplicateWithDifferentNotesCannotBeReportedAsSaved() {
+        let draft = CoachCalendarDraft(title: "Spesa di prova", start: nil, end: nil, calendarHint: nil, notes: "Latte e uova", endEstimated: false)
+        XCTAssertNoThrow(try draft.checkExistingNotes(" Latte e uova\n"))
+        XCTAssertThrowsError(try draft.checkExistingNotes("Latte"))
+    }
     func testUserConfirmedCalendarAliasSurvivesRenameButNeverUsesMissingCalendar() {
         let choices = [(id: "a", title: "Un nome diverso"), (id: "b", title: "Lavoro")]
         XCTAssertEqual(CoachCalendarDraft.selectedCalendar(hint: "CASA", choices: choices, aliases: ["casa": "a"], preferred: "b"), "a")

@@ -41,7 +41,7 @@ final class OnlineCoachInteractionTests: XCTestCase {
         XCTAssertEqual(app.textFields["coach-create-title"].value as? String, "Impegno di prova")
         let review = app.buttons["coach-create-review"]
         scrollControlIntoView(review, in: app); review.tap()
-        let create = app.buttons["coach-create-confirm"]
+        let create = app.buttons["Crea nel Calendario"]
         XCTAssertTrue(create.waitForExistence(timeout: 12))
         app.buttons["Annulla"].lastMatch.tap()
         XCTAssertTrue(app.navigationBars["Nuovo impegno"].exists)

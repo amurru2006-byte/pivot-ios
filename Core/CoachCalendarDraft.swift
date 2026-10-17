@@ -25,6 +25,12 @@ struct CoachCalendarDraft: Codable, Equatable, Identifiable {
         return nil
     }
 
+    func checkExistingNotes(_ existing: String) throws {
+        guard notes.trimmingCharacters(in: .whitespacesAndNewlines) == existing.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            throw CoachCalendarDraftConflict.differentNotes
+        }
+    }
+
     static func matchingCalendarIDs(hint: String?, choices: [(id: String, title: String)]) -> [String] {
         guard let hint, !hint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
         // Never fuzzy-match a person's calendar or choose the first duplicate.
@@ -44,5 +50,12 @@ struct CoachCalendarDraft: Codable, Equatable, Identifiable {
         }
         if let preferred, choices.contains(where: { $0.id == preferred }) { return preferred }
         return choices.count == 1 ? choices[0].id : nil
+    }
+}
+
+enum CoachCalendarDraftConflict: LocalizedError {
+    case differentNotes
+    var errorDescription: String? {
+        "Esiste già un impegno con questi orari e titolo, ma con note diverse. Non ho creato una copia né modificato le note esistenti."
     }
 }
