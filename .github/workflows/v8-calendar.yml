@@ -11,7 +11,7 @@ concurrency:
 jobs:
   core:
     runs-on: macos-15-intel
-    timeout-minutes: 240
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Seleziona strumenti
@@ -26,32 +26,71 @@ jobs:
           PIVOT_TEST_EXPORT_PATH=build/export-validation.xlsx swift test 2>&1 | tee build/v8-calendar-tests.log
       - name: Sicurezza e quote gateway senza rete
         run: node --test Backend/coach-gateway/worker.test.mjs
-      - name: Verifica strumenti simulatore senza rete
+      - name: Verifica strumenti e copertura UI completa senza rete
         run: python3 -m unittest discover -s Scripts -p 'test_*.py'
-      - name: Installa generatore progetto
-        run: brew install xcodegen
-      - name: Genera progetto
-        run: xcodegen generate
-      - name: Autorizza il componente AI approvato
-        run: |
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          approved = json.loads(Path('Scripts/trusted-macros.json').read_text())
-          assert len(approved) == 1
-          assert approved[0]['targetName'] == 'LLMMacrosImplementation'
-          assert approved[0]['packageIdentity'] == 'llm.swift'
-          assert ('revision: ' + approved[0]['fingerprint']) in Path('project.yml').read_text()
-          security = Path.home() / 'Library/org.swift.swiftpm/security'
-          security.mkdir(parents=True, exist_ok=True)
-          (security / 'macros.json').write_text(json.dumps(approved, indent=2))
-          PY
-      # The complete suite includes all four protected-QR tests and all three
-      # modern-UI regression paths. Execute them once here rather than rebuilding
-      # and repeating the same seven tests in two preliminary invocations.
-      # No unique regression is skipped; Release still gates packaging below.
-      - name: Regressione UI completa su iPhone simulato
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Pivot-V8-test-core
+          path: |
+            build/v8-calendar-tests.log
+            build/export-validation.xlsx
+          retention-days: 1
+          if-no-files-found: error
+  ui:
+    needs: core
+    runs-on: macos-15-intel
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [finance, workout, profile, pairing]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepara Xcode, progetto e unica macro approvata
+        run: bash Scripts/prepare-ios-ci.sh
+      - name: Regressione UI, copertura esatta senza duplicati o skip
+        env:
+          PIVOT_UI_ONLY_TESTING: v8-release-${{ matrix.shard }}
         run: bash Scripts/preview-ui.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Pivot-V8-test-${{ matrix.shard }}
+          path: |
+            build/release-${{ matrix.shard }}-build.log
+            build/release-${{ matrix.shard }}-tests.log
+            build/release-${{ matrix.shard }}-simulator-entitlements.plist
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Pivot-V8-previews-${{ matrix.shard }}
+          path: |
+            build/Previews/Release-${{ matrix.shard }}/
+            !build/Previews/**/*.mp4
+            build/selected-simulator.json
+            build/Pivot-QA-*.pdf
+          retention-days: 1
+          if-no-files-found: ignore
+  release:
+    # Every shard must succeed. No continue-on-error or partial promotion.
+    needs: [core, ui]
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: Pivot-V8-test-*
+          path: build
+          merge-multiple: true
+      - name: Verifica tutti i risultati UI dello stesso run prima di compilare
+        run: python3 Scripts/ui_release_shards.py --verify-all-logs build > build/ui-release-verification.json
+      - name: Prepara Xcode, progetto e unica macro approvata
+        run: bash Scripts/prepare-ios-ci.sh
       - name: Compila app senza firma
         run: |
           set -o pipefail
@@ -68,33 +107,15 @@ jobs:
             build/Pivot-0.8.1.ipa
             build/Pivot-0.8.1-manifest.json
             build/packaged-entitlements.plist
+            build/ui-release-verification.json
           retention-days: 1
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Pivot-V8-calendar-core
+          name: Pivot-V8-release-log
           path: |
-            build/v8-calendar-tests.log
             build/build.log
-            build/preview-build.log
-            build/interaction-tests.log
-            build/qr-preflight-build.log
-            build/qr-preflight-tests.log
-            build/modern-preflight-build.log
-            build/modern-preflight-tests.log
-            build/simulator-entitlements.plist
-            build/qr-preflight-simulator-entitlements.plist
-            build/modern-preflight-simulator-entitlements.plist
-            build/selected-simulator.json
-            build/devices.json
-          retention-days: 1
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: Pivot-V8-online-previews
-          path: |
-            build/Previews/
-            !build/Previews/**/*.mp4
+            build/ui-release-verification.json
           retention-days: 1
           if-no-files-found: ignore

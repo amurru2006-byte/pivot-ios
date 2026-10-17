@@ -54,10 +54,16 @@ final class SavingsInteractionTests: XCTestCase {
         finishKeyboard(in: app)
         let save = app.buttons["savings-movement-save"]
         scrollControlIntoView(save, in: app); save.tap()
-        // A successful save dismisses the sheet; a rejected reservation keeps it open.
+        // Wait for the usable destination, not a cached AX handle to a button
+        // reused by successive sheets. A failed save leaves the sheet in front
+        // and the root action/nav bar cannot be interacted with. Exact balances
+        // and relaunch persistence are asserted by the caller after this wait.
         if !(identifier == "savings-reserve" && amount == "100") {
-            let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: save)
-            wait(for: [gone], timeout: 8)
+            let returned = expectation(for: NSPredicate { _, _ in
+                guard button.exists, button.frame.height > 0 else { return false }
+                return button.isHittable && app.navigationBars["Entrate"].isHittable
+            }, evaluatedWith: app)
+            wait(for: [returned], timeout: 8)
         }
     }
 }
