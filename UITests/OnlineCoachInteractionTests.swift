@@ -5,6 +5,7 @@ final class OnlineCoachInteractionTests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["--interaction-test", "--online-coach-action-test", "--coach-calendar-create-test"]
+        app.launchEnvironment["PIVOT_QA_COACH_ACTION_ID"] = UUID().uuidString
         app.launch()
         XCTAssertTrue(app.buttons["open-pivot-coach"].waitForExistence(timeout: 15)); app.buttons["open-pivot-coach"].tap()
         return app
@@ -58,6 +59,69 @@ final class OnlineCoachInteractionTests: XCTestCase {
         XCTAssertFalse(app.navigationBars["Nuovo impegno"].exists)
     }
 
+    private func preparePersistentDraft(in app: XCUIApplication) {
+        _ = enter("Crea un impegno di prova nel calendario Personale test", in: app)
+        let send = app.buttons["coach-send"]; scrollControlIntoView(send, in: app); send.tap()
+        authorizeFirstRequest(in: app)
+        XCTAssertTrue(app.navigationBars["Nuovo impegno"].waitForExistence(timeout: 12))
+    }
+    private func savedDraftCard(in app: XCUIApplication) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "coach-saved-draft-")).firstMatch
+    }
+    func testSavedDraftCanCloseReopenAndRetainEditsAfterRelaunch() {
+        let app = actionApp(); preparePersistentDraft(in: app)
+        let title = app.textFields["coach-create-title"]
+        title.tap(); let previous = title.value as? String ?? ""
+        title.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previous.count) + "Titolo modificato QA")
+        if app.buttons["Fine"].waitForExistence(timeout: 2) { app.buttons["Fine"].tap() }
+        app.buttons["coach-create-close"].tap()
+        let card = savedDraftCard(in: app)
+        scrollControlIntoView(card, in: app, maxSwipes: 15); XCTAssertTrue(card.exists); card.tap()
+        XCTAssertTrue(title.waitForExistence(timeout: 8)); XCTAssertEqual(title.value as? String, "Titolo modificato QA")
+        app.buttons["coach-create-close"].tap()
+        XCUIDevice.shared.press(.home); app.activate(); app.terminate(); app.launch()
+        XCTAssertTrue(app.buttons["open-pivot-coach"].waitForExistence(timeout: 15)); app.buttons["open-pivot-coach"].tap()
+        scrollControlIntoView(card, in: app, maxSwipes: 15); card.tap()
+        XCTAssertTrue(title.waitForExistence(timeout: 8)); XCTAssertEqual(title.value as? String, "Titolo modificato QA")
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Impegno creato nel Calendario:")).firstMatch.exists)
+    }
+    func testPreviousMessageCanBeCopiedOrReusedWithoutAutomaticallySending() {
+        let app = actionApp(); preparePersistentDraft(in: app); app.buttons["coach-create-close"].tap()
+        let user = app.staticTexts["coach-user-message"].firstMatch
+        scrollControlIntoView(user, in: app, maxSwipes: 15); let original = user.label
+        user.press(forDuration: 1.2)
+        XCTAssertTrue(app.buttons["Copia"].waitForExistence(timeout: 5))
+        let reuse = app.buttons["Modifica e riutilizza"]
+        XCTAssertTrue(reuse.waitForExistence(timeout: 5)); reuse.tap()
+        let input = app.descendants(matching: .any)["coach-message-input"]
+        scrollControlIntoView(input, in: app, maxSwipes: 15)
+        XCTAssertEqual(input.value as? String, original)
+        XCTAssertFalse(app.navigationBars["Nuovo impegno"].exists)
+        XCTAssertEqual(app.staticTexts.matching(identifier: "coach-user-message").count, 1)
+    }
+    func testRoutingPreferencesCanBeRememberedWithoutCreatingAnEvent() {
+        let app = actionApp(); preparePersistentDraft(in: app)
+        let preferences = app.buttons["Preferenze calendario"]
+        scrollControlIntoView(preferences, in: app); preferences.tap()
+        let account = app.switches["coach-routing-remember-account"]
+        scrollControlIntoView(account, in: app); if account.switches.firstMatch.exists { account.switches.firstMatch.tap() } else { account.tap() }
+        let remember = app.switches["coach-routing-remember-topic"]
+        scrollControlIntoView(remember, in: app); if remember.switches.firstMatch.exists { remember.switches.firstMatch.tap() } else { remember.tap() }
+        let topic = app.textFields["coach-routing-topic"]
+        scrollControlIntoView(topic, in: app); topic.tap(); let current = topic.value as? String ?? ""
+        topic.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count) + "Persona QA")
+        if app.buttons["Fine"].waitForExistence(timeout: 2) { app.buttons["Fine"].tap() }
+        let save = app.buttons["coach-routing-save"]
+        scrollControlIntoView(save, in: app); XCTAssertTrue(save.isEnabled); save.tap()
+        let accountLabel = app.staticTexts["coach-routing-account"]
+        XCTAssertTrue(accountLabel.waitForExistence(timeout: 5)); XCTAssertTrue(accountLabel.label.contains("Account test"))
+        app.buttons["coach-create-close"].tap()
+        let card = savedDraftCard(in: app); scrollControlIntoView(card, in: app); card.tap()
+        scrollControlIntoView(preferences, in: app); preferences.tap()
+        XCTAssertTrue(accountLabel.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["persona qa → Personale test"].exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Impegno creato nel Calendario:")).firstMatch.exists)
+    }
     func testConversationPermissionAvoidsRepeatedReviewAndCanBeRevoked() {
         continueAfterFailure = false
         let app = XCUIApplication()

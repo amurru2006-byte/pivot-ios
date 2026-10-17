@@ -9,6 +9,7 @@ struct CalendarChoice: Identifiable, Equatable {
     var holiday: Bool
     var writable: Bool = false
     var sourceTitle: String = ""
+    var sourceIdentifier: String = ""
 }
 
 @MainActor
@@ -200,7 +201,7 @@ private actor CalendarWorker {
         let hasAccess = EKEventStore.authorizationStatus(for: .event) == .fullAccess
         guard hasAccess else { return CalendarSnapshot(hasAccess: false, choices: [], events: []) }
         let calendars = eventStore.calendars(for: .event)
-        let choices = calendars.map { c in CalendarChoice(id: c.calendarIdentifier, title: c.title, colorHex: Self.hex(c.cgColor), holiday: Self.isHoliday(c.title), writable: c.allowsContentModifications, sourceTitle: c.source.title) }
+        let choices = calendars.map { c in CalendarChoice(id: c.calendarIdentifier, title: c.title, colorHex: Self.hex(c.cgColor), holiday: Self.isHoliday(c.title), writable: c.allowsContentModifications, sourceTitle: c.source.title, sourceIdentifier: c.source.sourceIdentifier) }
         let selected = calendars.filter { c in
             !settings.excludedCalendarIDs.contains(c.calendarIdentifier) && !settings.excludedCalendarTitles.contains(c.title) && !(settings.excludeHolidays && Self.isHoliday(c.title))
         }
@@ -291,7 +292,7 @@ private actor CalendarWorker {
     #if DEBUG && targetEnvironment(simulator)
     private func interactionSnapshot() -> CalendarSnapshot {
         if creationFixture {
-            return .init(hasAccess: true, choices: [.init(id: "create-fixture", title: "Personale test", colorHex: "7EE6CD", holiday: false, writable: true)], events: createdFixtureItems)
+            return .init(hasAccess: true, choices: [.init(id: "create-fixture", title: "Personale test", colorHex: "7EE6CD", holiday: false, writable: true, sourceTitle: "Account test", sourceIdentifier: "source-fixture")], events: createdFixtureItems)
         }
         if ProcessInfo.processInfo.arguments.contains("--history-test") {
             return CalendarSnapshot(hasAccess: true, choices: [.init(id: "history-fixture", title: "Lavoro", colorHex: "7EE6CD", holiday: false)], events: [])

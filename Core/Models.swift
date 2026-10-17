@@ -304,6 +304,7 @@ struct CoachState: Codable {
     var options: [CoachOption] = []
     var pendingCalendarChanges: [PendingCalendarChange] = []
     var memories: [CoachMemory] = []
+    var calendarDrafts: [CoachSavedCalendarDraft]? = nil
 }
 
 struct Settings: Codable, Equatable {
@@ -329,6 +330,9 @@ struct Settings: Codable, Equatable {
     var ratingTargets: [String: Int]? = nil
     var preferredNewEventCalendarID: String? = nil
     var calendarCreationAliases: [String: String]? = nil
+    var preferredNewEventSourceID: String? = nil
+    // Confirmed locally; neither account IDs nor these associations go online.
+    var calendarTopicRoutes: [String: String]? = nil
 }
 
 struct AppData: Codable {

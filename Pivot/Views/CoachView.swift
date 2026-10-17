@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 private struct OnlineCoachReview: Identifiable {
     let snapshot: CoachV8Snapshot
@@ -31,7 +32,10 @@ struct CoachView: View {
     @State private var onlineReview: OnlineCoachReview?
     @State private var lastAuthorizedRequest: CoachV8Request?
     @State private var showOnlineData = false
-    @State private var calendarDraft: CoachCalendarDraft?
+    @State private var calendarDraft: CoachSavedCalendarDraft?
+    @State private var reuseText: String?
+    @State private var confirmReuse = false
+    @FocusState private var composerFocused: Bool
     @State private var originalDictation: String?
     @Environment(\.scenePhase) private var scenePhase
     @State private var dictationComposer = DictationTextComposer()
@@ -137,6 +141,7 @@ struct CoachView: View {
 
             PivotCard {
                 TextField(dictation.isListening ? "Ti ascolto…" : "Scrivi o detta cosa è cambiato…", text: $input, axis: .vertical)
+                    .focused($composerFocused)
                     .accessibilityIdentifier("coach-message-input")
                     .lineLimit(2...6).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 14))
                 HStack {
@@ -247,10 +252,11 @@ struct CoachView: View {
                     .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Chiudi") { showOnlineData = false } } }
             }
         }
-        .sheet(item: $calendarDraft) { draft in
-            CoachCalendarDraftView(draft: draft) { event, existing in
+        .sheet(item: $calendarDraft) { savedDraft in
+            CoachCalendarDraftView(draft: savedDraft.draft, savedDraftID: savedDraft.id, initialCalendarID: savedDraft.calendarID) { event, existing in
                 let text = existing ? "Questo impegno era già presente: non ne ho creata un'altra copia." : "Impegno creato nel Calendario: \(event.title)."
                 let saved = store.change { data in
+                    _ = CoachDraftStore.markCreated(id: savedDraft.id, eventID: event.id, calendarID: event.calendarIdentifier, data: &data)
                     data.coachState.messages.append(.init(dayKey: PivotDate.key(Date()), role: .coach, text: text, onlineHistoryEligible: false))
                 }
                 message = saved ? text : text + " Non riesco ancora a salvare il resoconto in Pivot."
@@ -259,9 +265,14 @@ struct CoachView: View {
         .confirmationDialog("Eliminare questa conversazione? Anche il resoconto non la includerà più.", isPresented: $deleteHistory, titleVisibility: .visible) {
             Button("Elimina", role: .destructive) {
                 let key = PivotDate.key(historyDay)
-                store.change { data in var coach = data.coachState; coach.messages.removeAll { $0.dayKey == key }; data.coachState = coach }
+                store.change { data in var coach = data.coachState; coach.messages.removeAll { $0.dayKey == key }; coach.calendarDrafts?.removeAll { $0.dayKey == key }; data.coachState = coach }
                 if key == PivotDate.key(Date()) { store.onlineConversationPermission.revoke() }
             }
+        }
+        .confirmationDialog("Hai già del testo da inviare. Come vuoi riutilizzare il messaggio?", isPresented: $confirmReuse, titleVisibility: .visible) {
+            Button("Sostituisci il testo") { if let reuseText { input = reuseText; originalDictation = nil; composerFocused = true }; reuseText = nil }
+            Button("Aggiungi in fondo") { if let reuseText { input += "\n" + reuseText; originalDictation = nil; composerFocused = true }; reuseText = nil }
+            Button("Annulla", role: .cancel) { reuseText = nil }
         }
     }
 
@@ -383,13 +394,29 @@ struct CoachView: View {
     }
 
     private func bubble(_ item: CoachMessage) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
         HStack {
             if item.role == .user { Spacer(minLength: 42) }
             Text(item.text).font(.subheadline).padding(13)
+                .textSelection(.enabled)
                 .accessibilityIdentifier(item.role == .user ? "coach-user-message" : "coach-assistant-message")
                 .background(item.role == .user ? PivotTheme.accent.opacity(0.18) : PivotTheme.surface, in: RoundedRectangle(cornerRadius: 16))
                 .frame(maxWidth: 560, alignment: item.role == .user ? .trailing : .leading)
+                .contextMenu {
+                    Button { UIPasteboard.general.setItems([["public.utf8-plain-text": item.text]], options: [.localOnly: true]) } label: { Label("Copia", systemImage: "doc.on.doc") }
+                    if item.role == .user {
+                        Button {
+                            if input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { input = item.text; originalDictation = nil; composerFocused = true }
+                            else { reuseText = item.text; confirmReuse = true }
+                        } label: { Label("Modifica e riutilizza", systemImage: "square.and.pencil") }
+                        .disabled(isPlanning || dictation.isListening || store.locked)
+                    }
+                }
             if item.role != .user { Spacer(minLength: 42) }
+        }
+        if let saved = state.calendarDrafts?.first(where: { $0.messageID == item.id }) {
+            CoachDraftCard(saved: saved) { calendarDraft = saved }
+        }
         }
     }
 
@@ -587,12 +614,24 @@ struct CoachView: View {
             }.value
             try Task.checkCancellation()
             guard snapshot.isCurrent(events: calendar.events, data: store.data, now: Date()) else { throw CoachV8Error.staleContext }
+            let replyMessage = CoachMessage(dayKey: PivotDate.key(now), role: .coach, text: result.reply, onlineHistoryEligible: response.mode != .plan)
+            var savedDraft: CoachSavedCalendarDraft?
+            if var draft = response.draft, response.mode == .create {
+                for (index, client) in store.data.clients.enumerated() {
+                    let alias = "[contatto \(index + 1)]"
+                    draft.title = draft.title.replacingOccurrences(of: alias, with: client.name)
+                    draft.notes = draft.notes.replacingOccurrences(of: alias, with: client.name)
+                    draft.calendarHint = draft.calendarHint?.replacingOccurrences(of: alias, with: client.name)
+                }
+                savedDraft = CoachSavedCalendarDraft(messageID: replyMessage.id, dayKey: replyMessage.dayKey, draft: draft)
+            }
             guard store.change({ data in
                 var coach = data.coachState
                 coach.messages.append(.init(dayKey: PivotDate.key(now), role: .user, text: clean, createdAt: now, onlineHistoryEligible: true))
                 // Plan validation may mention a private local event title. Only
                 // provider conversation/clarification prose is safe for history.
-                coach.messages.append(.init(dayKey: PivotDate.key(now), role: .coach, text: result.reply, onlineHistoryEligible: response.mode != .plan))
+                coach.messages.append(replyMessage)
+                if let savedDraft { var drafts = coach.calendarDrafts ?? []; drafts.append(savedDraft); coach.calendarDrafts = drafts }
                 coach.options = result.options
                 data.coachState = coach
             }) else { message = "Non riesco a salvare la conversazione. Il messaggio resta qui."; return }
@@ -602,15 +641,7 @@ struct CoachView: View {
             }
             try Task.checkCancellation()
             if input.trimmingCharacters(in: .whitespacesAndNewlines) == clean { input = ""; originalDictation = nil }
-            if var draft = response.draft, response.mode == .create {
-                for (index, client) in store.data.clients.enumerated() {
-                    let alias = "[contatto \(index + 1)]"
-                    draft.title = draft.title.replacingOccurrences(of: alias, with: client.name)
-                    draft.notes = draft.notes.replacingOccurrences(of: alias, with: client.name)
-                    draft.calendarHint = draft.calendarHint?.replacingOccurrences(of: alias, with: client.name)
-                }
-                calendarDraft = draft
-            }
+            if let savedDraft { calendarDraft = savedDraft }
             message = response.mode == .create ? "Bozza pronta: controllala prima di creare l'impegno." :
                 (result.options.isEmpty ? "Nessuna modifica è stata preparata." : nil)
         } catch let failure as CoachOnlineFailure {
