@@ -1,6 +1,57 @@
 import XCTest
 
 final class OnlineCoachInteractionTests: XCTestCase {
+    private func actionApp() -> XCUIApplication {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--interaction-test", "--online-coach-action-test", "--coach-calendar-create-test"]
+        app.launch()
+        XCTAssertTrue(app.buttons["open-pivot-coach"].waitForExistence(timeout: 15)); app.buttons["open-pivot-coach"].tap()
+        return app
+    }
+    private func enter(_ text: String, in app: XCUIApplication) -> XCUIElement {
+        let input = app.descendants(matching: .any)["coach-message-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 8)); scrollControlIntoView(input, in: app, maxSwipes: 12)
+        input.tap(); input.typeText(text)
+        if app.buttons["Fine"].waitForExistence(timeout: 3) { app.buttons["Fine"].tap() }
+        return input
+    }
+    private func authorizeFirstRequest(in app: XCUIApplication) {
+        let approve = app.buttons["coach-online-approve"]
+        XCTAssertTrue(approve.waitForExistence(timeout: 12)); scrollControlIntoView(approve, in: app); approve.tap()
+    }
+    func testRewriteIsSeparateFromSendingAndOriginalCanBeRestored() {
+        let app = actionApp(), original = "Devo comprare latte uova farina."
+        let input = enter(original, in: app)
+        let rewrite = app.buttons["coach-rewrite"]
+        scrollControlIntoView(rewrite, in: app); rewrite.tap(); authorizeFirstRequest(in: app)
+        let undo = app.buttons["coach-rewrite-undo"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 12))
+        XCTAssertTrue((input.value as? String ?? "").contains("- latte"))
+        XCTAssertFalse(app.navigationBars["Nuovo impegno"].exists)
+        scrollControlIntoView(undo, in: app); undo.tap()
+        XCTAssertEqual(input.value as? String, original)
+    }
+    func testCalendarDraftNeedsSeparateConfirmationAndCanCancelBeforeSaving() {
+        let app = actionApp()
+        _ = enter("Crea un impegno di prova dalle22 a mezzanotte oggi nel calendario Personale test", in: app)
+        let send = app.buttons["coach-send"]
+        scrollControlIntoView(send, in: app); send.tap(); authorizeFirstRequest(in: app)
+        XCTAssertTrue(app.navigationBars["Nuovo impegno"].waitForExistence(timeout: 12))
+        XCTAssertEqual(app.textFields["coach-create-title"].value as? String, "Impegno di prova")
+        let review = app.buttons["coach-create-review"]
+        scrollControlIntoView(review, in: app); review.tap()
+        let create = app.buttons["coach-create-confirm"]
+        XCTAssertTrue(create.waitForExistence(timeout: 12))
+        app.buttons["Annulla"].lastMatch.tap()
+        XCTAssertTrue(app.navigationBars["Nuovo impegno"].exists)
+        scrollControlIntoView(review, in: app); review.tap()
+        XCTAssertTrue(create.waitForExistence(timeout: 12)); create.tap()
+        let saved = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Impegno creato nel Calendario: Impegno di prova")).firstMatch
+        XCTAssertTrue(saved.waitForExistence(timeout: 12))
+        XCTAssertFalse(app.navigationBars["Nuovo impegno"].exists)
+    }
+
     func testConversationPermissionAvoidsRepeatedReviewAndCanBeRevoked() {
         continueAfterFailure = false
         let app = XCUIApplication()

@@ -100,13 +100,14 @@ final class OnlineCoachService: ObservableObject {
     private var quotaFixture: Bool { ProcessInfo.processInfo.arguments.contains("--online-coach-quota-test") }
     private var preflightFixture: Bool { ProcessInfo.processInfo.arguments.contains("--online-coach-preflight-test") }
     private var reviewFixture: Bool { ProcessInfo.processInfo.arguments.contains("--online-coach-review-test") }
+    private var actionFixture: Bool { ProcessInfo.processInfo.arguments.contains("--online-coach-action-test") }
     #endif
 
     init() { reload() }
     func reload() {
         clearKeychainFailure()
         #if DEBUG && targetEnvironment(simulator)
-        if preflightFixture || reviewFixture { isConfigured = true; return }
+        if preflightFixture || reviewFixture || actionFixture { isConfigured = true; return }
         if quotaFixture {
             isConfigured = true
             if failure == nil { failure = .init(kind: .quota, receivedAt: Date(), retryAt: Date().addingTimeInterval(5 * 3600)) }
@@ -183,6 +184,18 @@ final class OnlineCoachService: ObservableObject {
         try Task.checkCancellation()
         if let failure, let seconds = failure.remaining(at: Date()), seconds > 0 { throw failure }
         #if DEBUG && targetEnvironment(simulator)
+        if actionFixture {
+            interactionRequestCount += 1
+            if snapshot.request.purpose == "rewrite" {
+                return .init(version: 2, requestID: snapshot.request.requestID, mode: .rewrite, eventIDs: [], reply: "Testo riordinato",
+                             draft: nil, rewrittenMessage: snapshot.request.message.replacingOccurrences(of: "latte uova farina", with: "\n- latte\n- uova\n- farina"))
+            }
+            let start = PivotDate.calendar.startOfDay(for: Date()).addingTimeInterval(22 * 3600)
+            let draft = CoachCalendarDraft(title: "Impegno di prova", start: start > Date() ? start : Date().addingTimeInterval(3600),
+                                          end: start > Date() ? start.addingTimeInterval(7200) : Date().addingTimeInterval(7200),
+                                          calendarHint: "Personale test", notes: "Nota sintetica", endEstimated: false)
+            return .init(version: 2, requestID: snapshot.request.requestID, mode: .create, eventIDs: [], reply: "Bozza pronta, nessun evento creato.", draft: draft)
+        }
         if preflightFixture || reviewFixture {
             interactionRequestCount += 1
             // A cancelled preflight must never reach this synthetic provider failure.
