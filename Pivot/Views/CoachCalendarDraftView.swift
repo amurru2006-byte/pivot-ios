@@ -51,11 +51,8 @@ struct CoachCalendarDraftView: View {
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Annulla") { dismiss() }.disabled(busy) } }
                 .task {
                     await calendar.refresh(settings: store.data.settings)
-                    let matches = CoachCalendarDraft.matchingCalendarIDs(hint: draft.calendarHint, choices: choices.map { ($0.id, $0.title) })
-                    if matches.count == 1 { calendarID = matches[0] }
-                    else if draft.calendarHint == nil, let preferred = store.data.settings.preferredNewEventCalendarID,
-                            choices.contains(where: { $0.id == preferred }) { calendarID = preferred }
-                    else if draft.calendarHint == nil, choices.count == 1 { calendarID = choices[0].id }
+                    calendarID = CoachCalendarDraft.selectedCalendar(hint: draft.calendarHint, choices: choices.map { ($0.id, $0.title) },
+                        aliases: store.data.settings.calendarCreationAliases ?? [:], preferred: store.data.settings.preferredNewEventCalendarID) ?? ""
                 }
                 .confirmationDialog("Creare questo impegno nel Calendario?", isPresented: $confirm, titleVisibility: .visible) {
                     Button("Crea nel Calendario") { save() }.accessibilityIdentifier("coach-create-confirm")
@@ -81,7 +78,14 @@ struct CoachCalendarDraftView: View {
             defer { busy = false }
             do {
                 let result = try await calendar.create(draft, calendarID: calendarID, expectedConflicts: conflicts, settings: store.data.settings)
-                store.change { $0.settings.preferredNewEventCalendarID = calendarID }
+                store.change {
+                    $0.settings.preferredNewEventCalendarID = calendarID
+                    if let hint = draft.calendarHint, !CoachCalendarDraft.normalizedCalendarHint(hint).isEmpty {
+                        var aliases = $0.settings.calendarCreationAliases ?? [:]
+                        aliases[CoachCalendarDraft.normalizedCalendarHint(hint)] = calendarID
+                        $0.settings.calendarCreationAliases = aliases
+                    }
+                }
                 onCreated(result.item, result.existing); dismiss()
             } catch { problem = error.localizedDescription }
         }

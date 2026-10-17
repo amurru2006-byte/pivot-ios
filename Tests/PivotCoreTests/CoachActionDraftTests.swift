@@ -28,6 +28,12 @@ final class CoachActionDraftTests: XCTestCase {
         XCTAssertEqual(CoachCalendarDraft.matchingCalendarIDs(hint: "PERSONALE", choices: choices), ["a", "b"])
         XCTAssertTrue(CoachCalendarDraft.matchingCalendarIDs(hint: "Pers", choices: choices).isEmpty)
     }
+    func testUserConfirmedCalendarAliasSurvivesRenameButNeverUsesMissingCalendar() {
+        let choices = [(id: "a", title: "Un nome diverso"), (id: "b", title: "Lavoro")]
+        XCTAssertEqual(CoachCalendarDraft.selectedCalendar(hint: "CASA", choices: choices, aliases: ["casa": "a"], preferred: "b"), "a")
+        XCTAssertNil(CoachCalendarDraft.selectedCalendar(hint: "Casa", choices: choices, aliases: ["casa": "deleted"], preferred: "b"))
+        XCTAssertEqual(CoachCalendarDraft.selectedCalendar(hint: nil, choices: choices, aliases: [:], preferred: "b"), "b")
+    }
     func testRewriteHasNoCalendarOrHistoryAndDoesNotTruncateLongText() throws {
         let message = String(repeating: "Devo studiare e fare la spesa. ", count: 100)
         let snapshot = try CoachV8Snapshot.make(message: message, events: [], data: AppData(), now: now, purpose: "rewrite")
