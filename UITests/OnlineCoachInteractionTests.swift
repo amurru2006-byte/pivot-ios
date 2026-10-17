@@ -68,17 +68,22 @@ final class OnlineCoachInteractionTests: XCTestCase {
     private func savedDraftCard(in app: XCUIApplication) -> XCUIElement {
         app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "coach-saved-draft-")).firstMatch
     }
+    private func closeDraft(in app: XCUIApplication) {
+        app.buttons["coach-create-close"].tap()
+        XCTAssertTrue(app.navigationBars["Nuovo impegno"].waitForNonExistence(timeout: 10),
+                      "Chiudi conserva la bozza su disco prima di tornare alla chat")
+    }
     func testSavedDraftCanCloseReopenAndRetainEditsAfterRelaunch() {
         let app = actionApp(); preparePersistentDraft(in: app)
         let title = app.textFields["coach-create-title"]
         title.tap(); let previous = title.value as? String ?? ""
         title.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previous.count) + "Titolo modificato QA")
         if app.buttons["Fine"].waitForExistence(timeout: 2) { app.buttons["Fine"].tap() }
-        app.buttons["coach-create-close"].tap()
+        closeDraft(in: app)
         let card = savedDraftCard(in: app)
         scrollControlIntoView(card, in: app, maxSwipes: 15); XCTAssertTrue(card.exists); card.tap()
         XCTAssertTrue(title.waitForExistence(timeout: 8)); XCTAssertEqual(title.value as? String, "Titolo modificato QA")
-        app.buttons["coach-create-close"].tap()
+        closeDraft(in: app)
         XCUIDevice.shared.press(.home); app.activate(); app.terminate(); app.launch()
         XCTAssertTrue(app.buttons["open-pivot-coach"].waitForExistence(timeout: 15)); app.buttons["open-pivot-coach"].tap()
         scrollControlIntoView(card, in: app, maxSwipes: 15); card.tap()
@@ -86,7 +91,7 @@ final class OnlineCoachInteractionTests: XCTestCase {
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Impegno creato nel Calendario:")).firstMatch.exists)
     }
     func testPreviousMessageCanBeCopiedOrReusedWithoutAutomaticallySending() {
-        let app = actionApp(); preparePersistentDraft(in: app); app.buttons["coach-create-close"].tap()
+        let app = actionApp(); preparePersistentDraft(in: app); closeDraft(in: app)
         let user = app.staticTexts["coach-user-message"].firstMatch
         scrollControlIntoView(user, in: app, maxSwipes: 15); let original = user.label
         user.press(forDuration: 1.2)
@@ -115,7 +120,7 @@ final class OnlineCoachInteractionTests: XCTestCase {
         scrollControlIntoView(save, in: app); XCTAssertTrue(save.isEnabled); save.tap()
         let accountLabel = app.staticTexts["coach-routing-account"]
         XCTAssertTrue(accountLabel.waitForExistence(timeout: 5)); XCTAssertTrue(accountLabel.label.contains("Account test"))
-        app.buttons["coach-create-close"].tap()
+        closeDraft(in: app)
         let card = savedDraftCard(in: app); scrollControlIntoView(card, in: app); card.tap()
         scrollControlIntoView(preferences, in: app); preferences.tap()
         XCTAssertTrue(accountLabel.waitForExistence(timeout: 5))

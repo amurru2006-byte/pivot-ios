@@ -5,11 +5,15 @@ struct ClientDefaultsFields: View {
     var body: some View {
         DisclosureGroup("Predefiniti e tragitti") {
             VStack(alignment: .leading, spacing: 12) {
-                Picker("Metodo di pagamento abituale", selection: $defaults.paymentMethod) {
-                    ForEach(ClientPaymentMethod.allCases, id: \.self) { Text($0.label).tag($0) }
-                }.accessibilityIdentifier("client-default-payment")
-                Picker("Luogo abituale", selection: $defaults.place) {
-                    ForEach(LessonPlace.allCases, id: \.self) { Text($0.label).tag($0) }
+                LabeledContent("Pagamento") {
+                    Picker("Metodo di pagamento abituale", selection: $defaults.paymentMethod) {
+                        ForEach(ClientPaymentMethod.allCases, id: \.self) { Text($0.label).tag($0) }
+                    }.labelsHidden().accessibilityIdentifier("client-default-payment")
+                }
+                LabeledContent("Luogo") {
+                    Picker("Luogo abituale", selection: $defaults.place) {
+                        ForEach(LessonPlace.allCases, id: \.self) { Text($0.label).tag($0) }
+                    }.labelsHidden()
                 }
                 TextField("Luogo / indirizzo abituale", text: $defaults.address)
                     .accessibilityIdentifier("client-default-destination")
@@ -18,8 +22,10 @@ struct ClientDefaultsFields: View {
                         TextField("Partenza, es. Casa o Università", text: $origin.name)
                             .accessibilityIdentifier("client-origin-name-\(origin.id)")
                         TextField("Indirizzo di partenza (facoltativo)", text: $origin.address)
-                        Picker("Mezzo", selection: $origin.mode) {
-                            ForEach(ClientTravelMode.allCases, id: \.self) { Text($0.label).tag($0) }
+                        LabeledContent("Mezzo") {
+                            Picker("Mezzo", selection: $origin.mode) {
+                                ForEach(ClientTravelMode.allCases, id: \.self) { Text($0.label).tag($0) }
+                            }.labelsHidden()
                         }
                         DurationField(title: "Viaggio per arrivare", seconds: Binding(get: { origin.beforeMinutes * 60 }, set: { origin.beforeMinutes = ($0 ?? 0) / 60 }), maxHours: 4)
                         DurationField(title: "Viaggio dopo l’attività", seconds: Binding(get: { origin.afterMinutes * 60 }, set: { origin.afterMinutes = ($0 ?? 0) / 60 }), maxHours: 4)

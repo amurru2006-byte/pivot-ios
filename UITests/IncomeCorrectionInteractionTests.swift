@@ -58,7 +58,11 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
         let currentMonth = Calendar.current.component(.month, from: Date())
         let other = currentMonth == 1 ? "Feb" : "Gen"
         let picker = app.buttons["client-income-month"]
-        XCTAssertTrue(picker.waitForExistence(timeout: 5)); picker.tap()
+        XCTAssertTrue(picker.waitForExistence(timeout: 5)); reveal(picker, app: app)
+        let viewport = app.descendants(matching: .any)["client-income-carousel"].firstMatch
+        XCTAssertGreaterThanOrEqual(viewport.frame.minY, picker.frame.maxY,
+                                    "Il carosello non deve coprire i controlli del mese")
+        picker.tap()
         let option = app.buttons[other]; XCTAssertTrue(option.waitForExistence(timeout: 5)); option.tap()
         let today = app.buttons["client-income-today"]
         reveal(today, app: app); today.tap()
@@ -93,19 +97,27 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
         let method = app.buttons["client-default-payment"]
         reveal(method, app: app); method.tap(); app.buttons["Bonifico"].tap()
         replace(app.textFields["client-default-destination"], with: "Luogo QA", app: app)
+        XCTAssertEqual(app.textFields["client-default-destination"].value as? String, "Luogo QA")
         let add = app.buttons["client-origin-add"]
         let fields = app.textFields.matching(NSPredicate(format: "identifier BEGINSWITH %@", "client-origin-name-"))
         reveal(add, app: app); add.tap(); replace(fields.element(boundBy: 0), with: "Partenza A", app: app)
         reveal(add, app: app); add.tap(); replace(fields.element(boundBy: 1), with: "Partenza B", app: app)
+        reveal(app.textFields["client-default-destination"], app: app)
+        XCTAssertEqual(app.textFields["client-default-destination"].value as? String, "Luogo QA")
         let save = app.buttons["client-save"]; reveal(save, app: app); XCTAssertTrue(save.isEnabled); save.tap()
+        XCTAssertTrue(app.textFields["client-name"].waitForNonExistence(timeout: 10), "La finestra si chiude dopo il salvataggio durevole")
         XCTAssertTrue(app.buttons["client-edit"].waitForExistence(timeout: 5))
         app.terminate(); app.launch(); app.tabBars.buttons["Entrate"].tap()
         reveal(contact, app: app); contact.tap(); app.buttons["client-edit"].tap()
         reveal(disclosure, app: app); disclosure.tap()
+        reveal(app.textFields["client-default-destination"], app: app)
         XCTAssertEqual(app.textFields["client-default-destination"].value as? String, "Luogo QA")
         XCTAssertEqual(fields.count, 2)
+        reveal(fields.element(boundBy: 0), app: app)
         XCTAssertEqual(fields.element(boundBy: 0).value as? String, "Partenza A")
+        reveal(fields.element(boundBy: 1), app: app)
         XCTAssertEqual(fields.element(boundBy: 1).value as? String, "Partenza B")
+        reveal(method, app: app)
         XCTAssertTrue(method.label.contains("Bonifico"))
     }
     private func merge(_ app: XCUIApplication) {
