@@ -47,6 +47,8 @@ final class CoachSavedDraftTests: XCTestCase {
         XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encodeCompact(data)))
         data = fixture(); let duplicate = data.coachState.calendarDrafts![0]; data.coach?.calendarDrafts?.append(duplicate)
         XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encodeCompact(data)))
+        data = fixture(); var secondCard = data.coachState.calendarDrafts![0]; secondCard.id = UUID(); data.coach?.calendarDrafts?.append(secondCard)
+        XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encodeCompact(data)))
         data = fixture(); data.coach?.calendarDrafts?[0].messageID = saved.messageID
         XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encodeCompact(data)))
     }

@@ -102,10 +102,20 @@ enum CoachCalendarRouting {
 
     static func suggestedTopic(title: String, hint: String?) -> String {
         let ignored: Set<String> = ["appuntamento", "uscita", "incontro", "lezione", "ripetizioni", "chiamata", "con", "di", "per", "a", "al", "alle", "il", "la", "un", "una", "domani", "oggi", "prova", "pivot", "impegno"]
-        let words = title.split(whereSeparator: { !$0.isLetter }).map(String.init)
-        let meaningful = words.filter { !ignored.contains($0.lowercased()) && $0.count >= 3 }
-        let proper = meaningful.filter { $0.first?.isUppercase == true }
-        let topic = (proper.isEmpty ? meaningful : proper).prefix(3).joined(separator: " ")
-        return String((topic.isEmpty ? hint ?? "" : topic).prefix(80))
+        let words = title.split(whereSeparator: { !$0.isLetter }).map { String($0) }
+        let markers: Set<String> = ["con", "da", "trovare"]
+        if let marker = words.lastIndex(where: { markers.contains($0.lowercased()) }) {
+            var name: [String] = []
+            for word in words.dropFirst(marker + 1) {
+                guard !ignored.contains(word.lowercased()), word.count >= 2,
+                      name.isEmpty || word.first?.isUppercase == true else { break }
+                name.append(word)
+                if name.count == 3 { break }
+            }
+            if !name.isEmpty { return String(name.joined(separator: " ").prefix(80)) }
+        }
+        // Do not join non-adjacent capitalized words (destination + person).
+        // This is only an editable suggestion, never an automatically learned rule.
+        return String((hint ?? "").prefix(80))
     }
 }
