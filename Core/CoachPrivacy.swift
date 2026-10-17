@@ -4,9 +4,14 @@ import Foundation
 /// be reviewed on-device; unknown names and sensitive prose can survive rules.
 enum CoachPrivacy {
     static func knownLocations(events: [CalendarItem], data: AppData) -> [String] {
-        Array(Set(events.map(\.location) + data.clients.flatMap { client in
-            [client.defaults?.address ?? ""] + (client.defaults?.origins ?? []).map(\.address)
-        })).filter { $0.count >= 3 }
+        var locations = Set<String>()
+        for event in events { locations.insert(event.location) }
+        for client in data.clients {
+            guard let defaults = client.defaults else { continue }
+            locations.insert(defaults.address)
+            for origin in defaults.origins { locations.insert(origin.address) }
+        }
+        return Array(locations).filter { $0.count >= 3 }
     }
     static func text(_ text: String, events: [CalendarItem], data: AppData) -> String {
         var value = text

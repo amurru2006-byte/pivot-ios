@@ -13,11 +13,8 @@ struct LessonLogisticsView: View {
     @State private var message: String?
     private var contact: Client? { StudentRecognition.existingClient(named: logistics.studentName, clients: store.data.clients) }
     private var origins: [ClientTravelOrigin] { contact?.defaults?.origins ?? [] }
-    var body: some View {
-        NavigationStack {
-            PivotScreen {
-                PivotHeader(title: "Dove fai la lezione?", subtitle: "\(PivotDate.shortDate(event.start)) · \(PivotDate.time(event.start))–\(PivotDate.time(event.end))")
-                PivotCard {
+    private var contactFields: some View {
+        Group {
                     Text(event.title).font(.headline)
                     TextField("Conferma il nome dello studente", text: Binding(get: { logistics.studentName }, set: {
                         logistics = LessonLogistics(studentName: $0, place: .undecided); selectedOriginID = nil; updateUsualEstimate = false
@@ -30,6 +27,10 @@ struct LessonLogisticsView: View {
                         ForEach(LessonPlace.allCases, id: \.self) { Text($0.label).tag($0) }
                     }
                     TextField("Indirizzo / luogo (facoltativo)", text: Binding(get: { logistics.address }, set: { logistics.address = $0; invalidateTravel() }))
+        }
+    }
+    private var departureFields: some View {
+        Group {
                     if !origins.isEmpty {
                         Picker("Partenza di questa lezione", selection: Binding<UUID?>(get: { selectedOriginID }, set: { id in
                             selectedOriginID = id
@@ -56,6 +57,10 @@ struct LessonLogisticsView: View {
                         if logistics.departure == nil { logistics.departure = ClientTravelOrigin() }
                         logistics.departure?.mode = value; selectedOriginID = nil; invalidateTravel()
                     })) { ForEach(ClientTravelMode.allCases, id: \.self) { Text($0.label).tag($0) } }
+        }
+    }
+    private var travelFields: some View {
+        Group {
                     DurationField(title: "Viaggio per arrivare", seconds: Binding(get: { logistics.travelBeforeMinutes * 60 }, set: { logistics.travelBeforeMinutes = ($0 ?? 0) / 60; invalidateTravel() }), maxHours: 4)
                     DurationField(title: "Viaggio dopo la lezione", seconds: Binding(get: { logistics.travelAfterMinutes * 60 }, set: { logistics.travelAfterMinutes = ($0 ?? 0) / 60; invalidateTravel() }), maxHours: 4)
                     Toggle("Ho verificato i tempi di viaggio", isOn: $logistics.travelConfirmed)
@@ -78,7 +83,13 @@ struct LessonLogisticsView: View {
                             logistics.travelBeforeMinutes = 0; logistics.travelAfterMinutes = 0; invalidateTravel()
                         }.frame(minHeight: 44)
                     }
-                }
+        }
+    }
+    var body: some View {
+        NavigationStack {
+            PivotScreen {
+                PivotHeader(title: "Dove fai la lezione?", subtitle: "\(PivotDate.shortDate(event.start)) · \(PivotDate.time(event.start))–\(PivotDate.time(event.end))")
+                PivotCard { contactFields; departureFields; travelFields }
                 Text("La scelta vale solo per questa lezione. Sarà proposta, non confermata automaticamente, la prossima volta.").font(.caption).foregroundStyle(PivotTheme.muted)
                 if let message { Text(message).font(.caption).foregroundStyle(PivotTheme.amber) }
                 Button("Conferma questa lezione") { save() }.buttonStyle(PivotPrimaryButton()).disabled(store.locked || logistics.studentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !validDeparture)
