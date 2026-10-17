@@ -131,7 +131,9 @@ private actor CalendarWorker {
         let fresh = try reviewCreation(draft, calendarID: calendarID, settings: settings)
         #if DEBUG && targetEnvironment(simulator)
         if creationFixture {
-            if let existing = createdFixtureItems.first(where: { $0.title == draft.title && $0.start == draft.start && $0.end == draft.end }) { return (existing, true) }
+            if let existing = createdFixtureItems.first(where: { $0.title == draft.title && $0.start == draft.start && $0.end == draft.end }) {
+                try draft.checkExistingNotes(existing.notes); return (existing, true)
+            }
             guard fresh == expectedConflicts else { throw CalendarFailure.changed }
             let item = CalendarItem(id: draft.id.uuidString, eventIdentifier: draft.id.uuidString, calendarIdentifier: calendarID,
                                     calendarTitle: "Personale test", title: draft.title, start: draft.start!, end: draft.end!,
@@ -148,7 +150,11 @@ private actor CalendarWorker {
         if let existing = eventStore.events(matching: predicate).first(where: {
             $0.url == marker || ($0.startDate == start && $0.endDate == end &&
                 EventCoalescer.normalized($0.title ?? "") == EventCoalescer.normalized(draft.title))
-        }) { return (Self.item(existing), true) }
+        }) {
+            let item = Self.item(existing)
+            try draft.checkExistingNotes(item.notes)
+            return (item, true)
+        }
         guard fresh == expectedConflicts else { throw CalendarFailure.changed }
         try Task.checkCancellation()
         let event = EKEvent(eventStore: eventStore)
