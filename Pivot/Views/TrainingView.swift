@@ -149,7 +149,7 @@ struct TrainingView: View {
                 }.accessibilityIdentifier("concern-fixture")
                 Button("Verifica segnalazione TEST") {
                     Task {
-                        do { message = try await TrainingConcernFixture.verify(kind: ProcessInfo.processInfo.arguments.contains("--reported-injury-test") ? .reportedInjury : .pain) }
+                        do { message = try await TrainingConcernFixture.verify(kind: ProcessInfo.processInfo.arguments.contains("--reported-injury-test") ? .reportedInjury : .pain, deleted: ProcessInfo.processInfo.arguments.contains("--concern-deletion-test")) }
                         catch { message = "Segnalazione non valida: \(error.localizedDescription)" }
                     }
                 }.accessibilityIdentifier("concern-verify")

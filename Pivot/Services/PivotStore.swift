@@ -458,6 +458,13 @@ final class PivotStore: ObservableObject {
         return (saved.concern, await flushWorkoutChanges())
     }
 
+    func deleteTrainingConcern(_ expected: TrainingConcern) async throws -> Bool {
+        guard !locked, !isLoading, !isRestoring else { throw TrainingConcerns.ConcernError.unavailable }
+        let library = try TrainingConcerns.removing(expected, from: data.training ?? .init())
+        guard change({ $0.training = library }) else { throw TrainingConcerns.ConcernError.unavailable }
+        return await flushWorkoutChanges()
+    }
+
     func deleteTraining(_ expected: TrainingSession) async throws -> String {
         guard !locked, !isLoading, !isRestoring else { throw TrainingHistory.HistoryError.unavailable }
         let next = try TrainingHistory.removing(expected, from: data)

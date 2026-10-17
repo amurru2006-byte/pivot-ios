@@ -79,6 +79,18 @@ enum TrainingConcerns {
     static func sorted(_ values: [TrainingConcern]) -> [TrainingConcern] {
         values.sorted { $0.observedAt == $1.observedAt ? $0.id.uuidString < $1.id.uuidString : $0.observedAt > $1.observedAt }
     }
+    static func removing(_ expected: TrainingConcern, from library: TrainingLibrary) throws -> TrainingLibrary {
+        // Retrying a failed disk write must not recreate the deleted report.
+        guard let current = library.concerns?.first(where: { $0.id == expected.id }) else {
+            try library.validate()
+            return library
+        }
+        guard current == expected else { throw ConcernError.changed }
+        var next = library
+        next.concerns?.removeAll { $0.id == expected.id }
+        try next.validate()
+        return next
+    }
     static func saving(_ draft: TrainingConcern, expected: TrainingConcern?, in library: TrainingLibrary, now: Date = Date()) throws -> (library: TrainingLibrary, concern: TrainingConcern) {
         let existing = (library.concerns ?? []).first { $0.id == draft.id }
         guard existing == expected, expected == nil || expected?.id == draft.id else { throw ConcernError.changed }
