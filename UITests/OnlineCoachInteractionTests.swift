@@ -43,7 +43,9 @@ final class OnlineCoachInteractionTests: XCTestCase {
         scrollControlIntoView(review, in: app); review.tap()
         let create = app.buttons["Crea nel Calendario"]
         XCTAssertTrue(create.waitForExistence(timeout: 12))
-        app.buttons["Annulla"].lastMatch.tap()
+        let cancellations = app.buttons.matching(NSPredicate(format: "label == %@", "Annulla")).allElementsBoundByIndex
+        guard let cancel = cancellations.last(where: { $0.isHittable }) else { XCTFail("Manca Annulla nella conferma"); return }
+        cancel.tap()
         XCTAssertTrue(app.navigationBars["Nuovo impegno"].exists)
         scrollControlIntoView(review, in: app); review.tap()
         XCTAssertTrue(create.waitForExistence(timeout: 12)); create.tap()
