@@ -85,7 +85,7 @@ struct ClientMergeForm: View {
                         do {
                             try ClientRegistry.merge(sourceID: sourceID, into: targetID, data: &next)
                             if store.change({ $0 = next }) { dismiss() }
-                        } catch { message = "I profili sono cambiati. Nessuna unione eseguita." }
+                        } catch { message = "I profili sono cambiati o hanno predefiniti diversi. Controllali prima di unire. Nessuna unione eseguita." }
                     }.buttonStyle(PivotPrimaryButton()).accessibilityIdentifier("client-merge-save").disabled(store.locked || !confirmed || source == nil)
                 }
             }.navigationTitle("Unisci profili").toolbar { Button("Annulla") { dismiss() } }

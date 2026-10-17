@@ -83,7 +83,9 @@ enum BackupCodec {
         guard incomeIDs.count == data.income.count,
               Set(data.payments.map(\.id)).count == data.payments.count,
               Set(data.clients.map(\.id)).count == data.clients.count,
-              data.clients.allSatisfy({ (0...100_000_000).contains($0.rateCents) }),
+              data.clients.allSatisfy({ (0...100_000_000).contains($0.rateCents) && ($0.defaults?.isValid ?? true) }),
+              data.records.values.allSatisfy({ $0.logistics?.departure?.isValid ?? true }),
+              (data.lessonDefaults ?? [:]).values.allSatisfy({ $0.departure?.isValid ?? true }),
               data.records.allSatisfy({ $0.key == $0.value.id }),
               data.income.allSatisfy({ $0.amountCents >= 0 && $0.paidCents >= 0 && $0.paidCents <= $0.amountCents
                   && ($0.hasDuration ? $0.minutes > 0 : $0.minutes >= 0)

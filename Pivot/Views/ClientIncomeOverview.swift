@@ -12,8 +12,7 @@ struct ClientIncomeOverview: View {
     @State private var page = 0
     @State private var style: Style = .bars
     @State private var pageHeights: [Int: CGFloat] = [:]
-    @ScaledMetric(relativeTo: .body) private var summaryHeight: CGFloat = 300
-    @ScaledMetric(relativeTo: .body) private var chartHeight: CGFloat = 480
+    @State private var selectedBar: String?
     private let monthLabels = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"]
     private var payments: [Payment] { IncomeAnalytics.receipts(clientID: clientID, data: store.data) }
     private var years: [Int] { Array(Set([PivotDate.calendar.component(.year, from: Date())] + payments.compactMap(\.year))).sorted(by: >) }
@@ -24,13 +23,19 @@ struct ClientIncomeOverview: View {
     private var outstanding: Int? { try? IncomeAnalytics.outstanding(clientID: clientID, data: store.data) }
     private var undated: Int { (try? IncomeAnalytics.undated(year: year, payments: payments)) ?? 0 }
     private var points: [IncomeAnalytics.Month]? { try? IncomeAnalytics.months(year: year, payments: payments) }
-    private var height: CGFloat { max(page == 0 ? summaryHeight : chartHeight, pageHeights[page] ?? 0) }
+    private var height: CGFloat { pageHeights[page] ?? (page == 0 ? 220 : 320) }
 
     var body: some View {
         VStack(spacing: 12) {
             Picker("Incassi del contatto", selection: $range) { ForEach(Range.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
                 .pickerStyle(.segmented).accessibilityIdentifier("client-income-period")
             HStack {
+                Button("Oggi") {
+                    let now = PivotDate.calendar.dateComponents([.year, .month], from: Date())
+                    year = now.year ?? year; month = now.month ?? month
+                    selectedBar = nil
+                }.font(.subheadline.weight(.semibold)).frame(minHeight: 44)
+                    .accessibilityIdentifier("client-income-today")
                 if range == .month {
                     Picker("Mese", selection: $month) { ForEach(1...12, id: \.self) { Text(monthLabels[$0 - 1]).tag($0) } }
                         .accessibilityIdentifier("client-income-month")
@@ -44,7 +49,7 @@ struct ClientIncomeOverview: View {
                     HStack(alignment: .top, spacing: 0) {
                         measured(0, width: geometry.size.width) { summary }.id(0).accessibilityHidden(page != 0)
                         measured(1, width: geometry.size.width) { graph }.id(1).accessibilityHidden(page != 1)
-                    }.frame(height: height, alignment: .top).scrollTargetLayout()
+                    }.scrollTargetLayout()
                 }.frame(width: geometry.size.width, height: geometry.size.height).clipped()
                     .scrollIndicators(.hidden).scrollTargetBehavior(.paging)
                     .scrollPosition(id: Binding<Int?>(get: { page }, set: { if let value = $0 { page = value } }))
@@ -54,7 +59,11 @@ struct ClientIncomeOverview: View {
                 pageButton("Riepilogo", value: 0)
                 pageButton("Grafico", value: 1)
             }
-        }
+        }.onChange(of: year) { _, _ in selectedBar = nil }
+            .onChange(of: month) { _, _ in selectedBar = nil }
+            .onChange(of: range) { _, _ in selectedBar = nil }
+            .onChange(of: style) { _, _ in selectedBar = nil }
+            .onChange(of: clientID) { _, _ in selectedBar = nil }
     }
     private func measured<Content: View>(_ page: Int, width: CGFloat, @ViewBuilder content: () -> Content) -> some View {
         content().frame(width: width, alignment: .topLeading).fixedSize(horizontal: false, vertical: true)
@@ -90,7 +99,7 @@ struct ClientIncomeOverview: View {
             if undated > 0 && range == .month {
                 Text("\(Money.display(undated)) nell’anno senza data d’incasso").font(.caption).foregroundStyle(PivotTheme.muted)
             }
-        }.padding(24).frame(maxWidth: .infinity, minHeight: summaryHeight, alignment: .topLeading)
+        }.padding(24).frame(maxWidth: .infinity, alignment: .topLeading)
             .background(LinearGradient(colors: [Color(pivotHex: "22493F"), Color(pivotHex: "1C2C41"), PivotTheme.surface], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 26))
             .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(PivotTheme.accent.opacity(0.18)))
             .accessibilityElement(children: .contain)
@@ -104,9 +113,18 @@ struct ClientIncomeOverview: View {
                     .accessibilityIdentifier("client-income-chart-style")
             }
             if let points {
+                if style == .bars, let point = points.first(where: { monthLabels[$0.id - 1] == selectedBar }) {
+                    IncomeBarReadout(label: "\(monthLabels[point.id - 1]) \(year)", cents: point.cents,
+                                     identifier: "client-income-bar-value") { selectedBar = nil }
+                }
                 Chart(points) { point in
                     switch style {
-                    case .bars: BarMark(x: .value("Mese", monthLabels[point.id - 1]), y: .value("Euro", point.euros)).foregroundStyle(PivotTheme.blue.gradient).cornerRadius(4)
+                    case .bars:
+                        BarMark(x: .value("Mese", monthLabels[point.id - 1]), y: .value("Euro", point.euros))
+                            .foregroundStyle(PivotTheme.blue.gradient).cornerRadius(4)
+                            .opacity(selectedBar == nil || selectedBar == monthLabels[point.id - 1] ? 1 : 0.4)
+                            .accessibilityLabel(Text("\(monthLabels[point.id - 1]) \(year)"))
+                            .accessibilityValue(Text(Money.display(point.cents)))
                     case .line:
                         LineMark(x: .value("Mese", monthLabels[point.id - 1]), y: .value("Euro", point.euros)).foregroundStyle(PivotTheme.blue)
                         PointMark(x: .value("Mese", monthLabels[point.id - 1]), y: .value("Euro", point.euros)).foregroundStyle(PivotTheme.blue)
@@ -115,10 +133,16 @@ struct ClientIncomeOverview: View {
                         LineMark(x: .value("Mese", monthLabels[point.id - 1]), y: .value("Euro", point.euros)).foregroundStyle(PivotTheme.blue)
                     }
                 }.chartYScale(domain: 0...max(1, (points.map(\.euros).max() ?? 0) * 1.15))
+                    .chartXSelection(value: $selectedBar)
+                    .chartGesture { proxy in
+                        SpatialTapGesture().onEnded { value in
+                            if style == .bars { proxy.selectXValue(at: value.location.x) }
+                        }
+                    }
                     .chartYAxisLabel("€").frame(height: 205).accessibilityIdentifier("client-income-chart")
             } else { Text("Importi da verificare").foregroundStyle(PivotTheme.amber) }
             if undated > 0 { Text("Senza data d’incasso: \(Money.display(undated))").font(.caption).foregroundStyle(PivotTheme.muted) }
-        }.padding(20).frame(maxWidth: .infinity, minHeight: chartHeight, alignment: .topLeading)
+        }.padding(20).frame(maxWidth: .infinity, alignment: .topLeading)
             .background(PivotTheme.surface, in: RoundedRectangle(cornerRadius: 26))
             .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(PivotTheme.blue.opacity(0.2)))
             .accessibilityElement(children: .contain)

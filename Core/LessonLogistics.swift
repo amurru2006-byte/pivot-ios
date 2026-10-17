@@ -22,10 +22,16 @@ struct LessonLogistics: Codable {
     var confirmedAt: Date? = nil
     var eventTitleAtConfirmation: String? = nil
     var calendarLocationAtConfirmation: String? = nil
+    var paymentMethod: ClientPaymentMethod? = nil
+    var departure: ClientTravelOrigin? = nil
+    var eventStartAtConfirmation: Date? = nil
+    var eventEndAtConfirmation: Date? = nil
     func isConfirmed(for event: CalendarItem) -> Bool {
         confirmedAt != nil
             && (eventTitleAtConfirmation.map { EventCoalescer.normalized($0) == EventCoalescer.normalized(event.title) } ?? true)
             && (calendarLocationAtConfirmation.map { EventCoalescer.normalized($0) == EventCoalescer.normalized(event.location) } ?? true)
+            && (eventStartAtConfirmation.map { $0 == event.start } ?? true)
+            && (eventEndAtConfirmation.map { $0 == event.end } ?? true)
     }
     static func key(_ name: String) -> String { EventCoalescer.normalized(name) }
     static func suggestedName(_ event: CalendarItem, clients: [Client]) -> String {

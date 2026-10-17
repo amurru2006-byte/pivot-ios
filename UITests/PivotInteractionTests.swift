@@ -488,6 +488,8 @@ final class PivotInteractionTests: XCTestCase {
         XCTAssertTrue(pageButton.isHittable)
         XCTAssertLessThanOrEqual(explanation.frame.maxY, pageButton.frame.minY, "La navigazione non deve coprire la spiegazione del grafico")
         XCTAssertLessThanOrEqual(explanation.frame.maxY, carousel.frame.maxY, "La spiegazione deve rientrare nella pagina, senza tagli")
+        XCTAssertLessThanOrEqual(carousel.frame.maxY - explanation.frame.maxY, 36,
+                                 "Il grafico generale deve terminare dopo la spiegazione, senza una grande area vuota")
         XCTAssertGreaterThan(explanation.frame.height, 25, "La spiegazione deve andare a capo, non essere troncata in una riga")
         app.buttons["income-page-0"].tap()
         let returnedSummary = app.descendants(matching: .any)["income-summary-title"].firstMatch
@@ -501,6 +503,17 @@ final class PivotInteractionTests: XCTestCase {
         add(screenshot)
         XCTAssertTrue(returnedToChart)
         XCTAssertTrue(pageButton.isSelected)
+        let plot = app.descendants(matching: .any)["income-chart-plot"].firstMatch
+        scrollControlIntoView(plot, in: app)
+        plot.coordinate(withNormalizedOffset: CGVector(dx: 0.04, dy: 0.5)).tap()
+        let value = app.staticTexts["income-bar-value"]
+        XCTAssertTrue(value.waitForExistence(timeout: 5)); let firstValue = value.label
+        XCTAssertTrue(firstValue.contains("€"))
+        plot.coordinate(withNormalizedOffset: CGVector(dx: 0.12, dy: 0.5)).tap()
+        XCTAssertNotEqual(value.label, firstValue)
+        XCTAssertEqual(app.staticTexts.matching(identifier: "income-bar-value").count, 1)
+        app.buttons["Chiudi valore selezionato"].tap()
+        XCTAssertFalse(value.exists)
     }
     private func waitUntilHittable(_ element: XCUIElement) -> Bool {
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND hittable == true"), object: element)
