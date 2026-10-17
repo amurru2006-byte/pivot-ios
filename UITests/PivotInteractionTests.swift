@@ -1,6 +1,11 @@
 import XCTest
 
 final class PivotInteractionTests: XCTestCase {
+    override func tearDown() {
+        attachFailureDiagnostics("pivot-interactions")
+        super.tearDown()
+    }
+
     private let historyID = "33333333-3333-4333-8333-333333333333"
     private let emptyHistoryID = "44444444-4444-4444-8444-444444444444"
     private func prepareHistory(deletion: Bool = false) -> XCUIApplication {
@@ -790,7 +795,10 @@ final class PivotInteractionTests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 10))
         app.tabBars.buttons["Palestra"].tap()
         let importer = app.buttons["import-training-fixture"]
-        for _ in 0..<8 { if importer.isHittable { break }; app.swipeUp() }
+        // A fast whole-app swipe briefly reported the fixture as hittable,
+        // then the following assertion failed before any PDF was imported.
+        // Require the control's actual viewport geometry and scroll its owner.
+        scrollControlIntoView(importer, in: app)
         XCTAssertTrue(importer.isHittable); importer.tap()
         let confirm = app.buttons["Usa questa scheda"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 8)); confirm.tap()
