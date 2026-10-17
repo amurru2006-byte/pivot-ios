@@ -7,6 +7,7 @@ struct CoachCalendarDraftView: View {
     @State var draft: CoachCalendarDraft
     var savedDraftID: UUID? = nil
     var initialCalendarID: String? = nil
+    var sourceMessage: String = ""
     var onCreated: (CalendarItem, Bool) -> Void
     @Environment(\.scenePhase) private var scenePhase
     @State private var calendarID = ""
@@ -28,7 +29,7 @@ struct CoachCalendarDraftView: View {
         choices.map { .init(id: $0.id, title: $0.title, sourceID: $0.sourceIdentifier) }
     }
     private var suggestion: CoachCalendarRouting.Suggestion {
-        CoachCalendarRouting.suggest(title: draft.title, hint: draft.calendarHint, choices: routingChoices, settings: store.data.settings)
+        CoachCalendarRouting.suggest(title: draft.title, hint: draft.calendarHint, choices: routingChoices, settings: store.data.settings, context: sourceMessage)
     }
     var body: some View {
         NavigationStack {

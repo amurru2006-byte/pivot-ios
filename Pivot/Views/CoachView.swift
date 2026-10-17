@@ -253,7 +253,8 @@ struct CoachView: View {
             }
         }
         .sheet(item: $calendarDraft) { savedDraft in
-            CoachCalendarDraftView(draft: savedDraft.draft, savedDraftID: savedDraft.id, initialCalendarID: savedDraft.calendarID) { event, existing in
+            CoachCalendarDraftView(draft: savedDraft.draft, savedDraftID: savedDraft.id, initialCalendarID: savedDraft.calendarID,
+                sourceMessage: state.messages.first(where: { $0.id == savedDraft.userMessageID })?.text ?? "") { event, existing in
                 let text = existing ? "Questo impegno era già presente: non ne ho creata un'altra copia." : "Impegno creato nel Calendario: \(event.title)."
                 let saved = store.change { data in
                     _ = CoachDraftStore.markCreated(id: savedDraft.id, eventID: event.id, calendarID: event.calendarIdentifier, data: &data)
@@ -398,7 +399,6 @@ struct CoachView: View {
         HStack {
             if item.role == .user { Spacer(minLength: 42) }
             Text(item.text).font(.subheadline).padding(13)
-                .textSelection(.enabled)
                 .accessibilityIdentifier(item.role == .user ? "coach-user-message" : "coach-assistant-message")
                 .background(item.role == .user ? PivotTheme.accent.opacity(0.18) : PivotTheme.surface, in: RoundedRectangle(cornerRadius: 16))
                 .frame(maxWidth: 560, alignment: item.role == .user ? .trailing : .leading)
@@ -615,6 +615,7 @@ struct CoachView: View {
             try Task.checkCancellation()
             guard snapshot.isCurrent(events: calendar.events, data: store.data, now: Date()) else { throw CoachV8Error.staleContext }
             let replyMessage = CoachMessage(dayKey: PivotDate.key(now), role: .coach, text: result.reply, onlineHistoryEligible: response.mode != .plan)
+            let userMessage = CoachMessage(dayKey: PivotDate.key(now), role: .user, text: clean, createdAt: now, onlineHistoryEligible: true)
             var savedDraft: CoachSavedCalendarDraft?
             if var draft = response.draft, response.mode == .create {
                 for (index, client) in store.data.clients.enumerated() {
@@ -623,11 +624,11 @@ struct CoachView: View {
                     draft.notes = draft.notes.replacingOccurrences(of: alias, with: client.name)
                     draft.calendarHint = draft.calendarHint?.replacingOccurrences(of: alias, with: client.name)
                 }
-                savedDraft = CoachSavedCalendarDraft(messageID: replyMessage.id, dayKey: replyMessage.dayKey, draft: draft)
+                savedDraft = CoachSavedCalendarDraft(messageID: replyMessage.id, userMessageID: userMessage.id, dayKey: replyMessage.dayKey, draft: draft)
             }
             guard store.change({ data in
                 var coach = data.coachState
-                coach.messages.append(.init(dayKey: PivotDate.key(now), role: .user, text: clean, createdAt: now, onlineHistoryEligible: true))
+                coach.messages.append(userMessage)
                 // Plan validation may mention a private local event title. Only
                 // provider conversation/clarification prose is safe for history.
                 coach.messages.append(replyMessage)

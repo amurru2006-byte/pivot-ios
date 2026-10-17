@@ -95,4 +95,17 @@ final class CoachCalendarRoutingTests: XCTestCase {
         data.settings.calendarTopicRoutes = [String(repeating: "a", count: 81): "qa"]
         XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encodeCompact(data)))
     }
+    func testParticipantInOriginalRequestCanRouteAGenericDraftTitle() {
+        var settings = Settings(); settings.preferredNewEventSourceID = "email-source-qa"
+        settings.calendarTopicRoutes = ["persona esempio": "email-personal-qa"]
+        let result = CoachCalendarRouting.suggest(title: "Visita in città", hint: nil, choices: choices, settings: settings,
+            context: "Domani vado a trovare Persona Esempio")
+        XCTAssertEqual(result.calendarID, "email-personal-qa")
+    }
+    func testNegatedOrConflictingContextDoesNotGuessACalendar() {
+        var settings = Settings(); settings.calendarTopicRoutes = ["persona esempio": "email-personal-qa", "lavoro": "email-work-qa"]
+        for context in ["Non vado da Persona Esempio", "Domani Persona Esempio e lavoro"] {
+            XCTAssertNil(CoachCalendarRouting.suggest(title: "Visita in città", hint: nil, choices: choices, settings: settings, context: context).calendarID)
+        }
+    }
 }

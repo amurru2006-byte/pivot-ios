@@ -3,6 +3,7 @@ import Foundation
 struct CoachSavedCalendarDraft: Codable, Identifiable {
     var id = UUID()
     var messageID: UUID
+    var userMessageID: UUID? = nil
     var dayKey: String
     var draft: CoachCalendarDraft
     var calendarID: String? = nil
@@ -22,6 +23,9 @@ enum CoachDraftStore {
                   (saved.draft.calendarHint?.count ?? 0) <= 160,
                   saved.calendarID.map({ !$0.isEmpty && $0.count <= 1024 }) ?? true,
                   saved.createdEventID.map({ !$0.isEmpty && $0.count <= 2048 }) ?? true else { return false }
+            if let userID = saved.userMessageID {
+                guard let user = messages[userID], user.role == .user, user.dayKey == saved.dayKey else { return false }
+            }
             // Incomplete edits may be kept; only the final creation gate
             // requires complete future times and a nonempty title/calendar.
             return (saved.draft.start.map { $0.timeIntervalSinceReferenceDate.isFinite } ?? true)
