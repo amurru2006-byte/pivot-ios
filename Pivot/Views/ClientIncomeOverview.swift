@@ -49,7 +49,7 @@ struct ClientIncomeOverview: View {
                     HStack(alignment: .top, spacing: 0) {
                         measured(0, width: geometry.size.width) { summary }.id(0).accessibilityHidden(page != 0)
                         measured(1, width: geometry.size.width) { graph }.id(1).accessibilityHidden(page != 1)
-                    }.scrollTargetLayout()
+                    }.scrollTargetLayout().frame(height: height, alignment: .top)
                 }.frame(width: geometry.size.width, height: geometry.size.height).clipped()
                     .scrollIndicators(.hidden).scrollTargetBehavior(.paging)
                     .scrollPosition(id: Binding<Int?>(get: { page }, set: { if let value = $0 { page = value } }))

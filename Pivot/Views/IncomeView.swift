@@ -368,6 +368,7 @@ struct ClientForm: View {
     @State private var activity: IncomeActivityKind = .lesson
     @State private var billing: IncomeBilling = .hourly
     @State private var defaults = ClientDefaults()
+    @State private var savingContact = false
     @State private var message: String?
     var editingClient: Client? = nil
     private var existing: [Client] { ClientRegistry.named(name, clients: store.data.clients) }
@@ -402,17 +403,25 @@ struct ClientForm: View {
                     Text("Ci sono più profili con questo nome. Apri lo studente da Entrate e scegli Unisci profili, solo se sono davvero la stessa persona.").foregroundStyle(PivotTheme.amber)
                 }
                 if let message { Text(message).foregroundStyle(PivotTheme.amber) }
-                Button(saveTitle) {
-                    guard let cents = rateValue else { return }
+                Button(savingContact ? "Salvo…" : saveTitle) {
+                    guard !savingContact, let cents = rateValue else { return }
                     var next = store.data
                     do {
                         try ClientRegistry.save(name: name, rateCents: cents, cadence: cadence,
                                                 aliases: aliases.components(separatedBy: .newlines), editingID: editingClient?.id,
                                                 activity: activity, billing: billing, defaults: defaults, data: &next)
-                        if store.change({ $0 = next }) { dismiss() }
+                        if store.change({ $0 = next }) {
+                            savingContact = true
+                            Task { @MainActor in
+                                let persisted = await store.flushPendingWrites()
+                                savingContact = false
+                                if persisted { dismiss() }
+                                else { message = "Il contatto è ancora in memoria ma non è salvato su disco. Riprova prima di chiudere l’app." }
+                            }
+                        }
                     } catch { message = "Non ho creato un altro profilo. Scegli lo studente esistente o unisci prima i doppioni." }
-                }.buttonStyle(PivotPrimaryButton()).accessibilityIdentifier("client-save").disabled(store.locked || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || rateValue == nil || !defaults.isValid)
-            }.navigationTitle("Contatto")
+                }.buttonStyle(PivotPrimaryButton()).accessibilityIdentifier("client-save").disabled(store.locked || savingContact || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || rateValue == nil || !defaults.isValid)
+            }.navigationTitle("Contatto").disabled(savingContact).interactiveDismissDisabled(savingContact)
                 .onAppear { if let client = editingClient { name = client.name; rate = String(format: "%.2f", Double(client.rateCents) / 100); cadence = client.paymentCadence ?? .everyLesson; aliases = (client.calendarAliases ?? []).joined(separator: "\n"); activity = client.activityKind; billing = client.billingMode; defaults = client.defaults ?? ClientDefaults() } }
                 .onChange(of: activity) { _, value in if value == .lesson { billing = .hourly }; if value == .gift { billing = .fixed } }
                 .onChange(of: name) { _, _ in
@@ -423,7 +432,7 @@ struct ClientForm: View {
                         rate = String(format: "%.2f", Double(client.rateCents) / 100); cadence = client.paymentCadence ?? .everyLesson; activity = client.activityKind; billing = client.billingMode
                     }
                 }
-                .toolbar { Button("Annulla") { dismiss() } }
+                .toolbar { Button("Annulla") { dismiss() }.disabled(savingContact) }
         }
     }
 }

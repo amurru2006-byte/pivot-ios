@@ -71,7 +71,7 @@ struct CoachCalendarDraftView: View {
                 }
             }.disabled(busy)
                 .navigationTitle("Nuovo impegno")
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Chiudi") { if persistDraft() { dismiss() } }.disabled(busy).accessibilityIdentifier("coach-create-close") } }
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Chiudi") { closeDraft() }.disabled(busy).accessibilityIdentifier("coach-create-close") } }
                 .task {
                     guard !loaded else { return }
                     await calendar.refresh(settings: store.data.settings)
@@ -93,12 +93,26 @@ struct CoachCalendarDraftView: View {
                 }
         }.interactiveDismissDisabled(busy)
     }
+    private func closeDraft() {
+        guard !busy, persistDraft() else { return }
+        busy = true
+        Task { @MainActor in
+            let persisted = await store.flushPendingWrites()
+            busy = false
+            if persisted { dismiss() }
+            else { problem = "La bozza è ancora in memoria, ma non è salvata su disco. Riprova prima di chiudere Pivot." }
+        }
+    }
     private func review() {
         guard persistDraft() else { return }
         if let issue = draft.problem(now: Date(), calendarID: calendarID) { problem = issue; return }
         busy = true; problem = nil
         Task {
             defer { busy = false }
+            guard await store.flushPendingWrites() else {
+                problem = "Completa il salvataggio della bozza prima di creare l’impegno. Nessun evento è stato creato."
+                return
+            }
             do { conflicts = try await calendar.reviewCreation(draft, calendarID: calendarID, settings: store.data.settings); confirm = true }
             catch { problem = error.localizedDescription }
         }
