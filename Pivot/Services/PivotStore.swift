@@ -528,7 +528,7 @@ final class PivotStore: ObservableObject {
     func record(for event: CalendarItem) -> EventRecord {
         data.records[event.id] ?? EventRecord(id: event.id, snapshot: event)
     }
-    func rule(for event: CalendarItem) -> EventRule { data.rules[event.id] ?? .defaultRule(for: event) }
+    func rule(for event: CalendarItem) -> EventRule { EventRule.effective(for: event, data: data) }
     func saveRecord(_ record: EventRecord) {
         var updated = record
         updated.updatedAt = Date()

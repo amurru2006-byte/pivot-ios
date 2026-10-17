@@ -12,7 +12,7 @@ enum CalendarRecoveryWindows {
     /// It prepares windows only; it does not apply changes or relax CoachPlanner's guard.
     static func find(target: CalendarItem, budget: CalendarTimeBudget, events: [CalendarItem], data: AppData,
                      otherBudgets: [String: CalendarTimeBudget] = [:], now: Date, days: Int = 3) -> [CalendarRecoveryWindow] {
-        let rule = data.rules[target.id] ?? .defaultRule(for: target)
+        let rule = EventRule.effective(for: target, data: data)
         let canonical = EventCoalescer.unique(events, data: data)
         guard let current = canonical.first(where: { $0.id == target.id }),
               CoachPlanner.matchesSnapshot(target, current), target.writable, !target.isAllDay,
@@ -40,7 +40,7 @@ enum CalendarRecoveryWindows {
             var unavailable = false
             let blocks = relevant.compactMap { event -> (Date, Date)? in
                 guard !event.isAllDay else { return nil }
-                let other = data.rules[event.id] ?? .defaultRule(for: event)
+                let other = EventRule.effective(for: event, data: data)
                 guard event.end > event.start,
                       (0...1440).contains(other.travelBeforeMinutes), (0...1440).contains(other.travelAfterMinutes),
                       event.location.isEmpty || other.travelConfirmed else { unavailable = true; return nil }

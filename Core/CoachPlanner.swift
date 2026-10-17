@@ -53,7 +53,7 @@ enum CoachPlanner {
             if !alternatives.isEmpty {
                 return CoachTurnResult(reply: "Uno spazio completo manca. Posso accorciare solo le attività per cui hai già indicato una durata minima. Controlla tutte le conseguenze prima di accettare.", options: alternatives)
             }
-            let rule = data.rules[target.id] ?? .defaultRule(for: target)
+            let rule = EventRule.effective(for: target, data: data)
             let reason: String
             if rule.flexibility == .fixed { reason = "è segnato come fisso" }
             else if !rule.travelConfirmed { reason = "mancano i tempi di tragitto confermati" }
@@ -82,7 +82,8 @@ enum CoachPlanner {
         var options: [CoachOption] = []
         for item in canonical where item.id != target.id && item.start > now && !item.isAllDay {
             // Only explicit minimums, never assume default rules authorize shrinking someone else's event.
-            guard let rule = data.rules[item.id], rule.flexibility == .compressible, rule.compressionApproved == true, rule.travelConfirmed,
+            let rule = EventRule.effective(for: item, data: data)
+            guard rule.flexibility == .compressible, rule.compressionApproved == true, rule.travelConfirmed,
                   rule.minimumMinutes > 0, rule.minimumMinutes < item.durationMinutes,
                   EventContext.priority(item, data: data, now: now) != .essential,
                   EventContext.priority(item, data: data, now: now).rawValue <= EventContext.priority(target, data: data, now: now).rawValue,
@@ -109,7 +110,7 @@ enum CoachPlanner {
                   matchesSnapshot(move.source, current) else {
                 return "Il Calendario è cambiato dopo la proposta. Aggiorna e chiedi una nuova soluzione."
             }
-            let rule = simulated.rules[current.id] ?? .defaultRule(for: current)
+            let rule = EventRule.effective(for: current, data: simulated)
             guard !current.isAllDay, rule.flexibility != .fixed, rule.travelConfirmed,
                   rule.travelBeforeMinutes >= 0, rule.travelAfterMinutes >= 0 else { return "‘\(current.title)’ non è spostabile oppure ha il tragitto da confermare." }
             let duration = move.proposedEnd.timeIntervalSince(move.proposedStart)
@@ -235,12 +236,12 @@ enum CoachPlanner {
     }
 
     private static func slotIsFree(_ move: PlanMove, events: [CalendarItem], data: AppData) -> Bool {
-        let rule = data.rules[move.source.id] ?? .defaultRule(for: move.source)
+        let rule = EventRule.effective(for: move.source, data: data)
         let start = move.proposedStart.addingTimeInterval(-Double(rule.travelBeforeMinutes) * 60)
         let end = move.proposedEnd.addingTimeInterval(Double(rule.travelAfterMinutes) * 60)
         return !Planner.plannedEvents(events, data: data).contains { item in
             guard item.id != move.source.id, !item.isAllDay else { return false }
-            let other = data.rules[item.id] ?? .defaultRule(for: item)
+            let other = EventRule.effective(for: item, data: data)
             if !item.location.isEmpty && !other.travelConfirmed && item.occurs(on: move.proposedStart) { return true }
             return item.start.addingTimeInterval(-Double(other.travelBeforeMinutes) * 60) < end
                 && item.end.addingTimeInterval(Double(other.travelAfterMinutes) * 60) > start

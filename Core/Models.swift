@@ -164,6 +164,12 @@ struct EventRule: Codable {
     var priority: EventPriority? = nil
     var kindOverride: EventKind? = nil
     var compressionApproved: Bool? = nil
+    static func effective(for item: CalendarItem, data: AppData) -> EventRule {
+        var rule = data.rules[item.id] ?? defaultRule(for: item)
+        if let logistics = data.records[item.id]?.logistics,
+           !logistics.isConfirmed(for: item) { rule.travelConfirmed = false }
+        return rule
+    }
     static func defaultRule(for item: CalendarItem) -> EventRule {
         let t = item.title.lowercased()
         switch item.kind {
