@@ -70,11 +70,8 @@ struct TrainingPlanEditor: View {
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Annulla") { dismiss() } }
                     ToolbarItem(placement: .confirmationAction) { Button("Salva") { save() }.disabled(store.locked).accessibilityIdentifier("training-plan-save") }
-                    ToolbarItemGroup(placement: .keyboard) {
-                        Spacer()
-                        Button("Fine") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
-                    }
                 }
+                .pivotKeyboardToolbar()
                 .sheet(isPresented: $selecting) {
                     ExercisePickerView { exercise in
                         guard payload.days.indices.contains(dayIndex) else { selecting = false; return }

@@ -181,8 +181,8 @@ private struct SavingsGoalForm: View {
             }.navigationTitle(existing == nil ? "Nuovo obiettivo" : "Modifica obiettivo")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Annulla") { dismiss() } }
-                    ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Fine") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) } }
                 }
+                .pivotKeyboardToolbar()
                 .onAppear {
                     guard !initialized else { return }; initialized = true
                     if let existing {
@@ -256,8 +256,8 @@ private struct SavingsMovementForm: View {
             }.navigationTitle(title)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Annulla") { dismiss() } }
-                    ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Fine") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) } }
                 }
+                .pivotKeyboardToolbar()
                 .onAppear {
                     guard !initialized else { return }; initialized = true
                     if let expense = existingExpense { amount = String(Double(expense.amountCents) / 100); description = expense.description; date = expense.date }

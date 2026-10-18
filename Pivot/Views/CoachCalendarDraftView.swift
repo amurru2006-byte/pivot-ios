@@ -82,11 +82,8 @@ struct CoachCalendarDraftView: View {
                 .navigationTitle("Nuovo impegno")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Chiudi") { closeDraft() }.disabled(busy).accessibilityIdentifier("coach-create-close") }
-                    ToolbarItemGroup(placement: .keyboard) {
-                        Spacer()
-                        Button("Fine") { focusedField = nil }.accessibilityIdentifier("coach-draft-keyboard-done")
-                    }
                 }
+                .pivotKeyboardToolbar(identifier: "coach-draft-keyboard-done") { focusedField = nil }
                 .task {
                     guard !loaded else { return }
                     await calendar.refresh(settings: store.data.settings)

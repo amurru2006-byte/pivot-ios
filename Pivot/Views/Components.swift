@@ -73,9 +73,39 @@ enum DisplayDate {
     }
 }
 
+/// Navigation stacks may keep earlier screens mounted and merge their keyboard
+/// toolbars. Exactly one local owner contributes a dismissal button; closing a
+/// child or modal restores the underlying screen's ownership.
+@MainActor private final class PivotKeyboardOwner: ObservableObject {
+    static let shared = PivotKeyboardOwner()
+    @Published private(set) var scopes: [UUID] = []
+    func claim(_ id: UUID) { scopes = scopes.filter { $0 != id } + [id] }
+    func release(_ id: UUID) { scopes.removeAll { $0 == id } }
+}
+private struct PivotKeyboardToolbar: ViewModifier {
+    let identifier: String
+    let dismiss: () -> Void
+    @State private var scopeID = UUID()
+    @ObservedObject private var owner = PivotKeyboardOwner.shared
+    func body(content: Content) -> some View {
+        content.onAppear { owner.claim(scopeID) }.onDisappear { owner.release(scopeID) }
+            .toolbar {
+                if owner.scopes.last == scopeID {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer(); Button("Fine", action: dismiss).accessibilityIdentifier(identifier)
+                    }
+                }
+            }
+    }
+}
+extension View {
+    func pivotKeyboardToolbar(identifier: String = "pivot-keyboard-done", dismiss: @escaping () -> Void = {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }) -> some View { modifier(PivotKeyboardToolbar(identifier: identifier, dismiss: dismiss)) }
+}
+
 struct PivotScreen<Content: View>: View {
     @ViewBuilder var content: Content
-    @State private var keyboardToolbarVisible = false
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) { content }
@@ -85,17 +115,7 @@ struct PivotScreen<Content: View>: View {
         .background(LinearGradient(colors: [Color(pivotHex: "101D2A"), PivotTheme.background], startPoint: .topLeading, endPoint: .center).ignoresSafeArea())
         .foregroundStyle(PivotTheme.text)
         .scrollDismissesKeyboard(.interactively)
-        .onAppear { keyboardToolbarVisible = true }
-        .onDisappear { keyboardToolbarVisible = false }
-        .toolbar {
-            if keyboardToolbarVisible {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Fine") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
-                        .accessibilityIdentifier("pivot-keyboard-done")
-                }
-            }
-        }
+        .pivotKeyboardToolbar()
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(PivotTheme.background, for: .navigationBar)
     }
