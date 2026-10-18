@@ -50,7 +50,7 @@ final class TrainingDurationPredictionTests: XCTestCase {
         XCTAssertEqual(value?.source, .calendar); XCTAssertNil(value?.statistics)
         XCTAssertEqual(value?.schedulingMinutes, 100)
     }
-    func testSessionEstimateUsesDeclaredPhaseWithoutEditingPlan() {
+    func testSessionEstimateUsesDeclaredPhaseWithoutEditingPlan() throws {
         var plan = self.plan
         plan.payload.phase = .loading
         let original = plan
@@ -60,7 +60,8 @@ final class TrainingDurationPredictionTests: XCTestCase {
         XCTAssertEqual(TrainingDurationEstimate.make(session: next, library: library, calendarMinutes: nil, now: now)?.activityMinutes, 75)
         next.phase = nil
         XCTAssertNil(TrainingDurationEstimate.make(session: next, library: library, calendarMinutes: nil, now: now))
-        XCTAssertEqual(library.plans[0], original)
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+        XCTAssertEqual(try encoder.encode(library.plans[0]), try encoder.encode(original))
     }
     func testSessionEstimateRejectsMissingPlanChangedWorkloadAndAmbiguousLegacyDay() {
         let plan = self.plan
