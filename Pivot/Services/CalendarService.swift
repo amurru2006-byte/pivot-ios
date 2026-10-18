@@ -170,14 +170,14 @@ private actor CalendarWorker {
     func incomeHistory(year: Int, calendarIDs: Set<String>, settings: Settings) throws -> [CalendarItem] {
         assert(!Thread.isMainThread, "Calendar history must not block touch handling")
         let now = Date()
-        guard (2026...PivotDate.calendar.component(.year, from: now)).contains(year), !calendarIDs.isEmpty,
+        guard HistoricalIncome.validYear(year, now: now), !calendarIDs.isEmpty,
               let start = PivotDate.calendar.date(from: DateComponents(year: year, month: 1, day: 1)),
               let yearEnd = PivotDate.calendar.date(byAdding: .year, value: 1, to: start) else { throw CalendarFailure.changed }
         #if DEBUG && targetEnvironment(simulator)
         if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--history-test") {
             return (0..<2).map { index in
                 let date = start.addingTimeInterval(Double(3 + index) * 86400 + 10 * 3600)
-                let id = "history-fixture-\(index)"
+                let id = "history-fixture-\(year)-\(index)"
                 return CalendarItem(id: id, eventIdentifier: id, calendarIdentifier: "history-fixture", calendarTitle: "Lavoro",
                     title: "Lezione Contatto \(index == 0 ? "A" : "B") Test", start: date, end: date.addingTimeInterval(3600),
                     location: "", notes: "", colorHex: "7EE6CD", isAllDay: false, writable: false, kind: .tutoring)

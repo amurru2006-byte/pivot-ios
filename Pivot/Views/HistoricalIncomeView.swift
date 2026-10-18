@@ -9,6 +9,8 @@ struct HistoricalIncomeView: View {
     @State private var calendarIDs = Set<String>()
     @State private var events: [CalendarItem] = []
     @State private var clients: [String: UUID] = [:]
+    @State private var historicalRates: [UUID: String] = [:]
+    @State private var confirmedRates = Set<UUID>()
     @State private var selected = Set<String>()
     @State private var loading = false
     @State private var loaded = false
@@ -31,10 +33,12 @@ struct HistoricalIncomeView: View {
             && !(store.data.settings.excludeHolidays && $0.holiday) }
     }
     private var quotes: [HistoricalIncome.Quote] {
-        events.compactMap { event in
-            guard selected.contains(event.id), let id = clients[event.id] else { return nil }
-            return try? HistoricalIncome.quote(event, clientID: id, year: year, now: Date(), data: store.data)
-        }
+        events.filter { selected.contains($0.id) }.compactMap { status($0).quote }
+    }
+    private var previousYear: Bool { year < PivotDate.calendar.component(.year, from: Date()) }
+    private var assignedClients: [Client] {
+        let ids = Set(clients.values)
+        return store.data.clients.filter { ids.contains($0.id) }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
     var body: some View {
         NavigationStack {
@@ -50,8 +54,8 @@ struct HistoricalIncomeView: View {
                 }
                 PivotCard {
                     Picker("Anno", selection: $year) {
-                        ForEach(Array(2026...max(2026, PivotDate.calendar.component(.year, from: Date()))).reversed(), id: \.self) { Text(String($0)).tag($0) }
-                    }
+                        ForEach(Array(1900...max(1900, PivotDate.calendar.component(.year, from: Date()))).reversed(), id: \.self) { Text(String($0)).tag($0) }
+                    }.accessibilityIdentifier("history-year")
                     ForEach(choices) { choice in
                         Toggle(choice.title, isOn: Binding(get: { calendarIDs.contains(choice.id) }, set: { value in
                             if value { calendarIDs.insert(choice.id) } else { calendarIDs.remove(choice.id) }
@@ -63,16 +67,22 @@ struct HistoricalIncomeView: View {
                         .accessibilityIdentifier("history-load")
                 }.disabled(loading)
                 if loaded {
+                    if previousYear, !assignedClients.isEmpty {
+                        PivotCard {
+                            SectionHeading(title: "Tariffe nel \(year)", detail: "Solo per questo recupero")
+                            ForEach(assignedClients) { client in historicalRateRow(client) }
+                        }.disabled(loading || store.locked)
+                    }
                     HStack {
                         SectionHeading(title: "Attività trovate", detail: String(events.count))
                         Spacer()
                         Button("Seleziona pronte") {
                             selected = Set(events.filter { status($0).quote != nil }.map(\.id))
-                        }.accessibilityIdentifier("history-select-ready")
+                        }.disabled(loading || store.locked).accessibilityIdentifier("history-select-ready")
                     }
                     Button { addingClient = true } label: { Label("Aggiungi contatto", systemImage: "person.badge.plus") }
                         .buttonStyle(PivotSecondaryButton()).disabled(store.locked || loading)
-                    LazyVStack(spacing: 12) { ForEach(events) { event in row(event) } }
+                    LazyVStack(spacing: 12) { ForEach(events) { event in row(event) } }.disabled(loading || store.locked)
                     if events.isEmpty { EmptyCard(title: "Nessuna lezione da recuperare", message: "Controlla anno e calendari selezionati.", icon: "calendar") }
                     Button("Rivedi \(quotes.count) lezioni") { prepareReview() }
                         .buttonStyle(PivotPrimaryButton()).disabled(loading || store.locked || quotes.isEmpty)
@@ -108,8 +118,40 @@ struct HistoricalIncomeView: View {
     private func status(_ event: CalendarItem) -> (quote: HistoricalIncome.Quote?, message: String?) {
         if HistoricalIncome.existingEntry(for: event, data: store.data) != nil { return (nil, "Già registrata") }
         guard let client = clients[event.id] else { return (nil, "Scegli il contatto e verifica la tariffa") }
-        do { return (try HistoricalIncome.quote(event, clientID: client, year: year, now: Date(), data: store.data), nil) }
+        do {
+            let rate: Int?
+            if previousYear {
+                guard confirmedRates.contains(client), let contact = store.data.clients.first(where: { $0.id == client }),
+                      let value = Money.cents(from: historicalRates[client] ?? rateText(contact)), value > 0 else {
+                    return (nil, "Conferma la tariffa del contatto per il \(year)")
+                }
+                rate = value
+            } else { rate = nil }
+            return (try HistoricalIncome.quote(event, clientID: client, year: year, now: Date(), data: store.data,
+                confirmedRateCents: rate), nil)
+        }
         catch { return (nil, error.localizedDescription) }
+    }
+
+    private func rateText(_ client: Client) -> String { String(format: "%.2f", Double(client.rateCents) / 100) }
+    private func unselectLessons(for clientID: UUID) {
+        selected = Set(selected.filter { clients[$0] != clientID })
+        review = nil
+    }
+    private func historicalRateRow(_ client: Client) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(client.name).font(.headline)
+            TextField("Euro all’ora", text: Binding(get: { historicalRates[client.id] ?? rateText(client) }, set: { value in
+                historicalRates[client.id] = value; confirmedRates.remove(client.id); unselectLessons(for: client.id)
+            })).keyboardType(.decimalPad).textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("history-rate-" + client.id.uuidString)
+            Toggle("Confermo la tariffa per il \(year)", isOn: Binding(get: { confirmedRates.contains(client.id) }, set: { value in
+                if value { confirmedRates.insert(client.id) } else { confirmedRates.remove(client.id) }
+                unselectLessons(for: client.id)
+            })).disabled((Money.cents(from: historicalRates[client.id] ?? rateText(client)) ?? 0) <= 0)
+                .accessibilityIdentifier("history-rate-confirm-" + client.id.uuidString)
+            Text("La tariffa attuale del contatto non cambia.").font(.caption).foregroundStyle(PivotTheme.muted)
+        }
     }
 
     private func row(_ event: CalendarItem) -> some View {
@@ -130,7 +172,10 @@ struct HistoricalIncomeView: View {
             } else if let text = state.message { Text(text).font(.caption).foregroundStyle(PivotTheme.amber) }
         }
     }
-    private func clearPreview() { events = []; selected = []; clients = [:]; loaded = false; review = nil; message = nil }
+    private func clearPreview() {
+        events = []; selected = []; clients = [:]; historicalRates = [:]; confirmedRates = []
+        loaded = false; review = nil; message = nil
+    }
 
     private func load() {
         task?.cancel(); loading = true; message = nil
@@ -141,6 +186,7 @@ struct HistoricalIncomeView: View {
                 let fresh = try await calendar.incomeHistory(year: selectedYear, calendarIDs: ids, settings: settings)
                 try Task.checkCancellation()
                 events = EventCoalescer.unique(fresh, data: store.data); selected = []; clients = [:]
+                historicalRates = [:]; confirmedRates = []
                 for event in events {
                     clients[event.id] = StudentRecognition.recognize(title: event.title, clients: store.data.clients).client?.id
                 }
@@ -224,6 +270,7 @@ private struct HistoricalIncomeConfirmation: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(item.clientName)
                             Text("\(DisplayDate.label(item.event.start, format: "d MMM yyyy")) · \(item.minutes) min · \(Money.display(item.amountCents))").font(.caption)
+                            Text("\(Money.display(item.rateCents))/h").font(.caption)
                         }
                     }
                 }
