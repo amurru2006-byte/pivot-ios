@@ -12,6 +12,12 @@ struct CoachCalendarDraft: Codable, Equatable, Identifiable {
 
     enum CodingKeys: String, CodingKey { case title, start, end, calendarHint, notes, endEstimated }
 
+    func encode(to encoder: Encoder) throws {
+        var value = encoder.container(keyedBy: CodingKeys.self)
+        try value.encode(title, forKey: .title); try value.encode(start, forKey: .start); try value.encode(end, forKey: .end)
+        try value.encode(calendarHint, forKey: .calendarHint); try value.encode(notes, forKey: .notes); try value.encode(endEstimated, forKey: .endEstimated)
+    }
+
     func problem(now: Date, calendarID: String) -> String? {
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               title.count <= 160, notes.count <= 3000 else { return "Controlla titolo e note della proposta." }

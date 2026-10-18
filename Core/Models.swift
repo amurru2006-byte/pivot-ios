@@ -314,6 +314,7 @@ struct CoachState: Codable {
     var pendingCalendarChanges: [PendingCalendarChange] = []
     var memories: [CoachMemory] = []
     var calendarDrafts: [CoachSavedCalendarDraft]? = nil
+    var calendarBatches: [CoachCalendarBatch]? = nil
 }
 
 struct Settings: Codable, Equatable {
@@ -373,6 +374,8 @@ struct AppData: Codable {
     var strengthProfile: StrengthProfile? = nil
     var incomeEdits: [IncomeEdit]? = nil
     var savingsBudget: SavingsBudget? = nil
+    var calendarActionArchive: [ArchivedCalendarMutation]? = nil
+    var calendarRestorations: [CalendarRestorationLink]? = nil
 }
 
 struct ActivityDraft: Codable {

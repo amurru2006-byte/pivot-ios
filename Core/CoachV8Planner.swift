@@ -13,6 +13,11 @@ enum CoachV8Planner {
             throw CoachV8Error.invalidResponse
         }
         guard response.mode == .plan else {
+            if response.mode == .actions {
+                guard response.version == 3, let actions = response.actions else { throw CoachV8Error.invalidResponse }
+                _ = try CoachCalendarBatch.make(actions, sources: snapshot.sources, messageID: UUID(), now: now, data: data)
+                return .init(reply: "Ho preparato le modifiche da controllare. Apri l’anteprima e conferma soltanto quelle che vuoi applicare: il Calendario non è ancora cambiato.", options: [])
+            }
             return .init(reply: userFacingReply(response.reply, request: snapshot.request), options: [], needsActivityClarification: response.mode == .clarify)
         }
         var simulated = data

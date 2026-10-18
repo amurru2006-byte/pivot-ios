@@ -28,7 +28,7 @@ enum CoachDraftStore {
                 guard let user = messages[userID], user.role == .user, user.dayKey == saved.dayKey else { return false }
             }
             // Incomplete edits may be kept; only the final creation gate
-            // requires complete future times and a nonempty title/calendar.
+            // requires complete valid times and a nonempty title/calendar.
             return (saved.draft.start.map { $0.timeIntervalSinceReferenceDate.isFinite } ?? true)
                 && (saved.draft.end.map { $0.timeIntervalSinceReferenceDate.isFinite } ?? true)
         }
