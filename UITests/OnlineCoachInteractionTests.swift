@@ -126,7 +126,11 @@ final class OnlineCoachInteractionTests: XCTestCase {
         let card = savedDraftCard(in: app); scrollControlIntoView(card, in: app); card.tap()
         scrollControlIntoView(preferences, in: app); preferences.tap()
         XCTAssertTrue(accountLabel.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["persona qa → Personale test"].exists)
+        // Form materializes the saved rows only after scrolling past the
+        // account toggles. A row below the fold is not evidence of lost data.
+        let association = app.staticTexts["persona qa → Personale test"]
+        scrollControlIntoView(association, in: app)
+        XCTAssertTrue(association.exists); XCTAssertTrue(association.isHittable)
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Impegno creato nel Calendario:")).firstMatch.exists)
     }
     func testConversationPermissionAvoidsRepeatedReviewAndCanBeRevoked() {
