@@ -2,7 +2,7 @@ import Foundation
 import MapKit
 
 /// No GPS, background polling, online-Coach access or automatic retries.
-/// Consent is installation-local and is deliberately not restored from backups.
+/// Consent is local app state, deliberately omitted from Pivot backup exports.
 @MainActor final class AppleMapsService: ObservableObject {
     static let shared = AppleMapsService()
     @Published private(set) var consentGranted: Bool

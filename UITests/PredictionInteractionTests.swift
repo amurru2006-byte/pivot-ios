@@ -130,6 +130,9 @@ final class PredictionInteractionTests: XCTestCase {
     }
     private func dismissKeyboard(_ app: XCUIApplication) {
         let done = app.buttons["Fine"]
-        if done.waitForExistence(timeout: 2) { done.tap() }
+        XCTAssertTrue(done.waitForExistence(timeout: 3))
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "Fine")).count, 1, "Only the visible screen owns a keyboard toolbar")
+        done.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
     }
 }

@@ -63,7 +63,6 @@ struct TravelCalculatorView: View {
                 Text("Richieste sintetiche: \(maps.requestCount)").font(.caption).accessibilityIdentifier("travel-test-count")
             }
         }.navigationTitle("Tragitti")
-            .toolbar { ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Fine") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) } } }
             .onChange(of: originText) { _, _ in origin = nil; originResults = []; invalidate() }
             .onChange(of: destinationText) { _, _ in destination = nil; destinationResults = []; invalidate() }
             .onChange(of: mode) { _, _ in invalidate() }
@@ -80,7 +79,7 @@ struct TravelCalculatorView: View {
             Label("Apple Maps, solo con il tuo consenso", systemImage: "hand.raised.fill").font(.headline)
             Text("La ricerca invia ad Apple il luogo che scrivi. Il calcolo invia i due luoghi scelti, il mezzo e l’orario. Nessuna posizione GPS continua, dato Salute, nota o indirizzo viene aggiunto all’AI online.")
                 .font(.caption).foregroundStyle(PivotTheme.muted)
-            Text("Le richieste sono avviate da te. Il consenso resta su questo iPhone, non nel backup. La revoca blocca le richieste successive e annulla l’attesa, ma non ritira dati già inviati.")
+            Text("Le richieste sono avviate da te. Il consenso non è incluso nei backup esportati da Pivot. La revoca blocca le richieste successive e annulla l’attesa, ma non ritira dati già inviati.")
                 .font(.caption).foregroundStyle(PivotTheme.muted)
             if maps.consentGranted {
                 Button("Revoca consenso Apple Maps", role: .destructive) { maps.setConsent(false) }
