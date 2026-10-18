@@ -7,6 +7,7 @@ struct CoachCalendarPreferencesFields: View {
     @Binding var rememberAccount: Bool
     @Binding var rememberTopic: Bool
     @Binding var topic: String
+    var focusedField: FocusState<CoachCalendarDraftField?>.Binding
     let message: String?
     var save: () -> Void
     @State private var removingTopic: String?
@@ -26,7 +27,8 @@ struct CoachCalendarPreferencesFields: View {
             }
             Toggle("Ricorda un’associazione", isOn: $rememberTopic).accessibilityIdentifier("coach-routing-remember-topic")
             if rememberTopic {
-                TextField("Quando parlo di…", text: $topic).accessibilityIdentifier("coach-routing-topic")
+                TextField("Quando parlo di…", text: $topic).focused(focusedField, equals: .topic)
+                    .accessibilityIdentifier("coach-routing-topic")
                 Text("Proporrò il calendario selezionato quando queste parole compaiono nel titolo o nella richiesta. Puoi correggere la scelta prima di salvare.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
             }

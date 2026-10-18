@@ -1,5 +1,7 @@
 import SwiftUI
 
+enum CoachCalendarDraftField: Hashable { case title, notes, topic }
+
 struct CoachCalendarDraftView: View {
     @EnvironmentObject private var calendar: CalendarService
     @EnvironmentObject private var store: PivotStore
@@ -20,6 +22,7 @@ struct CoachCalendarDraftView: View {
     @State private var rememberTopic = false
     @State private var topic = ""
     @State private var preferenceMessage: String?
+    @FocusState private var focusedField: CoachCalendarDraftField?
 
     private var choices: [CalendarChoice] {
         calendar.choices.filter { $0.writable && !$0.holiday &&
@@ -35,7 +38,7 @@ struct CoachCalendarDraftView: View {
         NavigationStack {
             Form {
                 Section("Bozza, non ancora salvata") {
-                    TextField("Titolo", text: $draft.title).accessibilityIdentifier("coach-create-title")
+                    TextField("Titolo", text: $draft.title).focused($focusedField, equals: .title).accessibilityIdentifier("coach-create-title")
                     if draft.start != nil {
                         DatePicker("Inizio", selection: Binding(get: { draft.start! }, set: { draft.start = $0 }))
                     } else { Button("Imposta inizio") { draft.start = Date().addingTimeInterval(3600) } }
@@ -56,11 +59,12 @@ struct CoachCalendarDraftView: View {
                         Text("L’account abituale non è disponibile. Scegli esplicitamente dove salvare: non passo a un altro account.").font(.caption).foregroundStyle(PivotTheme.amber)
                     }
                     TextField("Note o elenco", text: $draft.notes, axis: .vertical).lineLimit(3...12)
+                        .focused($focusedField, equals: .notes)
                 }
                 Section {
                     CoachCalendarPreferencesFields(choices: choices, calendarID: calendarID,
                         rememberAccount: $rememberAccount, rememberTopic: $rememberTopic, topic: $topic,
-                        message: preferenceMessage, save: { _ = savePreferences() })
+                        focusedField: $focusedField, message: preferenceMessage, save: { _ = savePreferences() })
                 }
                 if let problem { Section { Text(problem).foregroundStyle(PivotTheme.amber) } }
                 Section {
@@ -69,9 +73,15 @@ struct CoachCalendarDraftView: View {
                         .accessibilityIdentifier("coach-create-review")
                     if !calendar.hasAccess { Text("Serve l'accesso completo ai calendari nelle Impostazioni di iOS.").font(.caption) }
                 }
-            }.disabled(busy)
+            }.disabled(busy).scrollDismissesKeyboard(.interactively)
                 .navigationTitle("Nuovo impegno")
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Chiudi") { closeDraft() }.disabled(busy).accessibilityIdentifier("coach-create-close") } }
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Chiudi") { closeDraft() }.disabled(busy).accessibilityIdentifier("coach-create-close") }
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Fine") { focusedField = nil }.accessibilityIdentifier("coach-draft-keyboard-done")
+                    }
+                }
                 .task {
                     guard !loaded else { return }
                     await calendar.refresh(settings: store.data.settings)

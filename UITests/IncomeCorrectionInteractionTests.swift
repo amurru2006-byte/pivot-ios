@@ -89,9 +89,11 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
         reveal(close, app: app); close.tap(); XCTAssertFalse(value.exists)
     }
     func testContactDefaultsAndMultipleOriginsPersistAfterRelaunch() {
-        let app = launch()
+        // This fixture intentionally contains two homonyms. Resolve them with
+        // the explicit UI flow first: editing an ambiguous identity must fail.
+        let app = launch(); merge(app)
         let contact = app.buttons["client-detail-55555555-5555-4555-8555-555555555551"]
-        reveal(contact, app: app); contact.tap(); app.buttons["client-edit"].tap()
+        app.buttons["client-edit"].tap()
         let disclosure = app.buttons["Predefiniti e tragitti"]
         reveal(disclosure, app: app); disclosure.tap()
         let method = app.buttons["client-default-payment"]

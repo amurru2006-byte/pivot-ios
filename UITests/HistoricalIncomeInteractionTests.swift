@@ -49,11 +49,15 @@ final class HistoricalIncomeInteractionTests: XCTestCase {
     private func openHistory(in app: XCUIApplication, expectedUnassigned: String? = nil) {
         let income = app.tabBars.buttons["Entrate"]
         XCTAssertTrue(income.waitForExistence(timeout: 15)); income.tap()
+        XCTAssertTrue(app.navigationBars["Entrate"].waitForExistence(timeout: 8))
         if let expectedUnassigned {
             let amount = app.staticTexts["income-unassigned-opening"]
             XCTAssertTrue(amount.waitForExistence(timeout: 8)); XCTAssertTrue(amount.label.contains(expectedUnassigned))
         }
         let open = app.buttons["income-history-open"]
-        XCTAssertTrue(open.waitForExistence(timeout: 8)); scrollControlIntoView(open, in: app); open.tap()
+        XCTAssertTrue(open.waitForExistence(timeout: 8)); scrollControlIntoView(open, in: app)
+        XCTAssertTrue(open.isEnabled); open.tap()
+        XCTAssertTrue(app.navigationBars["Storico dal calendario"].waitForExistence(timeout: 8),
+                      "Recupera dal calendario deve aprire la schermata anche dopo il riavvio")
     }
 }

@@ -19,16 +19,28 @@ extension XCTestCase {
         // A navigation bar is not itself an actionable control. iOS can
         // throw while computing its activation point during sheet changes.
         // Use the foremost visible bar's bounds; keep the target's real tap.
-        let navigation = app.navigationBars.allElementsBoundByIndex.last { bar in
-            let bounds = bar.frame
+        // Capture immutable bounds once. Holding an index-bound navigation
+        // element across a sheet animation can make index 1 disappear before
+        // its next frame query, even when the destination is already visible.
+        guard let root = try? app.snapshot() else {
+            XCTFail("Cannot capture the current viewport", file: file, line: line); return
+        }
+        var nodes: [any XCUIElementSnapshot] = []
+        var pending: [any XCUIElementSnapshot] = [root]
+        while let node = pending.popLast() {
+            nodes.append(node); pending.append(contentsOf: node.children.reversed())
+        }
+        let navigationFrame = nodes.last { node in
+            let bounds = node.frame
+            guard node.elementType == .navigationBar else { return false }
             return bounds.minY.isFinite && bounds.maxY.isFinite && bounds.height > 0
                 && bounds.width > 0 && bounds.intersects(screen)
-        }
+        }?.frame
         let tabs = app.tabBars.firstMatch
         let recovery = app.descendants(matching: .any)["workout-recovery-bar"].firstMatch
         var top = screen.minY + 60
         var viewportBottom = screen.maxY - 34
-        if let navigation { top = max(top, navigation.frame.maxY) }
+        if let navigationFrame { top = max(top, navigationFrame.maxY) }
         // A presented sheet can leave the underlying tab bar in the AX
         // tree. It does not cover this sheet's controls.
         if tabs.exists && tabs.isHittable { viewportBottom = min(viewportBottom, tabs.frame.minY) }

@@ -115,7 +115,9 @@ final class OnlineCoachInteractionTests: XCTestCase {
         let topic = app.textFields["coach-routing-topic"]
         scrollControlIntoView(topic, in: app); topic.tap(); let current = topic.value as? String ?? ""
         topic.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count) + "Persona QA")
-        if app.buttons["Fine"].waitForExistence(timeout: 2) { app.buttons["Fine"].tap() }
+        let done = app.buttons["coach-draft-keyboard-done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5)); done.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         let save = app.buttons["coach-routing-save"]
         scrollControlIntoView(save, in: app); XCTAssertTrue(save.isEnabled); save.tap()
         let accountLabel = app.staticTexts["coach-routing-account"]
