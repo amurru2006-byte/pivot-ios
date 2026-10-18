@@ -8,6 +8,11 @@ struct TravelPlace: Equatable, Identifiable {
     var address: String
     var latitude: Double
     var longitude: Double
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        // Result-row identity is not route identity. Re-selecting the exact same
+        // place must not change its coordinates or the request it represents.
+        lhs.name == rhs.name && lhs.address == rhs.address && lhs.latitude == rhs.latitude && lhs.longitude == rhs.longitude
+    }
     var isValid: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && name.count <= 500 && address.count <= 1000
             && latitude.isFinite && longitude.isFinite && (-90...90).contains(latitude) && (-180...180).contains(longitude)
