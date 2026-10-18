@@ -72,6 +72,8 @@ final class PivotStore: ObservableObject {
         if ProcessInfo.processInfo.arguments.contains("--training-history-test") { storageName = "PivotTrainingHistoryTests" }
         if ProcessInfo.processInfo.arguments.contains("--training-concern-test") { storageName = "PivotTrainingConcernTests" }
         if ProcessInfo.processInfo.arguments.contains("--training-phase-test") { storageName = "PivotTrainingPhaseTests" }
+        if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--training-forecast-test"),
+           let id = UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_FORECAST_ID"] ?? "") { storageName = "PivotForecastQA-" + id.uuidString }
         if ProcessInfo.processInfo.arguments.contains("--training-progression-test") { storageName = "PivotTrainingProgressionTests" }
         if ProcessInfo.processInfo.arguments.contains("--report-test") { storageName = "PivotTrainingReportTests" }
         if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--financial-corrections-test"),

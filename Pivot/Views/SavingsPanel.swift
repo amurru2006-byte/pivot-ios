@@ -8,12 +8,13 @@ private func savingsPreview(_ data: AppData) -> SavingsBudget? {
 
 private enum SavingsMovementKind: String { case reserve, release, expense }
 private enum SavingsRoute: Identifiable {
-    case goal(SavingsGoal?), movement(SavingsMovementKind, UUID?), expense(BudgetExpense)
+    case goal(SavingsGoal?), movement(SavingsMovementKind, UUID?), expense(BudgetExpense), forecast(UUID)
     var id: String {
         switch self {
         case .goal(let goal): return "goal-" + (goal?.id.uuidString ?? "new")
         case .movement(let kind, let id): return kind.rawValue + (id?.uuidString ?? "new")
         case .expense(let expense): return "expense-" + expense.id.uuidString
+        case .forecast(let id): return "forecast-" + id.uuidString
         }
     }
 }
@@ -40,6 +41,8 @@ struct SavingsPanel: View {
                         .font(.subheadline).foregroundStyle(PivotTheme.amber).accessibilityIdentifier("savings-shortfall")
                 }
                 if let goal {
+                    Button { route = .forecast(goal.id) } label: { Label("Simula il tuo obiettivo", systemImage: "sparkles") }
+                        .buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("savings-forecast")
                     HStack {
                         Button("Metti da parte") { route = .movement(.reserve, goal.id) }
                             .buttonStyle(PivotPrimaryButton()).disabled(store.locked || balance.freeCents <= 0 || held >= goal.targetCents)
@@ -75,6 +78,7 @@ struct SavingsPanel: View {
             case .goal(let existing): SavingsGoalForm(existing: existing) { selectedGoalID = $0 }
             case .movement(let kind, let goalID): SavingsMovementForm(kind: kind, goalID: goalID)
             case .expense(let expense): SavingsMovementForm(kind: .expense, goalID: nil, existingExpense: expense)
+            case .forecast(let id): SavingsForecastView(goalID: id)
             }
         }
     }

@@ -30,6 +30,7 @@ enum BackupCodec {
         decoder.dateDecodingStrategy = .iso8601
         var data = try decoder.decode(AppData.self, from: bytes)
         guard CoachCalendarRouting.valid(data.settings) else { throw BackupError.invalidData }
+        guard data.settings.recoveryPlanningPreferences?.isValid ?? true else { throw BackupError.invalidData }
         try StudyFiles.validateBackup(data)
         try data.training?.validate()
         try data.strengthProfile?.validate()
@@ -108,6 +109,7 @@ enum BackupCodec {
                   Set(coach.options.map(\.id)).count == coach.options.count,
                   Set(coach.pendingCalendarChanges.map(\.id)).count == coach.pendingCalendarChanges.count,
                   Set(coach.memories.map(\.id)).count == coach.memories.count,
+                  coach.memories.allSatisfy(\.isValid),
                   coach.options.allSatisfy({ !$0.moves.isEmpty && $0.moves.allSatisfy { $0.proposedEnd > $0.proposedStart } }),
                   coach.pendingCalendarChanges.allSatisfy({ $0.move.proposedEnd > $0.move.proposedStart }) else { throw BackupError.invalidData }
         }

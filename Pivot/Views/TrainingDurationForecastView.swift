@@ -6,6 +6,7 @@ struct TrainingDurationForecastView: View {
     let event: CalendarItem?
     @State private var estimate: TrainingDurationEstimate?
     @State private var quality = TrainingPredictionQuality.make([])
+    @State private var workloadRevision = UUID()
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let estimate {
@@ -36,9 +37,10 @@ struct TrainingDurationForecastView: View {
                     .font(.caption).foregroundStyle(PivotTheme.muted).accessibilityIdentifier("training-duration-insufficient")
             }
         }.task(id: refreshKey) { await refresh() }
+            .onChange(of: session.exercises.map(\.exercise)) { _, _ in workloadRevision = UUID() }
     }
     private var refreshKey: String {
-        "\(store.data.updatedAt.timeIntervalSinceReferenceDate)|\(session.id)|\(session.phase?.rawValue ?? "unknown")|\(event?.start.timeIntervalSinceReferenceDate ?? 0)|\(event?.durationMinutes ?? 0)"
+        "\(store.data.updatedAt.timeIntervalSinceReferenceDate)|\(workloadRevision)|\(session.id)|\(session.phase?.rawValue ?? "unknown")|\(event?.start.timeIntervalSinceReferenceDate ?? 0)|\(event?.durationMinutes ?? 0)"
     }
     private func refresh() async {
         let library = store.data.training ?? TrainingLibrary(), now = Date()
@@ -69,7 +71,7 @@ struct SavedTrainingDurationView: View {
                     Text("Fascia osservata all’avvio: \(lower)–\(upper) min")
                 }
                 Text("La previsione originale resta conservata: non viene ricalcolata dopo l’allenamento.")
-            }.font(.caption).foregroundStyle(PivotTheme.muted)
+            }.font(.caption).foregroundStyle(PivotTheme.muted).accessibilityIdentifier("training-duration-saved")
         }
     }
 }
