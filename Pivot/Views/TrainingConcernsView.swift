@@ -161,11 +161,6 @@ struct TrainingConcernEditor: View {
                 .navigationTitle(expected == nil ? "Segnala" : "Aggiorna segnalazione")
                 .disabled(busy || store.locked || store.isRestoring)
                 .toolbar {
-                    ToolbarItemGroup(placement: .keyboard) {
-                        Spacer()
-                        Button("Fine") { focusedField = nil }
-                            .accessibilityIdentifier("concern-keyboard-done")
-                    }
                     ToolbarItem(placement: .cancellationAction) { Button("Annulla") { dismiss() }.disabled(busy) }
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Salva") { Task { await save() } }
@@ -173,6 +168,7 @@ struct TrainingConcernEditor: View {
                             .accessibilityIdentifier("concern-save")
                     }
                 }.interactiveDismissDisabled(busy)
+                .pivotKeyboardToolbar(identifier: "concern-keyboard-done") { focusedField = nil }
                 .alert("Eliminare la segnalazione?", isPresented: $confirmingDelete) {
                     Button("Elimina", role: .destructive) { Task { await delete() } }
                     Button("Annulla", role: .cancel) { }

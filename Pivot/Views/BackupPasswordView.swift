@@ -58,11 +58,8 @@ struct BackupPasswordView: View {
             }.navigationTitle("Proteggi il backup")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Annulla") { cancel(); dismiss() } }
-                    ToolbarItemGroup(placement: .keyboard) {
-                        Spacer()
-                        Button("Fine") { focused = nil }
-                    }
                 }
+                .pivotKeyboardToolbar { focused = nil }
                 .onChange(of: scenePhase) { _, phase in if phase == .background { cancel(); dismiss() } }
                 .onDisappear { cancel() }
         }
