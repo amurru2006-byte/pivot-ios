@@ -108,6 +108,14 @@ struct TrainingView: View {
             Button { importing = true } label: { Label(busy ? "Leggo la scheda…" : "Importa nuova scheda PDF", systemImage: "square.and.arrow.down") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked || busy || library.plans.count >= 6)
             Text("Solo PDF preparati per Pivot. L'importazione mostra un riepilogo da confermare e non cancella gli allenamenti precedenti.").font(.caption).foregroundStyle(PivotTheme.muted)
             #if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--training-forecast-test") {
+                Button("Prepara previsioni TEST") {
+                    Task { do { try await TrainingForecastFixture.install(); message = "Previsioni pronte" } catch { message = error.localizedDescription } }
+                }.accessibilityIdentifier("forecast-fixture")
+                Button("Verifica previsioni TEST") {
+                    Task { do { message = try await TrainingForecastFixture.verify() } catch { message = "Previsione non valida" } }
+                }.accessibilityIdentifier("forecast-verify")
+            }
             if ProcessInfo.processInfo.arguments.contains("--training-progression-test") {
                 Button("Prepara progressione TEST") {
                     Task {

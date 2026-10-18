@@ -2,6 +2,32 @@ import XCTest
 
 final class PredictionInteractionTests: XCTestCase {
     override func tearDown() { attachFailureDiagnostics(name); super.tearDown() }
+    func testWorkoutForecastIsCapturedAtStartAndPersistsWithoutInventedLegacyFeedback() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--training-forecast-test"]
+        app.launchEnvironment["PIVOT_QA_FORECAST_ID"] = UUID().uuidString
+        app.launch()
+        let gym = app.tabBars.buttons["Palestra"]
+        XCTAssertTrue(gym.waitForExistence(timeout: 15)); gym.tap()
+        tap(app.buttons["forecast-fixture"], app)
+        XCTAssertTrue(app.staticTexts["Previsioni pronte"].waitForExistence(timeout: 8))
+        tap(app.buttons["workout-day-forecast-day"], app)
+        let forecast = app.staticTexts["training-duration-prediction"]
+        XCTAssertTrue(forecast.waitForExistence(timeout: 8)); XCTAssertTrue(forecast.label.contains("75 min"))
+        XCTAssertTrue(app.staticTexts["training-duration-band"].label.contains("3 sedute"))
+        tap(app.buttons["Inizia allenamento"], app)
+        XCTAssertTrue(app.staticTexts["Allenamento in corso"].waitForExistence(timeout: 8))
+        app.navigationBars["Allenamento"].buttons.element(boundBy: 0).tap()
+        tap(app.buttons["forecast-verify"], app)
+        XCTAssertTrue(app.staticTexts["Previsione verificata · nessuno storico inventato"].waitForExistence(timeout: 8))
+        app.terminate(); app.launch()
+        XCTAssertTrue(gym.waitForExistence(timeout: 15)); gym.tap()
+        tap(app.buttons["forecast-verify"], app)
+        XCTAssertTrue(app.staticTexts["Previsione verificata · nessuno storico inventato"].waitForExistence(timeout: 8))
+        tap(app.buttons["workout-day-forecast-day"], app)
+        XCTAssertTrue(app.staticTexts["Allenamento in corso"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.staticTexts["training-duration-prediction"].exists)
+    }
     func testMapsRequiresExplicitConsentSelectsPlacesAndRevokesWithoutNetwork() {
         continueAfterFailure = false
         let app = XCUIApplication()

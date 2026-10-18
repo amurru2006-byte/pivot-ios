@@ -240,7 +240,8 @@ enum CoachPlanner {
         let start = move.proposedStart.addingTimeInterval(-Double(rule.travelBeforeMinutes) * 60)
         let end = move.proposedEnd.addingTimeInterval(Double(rule.travelAfterMinutes) * 60)
         return !Planner.plannedEvents(events, data: data).contains { item in
-            guard item.id != move.source.id, !item.isAllDay else { return false }
+            guard item.id != move.source.id else { return false }
+            if item.isAllDay { return item.start < end && item.end > start }
             let other = EventRule.effective(for: item, data: data)
             if !item.location.isEmpty && !other.travelConfirmed && item.occurs(on: move.proposedStart) { return true }
             return item.start.addingTimeInterval(-Double(other.travelBeforeMinutes) * 60) < end

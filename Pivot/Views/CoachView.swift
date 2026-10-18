@@ -17,6 +17,8 @@ struct CoachView: View {
     @EnvironmentObject private var agenda: AgendaService
     @State private var input = ""
     @State private var memoryInput = ""
+    @State private var memoryTemporary = false
+    @State private var memoryUntil = Date().addingTimeInterval(7 * 86400)
     @State private var historyDay = Date()
     @State private var deleteHistory = false
     @State private var message: String?
@@ -54,6 +56,9 @@ struct CoachView: View {
         PivotScreen {
             PivotHeader(title: "Parla con Pivot", subtitle: "Racconta cosa è cambiato. Decidi tu cosa applicare.")
             onlineStatusCard
+            NavigationLink { PersonalForecastView() } label: {
+                Label("Previsioni personali", systemImage: "sparkles").frame(maxWidth: .infinity)
+            }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("coach-predictions")
             if store.data.actualWorkoutDraft != nil { WorkoutChatCard() }
             ForEach(reviews) { review in
                 PivotCard(tint: PivotTheme.blue) {
@@ -183,7 +188,13 @@ struct CoachView: View {
                     Text("Solo informazioni aggiunte da te. Puoi rimuoverle quando vuoi; sono incluse nel backup.").font(.caption).foregroundStyle(PivotTheme.muted)
                     ForEach(state.memories) { memory in
                         HStack {
-                            Text(memory.text).font(.subheadline)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(memory.text).font(.subheadline)
+                                if let until = memory.expiresAt {
+                                    Text(memory.isActive(at: Date()) ? "Fino al \(DisplayDate.label(until, format: "d MMM HH:mm"))" : "Scaduta · non usata dal modello locale")
+                                        .font(.caption).foregroundStyle(PivotTheme.muted)
+                                }
+                            }
                             Spacer()
                             Button(role: .destructive) {
                                 store.change { data in var coach = data.coachState; coach.memories.removeAll { $0.id == memory.id }; data.coachState = coach }
@@ -191,10 +202,14 @@ struct CoachView: View {
                         }.padding(.vertical, 5)
                     }
                     TextField("Una preferenza o un’informazione utile", text: $memoryInput, axis: .vertical)
+                    Toggle("Informazione temporanea", isOn: $memoryTemporary)
+                    if memoryTemporary { DatePicker("Ricorda fino a", selection: $memoryUntil, in: Date()...) }
                     Button("Ricorda questa informazione") {
                         let text = String(memoryInput.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1500))
                         guard !text.isEmpty else { return }
-                        if store.change({ data in var coach = data.coachState; coach.memories.append(CoachMemory(text: text)); data.coachState = coach }) { memoryInput = "" }
+                        let memory = CoachMemory(text: text, expiresAt: memoryTemporary ? memoryUntil : nil)
+                        guard memory.isValid else { message = "La scadenza deve essere successiva a questo momento."; return }
+                        if store.change({ data in var coach = data.coachState; coach.memories.append(memory); data.coachState = coach }) { memoryInput = ""; memoryTemporary = false }
                     }.disabled(store.locked || memoryInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
@@ -739,7 +754,7 @@ struct CoachView: View {
         let recent = state.messages.filter { $0.dayKey == PivotDate.key(now) }.suffix(4).map {
             "\($0.role.rawValue): \(String($0.text.prefix(350)))"
         }.joined(separator: "\n")
-        let memory = state.memories.suffix(6).map { String($0.text.prefix(250)) }.joined(separator: "; ")
+        let memory = state.memories.filter { $0.isActive(at: now) }.suffix(6).map { String($0.text.prefix(250)) }.joined(separator: "; ")
         let check = store.data.checkIns[PivotDate.key(now)]
         return "Ora: \(PivotDate.time(now)). Energia: \(check?.energyMorning.map(String.init) ?? "non indicata").\nAgenda:\n\(agenda)\nPreferenze dichiarate: \(memory)\nConversazione recente:\n\(recent)"
     }

@@ -297,6 +297,15 @@ struct CoachMemory: Codable, Identifiable, Equatable {
     var id = UUID()
     var text: String
     var createdAt = Date()
+    var expiresAt: Date? = nil
+    var isValid: Bool {
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && text.count <= 1500
+            && createdAt.timeIntervalSinceReferenceDate.isFinite
+            && (expiresAt.map { $0.timeIntervalSinceReferenceDate.isFinite && $0 > createdAt } ?? true)
+    }
+    func isActive(at now: Date) -> Bool {
+        isValid && now.timeIntervalSinceReferenceDate.isFinite && createdAt <= now && (expiresAt.map { $0 > now } ?? true)
+    }
 }
 
 struct CoachState: Codable {
@@ -333,6 +342,7 @@ struct Settings: Codable, Equatable {
     var preferredNewEventSourceID: String? = nil
     // Confirmed locally; neither account IDs nor these associations go online.
     var calendarTopicRoutes: [String: String]? = nil
+    var recoveryPlanningPreferences: RecoveryPlanningPreferences? = nil
 }
 
 struct AppData: Codable {
