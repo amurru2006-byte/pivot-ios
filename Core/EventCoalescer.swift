@@ -71,7 +71,7 @@ enum EventCoalescer {
         var idIndex: [String: Int] = [:]
         var titleIndex: [String: Set<Int>] = [:]
         var externalIndex: [String: Set<Int>] = [:]
-        for event in events {
+        for event in CalendarArchive.logicalEvents(events, data: data) {
             // Most appointments have distinct names. Avoid comparing every event
             // with every other event and normalizing both strings repeatedly.
             let titleKey = normalized(event.calendarTitle) + "|" + normalized(event.title)

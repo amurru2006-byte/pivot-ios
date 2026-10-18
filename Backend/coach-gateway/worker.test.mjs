@@ -315,6 +315,74 @@ test('v2 rewrite accepts long text but cannot create calendar actions', async ()
   }
 });
 
+const fixtureV3 = () => ({...fixture(),version:3,purpose:'conversation',draftContext:[],references:[],historyOmittedCount:0});
+const deletion = (eventID='e0') => ({kind:'delete',eventID,title:null,start:null,end:null,notes:null});
+const responseV3 = () => ({mode:'actions',eventIDs:[],reply:'Ho cancellato tutto',draft:null,rewrittenMessage:null,actions:[deletion()]});
+
+test('v3 passes whole earlier turns and partial draft facts without calendar metadata', async () => {
+  const body=fixtureV3();
+  body.history=[{role:'user',text:'Dettagli già forniti. '.repeat(30)+'dalle11:50 alle19:35'}];
+  body.draftContext=[{title:'Attività di prova',start:'2026-10-08T11:50:00+02:00',end:null,calendarHint:null,notes:'',endEstimated:false}];
+  body.message='La fine è alle19:35, come ti dicevo'; body.historyOmittedCount=2;
+  assert.equal(validRequest(body,now),true);
+  const generated={...responseV3(),mode:'create',actions:[],draft:{...body.draftContext[0],end:'2026-10-08T19:35:00+02:00'}};
+  const response=await handle(request(body),await environment(),{clock,fetchProvider:async(_,init)=>{
+    const sent=JSON.parse(init.body), context=JSON.parse(sent.messages[1].content);
+    assert.equal(sent.response_format.json_schema.name,'pivot_coach_v3');
+    assert.deepEqual(context.draftContext,body.draftContext); assert.deepEqual(context.history,body.history);
+    assert.equal(context.historyOmittedCount,2); assert.equal(Object.hasOwn(context.events[0],'title'),false);
+    assert.match(sent.messages[0].content,/Non richiedere tutto da capo|non richiedere tutto da capo/);
+    return upstream(generated);
+  }});
+  assert.equal(response.status,200); assert.equal((await response.json()).draft.end,generated.draft.end);
+});
+
+test('v3 deletion is only an alias-bound proposal and provider claims are replaced', async () => {
+  const response=await handle(request(fixtureV3()),await environment(),{clock,fetchProvider:async()=>upstream(responseV3())});
+  assert.equal(response.status,200); const value=await response.json();
+  assert.equal(value.version,3); assert.deepEqual(value.actions,[deletion()]);
+  assert.match(value.reply,/non è ancora cambiato/); assert.doesNotMatch(value.reply,/Ho cancellato/);
+});
+
+test('v3 rejects unknown aliases duplicate targets malformed deletes and no-op patches', async () => {
+  const malformed=[ [deletion('external-calendar-id')], [deletion(),deletion()], [{...deletion(),title:'non-null'}],
+    [{...deletion(),kind:'update'}], [null], Array(11).fill(deletion()), [{...deletion(),calendarID:'private'}] ];
+  for(const actions of malformed) {
+    const response=await handle(request(fixtureV3()),await environment(),{clock,fetchProvider:async()=>upstream({...responseV3(),actions})});
+    assert.equal(response.status,502); assert.deepEqual(await response.json(),{error:'invalid_response'});
+  }
+});
+
+test('v3 update preserves omitted patch values and rejects invalid time pairs', async () => {
+  const action={kind:'update',eventID:'e0',title:'Titolo nuovo',start:'2026-10-08T09:00:00+02:00',end:'2026-10-08T10:00:00+02:00',notes:null};
+  const body=fixtureV3();
+  const valid=await handle(request(body),await environment(),{clock,fetchProvider:async()=>upstream({...responseV3(),actions:[action]})});
+  assert.equal(valid.status,200); assert.equal((await valid.json()).actions[0].notes,null);
+  for(const patch of [{end:null},{end:action.start},{end:'2026-10-10T10:00:00+02:00'},{kind:'replace'}]) {
+    const response=await handle(request(body),await environment(),{clock,fetchProvider:async()=>upstream({...responseV3(),actions:[{...action,...patch}]})});
+    assert.equal(response.status,502);
+  }
+});
+
+test('v3 clarification may retain incomplete draft but cannot carry hidden actions', async () => {
+  const draft={title:'',start:'2026-10-08T10:00:00+02:00',end:null,calendarHint:null,notes:'lista di prova',endEstimated:false};
+  const generated={...responseV3(),mode:'clarify',reply:'Quale titolo vuoi usare?',actions:[],draft};
+  const response=await handle(request(fixtureV3()),await environment(),{clock,fetchProvider:async()=>upstream(generated)});
+  assert.equal(response.status,200); assert.deepEqual((await response.json()).draft,draft);
+  const rejected=await handle(request(fixtureV3()),await environment(),{clock,fetchProvider:async()=>upstream({...generated,actions:[deletion()]})});
+  assert.equal(rejected.status,502);
+});
+
+test('v3 expanded context is still strict bounded and cannot carry raw calendar fields', async () => {
+  const changes=[x=>x.draftContext.push({title:'bad'}), x=>x.history=Array(21).fill({role:'user',text:'test'}),
+    x=>x.history[0].text='x'.repeat(12001), x=>x.references=['e99'], x=>x.references=['e0','e0'],
+    x=>x.historyOmittedCount=-1, x=>x.events[0].title='private', x=>x.draftContext.push(null)];
+  for(const change of changes) { const body=fixtureV3(); change(body); assert.equal(validRequest(body,now),false); }
+  const oversized=fixtureV3(); oversized.history=Array(20).fill({role:'user',text:'x'.repeat(2000)});
+  const response=await handle(request(oversized),await environment(),{clock,fetchProvider:forbidden});
+  assert.equal(response.status,413);
+});
+
 test('v2 rejects malformed drafts, extra capabilities and mixed protocol identities', async () => {
   const body={...fixture(),version:2,purpose:'conversation'};
   const generated={mode:'create',eventIDs:[],reply:'Bozza',rewrittenMessage:null,
