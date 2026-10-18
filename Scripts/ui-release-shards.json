@@ -38,5 +38,5 @@
     "TrainingPhaseInteractionTests",
     "TrainingRepProgressionInteractionTests"
   ],
-  "pairing": ["OnlineCoachSetupInteractionTests"]
+  "pairing": ["OnlineCoachSetupInteractionTests", "PredictionInteractionTests"]
 }

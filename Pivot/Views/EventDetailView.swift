@@ -411,6 +411,14 @@ struct EventDetailView: View {
             }
             DurationField(title: "Tragitto prima", seconds: Binding(get: { rule.travelBeforeMinutes * 60 }, set: { rule.travelBeforeMinutes = ($0 ?? 0) / 60 }), maxHours: 4)
             DurationField(title: "Tragitto dopo", seconds: Binding(get: { rule.travelAfterMinutes * 60 }, set: { rule.travelAfterMinutes = ($0 ?? 0) / 60 }), maxHours: 4)
+            NavigationLink {
+                TravelCalculatorView(destination: event.location, date: max(event.start, Date().addingTimeInterval(300)), timing: .arriveBy) { estimate in
+                    guard estimate.minutes <= 240 else { message = "Il viaggio supera 4 ore: controlla i luoghi scelti."; return }
+                    rule.travelBeforeMinutes = estimate.minutes; rule.travelConfirmed = false
+                    message = "Stima di andata inserita. Verifica il tragitto dopo l’attività e conferma i tempi prima di salvare."
+                }
+            } label: { Label("Calcola l’andata con Apple Maps", systemImage: "map") }
+                .frame(minHeight: 44).accessibilityIdentifier("activity-apple-maps")
             Toggle("Tempi di tragitto verificati", isOn: $rule.travelConfirmed)
             Text("Conferma anche quando il tragitto è zero. In palestra, cambio e doccia fanno parte dell'attività. Riduzioni e spostamenti richiedono la tua conferma.").font(.caption).foregroundStyle(PivotTheme.muted)
         }.font(.subheadline)

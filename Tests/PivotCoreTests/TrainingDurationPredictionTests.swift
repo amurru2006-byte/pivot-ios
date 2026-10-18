@@ -50,6 +50,31 @@ final class TrainingDurationPredictionTests: XCTestCase {
         XCTAssertEqual(value?.source, .calendar); XCTAssertNil(value?.statistics)
         XCTAssertEqual(value?.schedulingMinutes, 100)
     }
+    func testSessionEstimateUsesDeclaredPhaseWithoutEditingPlan() {
+        var plan = self.plan
+        plan.payload.phase = .loading
+        let original = plan
+        let sessions = (1...3).map { sample(plan, minutes: 75, age: $0) }
+        var next = TrainingLibrary().makeSession(plan: plan, day: plan.payload.days[0], eventID: nil, now: now)
+        let library = TrainingLibrary(plans: [plan], sessions: sessions)
+        XCTAssertEqual(TrainingDurationEstimate.make(session: next, library: library, calendarMinutes: nil, now: now)?.activityMinutes, 75)
+        next.phase = nil
+        XCTAssertNil(TrainingDurationEstimate.make(session: next, library: library, calendarMinutes: nil, now: now))
+        XCTAssertEqual(library.plans[0], original)
+    }
+    func testSessionEstimateRejectsMissingPlanChangedWorkloadAndAmbiguousLegacyDay() {
+        let plan = self.plan
+        var next = TrainingLibrary().makeSession(plan: plan, day: plan.payload.days[0], eventID: nil, now: now)
+        XCTAssertNil(TrainingDurationEstimate.make(session: next, library: .init(), calendarMinutes: 80, now: now))
+        next.exercises[0].exercise.sets += 1
+        XCTAssertNil(TrainingDurationEstimate.make(session: next, library: .init(plans: [plan]), calendarMinutes: 80, now: now))
+        var duplicate = plan
+        var day = duplicate.payload.days[0]; day.id = "day-duplicate"
+        duplicate.payload.days.append(day)
+        next = TrainingLibrary().makeSession(plan: plan, day: plan.payload.days[0], eventID: nil, now: now)
+        next.dayID = nil
+        XCTAssertNil(TrainingDurationEstimate.make(session: next, library: .init(plans: [duplicate]), calendarMinutes: 80, now: now))
+    }
     func testFiveComparableEveningsCanUseTimeContextWithoutMixingWorkloads() {
         let plan = self.plan
         let morning = (1...5).map { sample(plan, minutes: 60, age: $0, hour: 9) }

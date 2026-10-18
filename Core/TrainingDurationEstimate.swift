@@ -16,6 +16,22 @@ struct TrainingDurationEstimate: Equatable {
     // An observed upper quartile, not a guarantee or a calibrated probability.
     var schedulingMinutes: Int { provisional ? activityMinutes : max(activityMinutes, statistics?.upperMinutes ?? activityMinutes) }
 
+    static func make(session: TrainingSession, library: TrainingLibrary, calendarMinutes: Int?, now: Date,
+                     scheduledStart: Date? = nil) -> Self? {
+        guard var plan = library.plans.first(where: { $0.id == session.planID }) else { return nil }
+        let matches = plan.payload.days.indices.filter { index in
+            if let dayID = session.dayID { return plan.payload.days[index].id == dayID }
+            return EventCoalescer.normalized(plan.payload.days[index].name) == EventCoalescer.normalized(session.dayName)
+        }
+        guard matches.count == 1, let index = matches.first,
+              plan.payload.days[index].exercises == session.exercises.map(\.exercise) else { return nil }
+        // The declared session phase wins, including an explicit unknown phase.
+        // This local comparison copy never edits the user's training plan.
+        plan.payload.phase = nil; plan.payload.days[index].phase = session.phase
+        return make(plan: plan, day: plan.payload.days[index], library: library, calendarMinutes: calendarMinutes,
+                    now: now, scheduledStart: scheduledStart)
+    }
+
     static func make(plan: TrainingPlan, day: TrainingDay, library: TrainingLibrary,
                      calendarMinutes: Int?, now: Date, scheduledStart: Date? = nil) -> Self? {
         guard calendarMinutes.map({ (1...1440).contains($0) }) ?? true,

@@ -346,6 +346,8 @@ struct TrainingSessionView: View {
     @State private var persisted = false
     @State private var removed = false
     @State private var reportingConcern: TrainingConcernEditorTarget?
+    @State private var starting = false
+    @State private var startTask: Task<Void, Never>?
     var focusSetID: UUID? = nil
     let event: CalendarItem?
     let historicalEdit: Bool
@@ -405,7 +407,7 @@ struct TrainingSessionView: View {
             if let message { Text(message).font(.caption).foregroundStyle(PivotTheme.amber) }
             }
         }.navigationTitle("Allenamento")
-            .disabled(finishing)
+            .disabled(finishing || starting)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if hasStarted && session.end == nil && !removed {
                     let next = TrainingWorkoutContext.next(in: session, focusedSetID: controlsFocusID ?? WorkoutRuntime.focusedSet[session.id])
@@ -429,7 +431,7 @@ struct TrainingSessionView: View {
             .sheet(isPresented: $selectingExercise) {
                 ExercisePickerView { exercise in changeExercise(exercise); selectingExercise = false }
             }
-            .onDisappear { save() }
+            .onDisappear { startTask?.cancel(); save() }
             .onChange(of: scenePhase) { _, phase in if phase != .active { save() } }
             .sheet(isPresented: $sharing) { if let export { TrainingReportPreview(url: export) } }
             .sheet(item: $setOptions) { target in
@@ -442,6 +444,7 @@ struct TrainingSessionView: View {
             .onChange(of: session.start) { _, _ in if hasStarted { save() } }
             .onChange(of: session.end) { _, _ in if hasStarted { save() } }
             .onChange(of: session.phase) { _, _ in if hasStarted { save() } }
+            .onChange(of: session.durationExcluded) { _, _ in if hasStarted { save() } }
             .onChange(of: tips) { _, _ in save() }
             .onChange(of: store.data.updatedAt) { _, _ in
                 if let latest = store.data.training?.sessions.first(where: { $0.id == session.id }) {
@@ -487,8 +490,15 @@ struct TrainingSessionView: View {
             if hasStarted {
                 ClockField(title: "Inizio", value: Binding(get: { session.start }, set: { if let date = $0 { session.start = date } }), fallback: session.start)
                 ClockField(title: "Fine", value: $session.end, fallback: Date())
+                SavedTrainingDurationView(session: session)
+                if session.end != nil {
+                    Toggle("Escludi questa seduta dalle stime", isOn: Binding(get: { session.durationExcluded == true }, set: { session.durationExcluded = $0 }))
+                        .font(.caption).accessibilityIdentifier("training-duration-exclude").disabled(store.locked)
+                }
             } else {
-                Button("Inizia allenamento") { session.start = Date(); hasStarted = true; save(startLiveActivity: true) }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
+                TrainingDurationForecastView(session: session, event: event)
+                Button(starting ? "Preparo l’allenamento…" : "Inizia allenamento") { startWorkout() }
+                    .buttonStyle(PivotPrimaryButton()).disabled(store.locked || starting)
             }
             if hasStarted && session.end == nil {
                 Button("Termina e salva allenamento") { Task { await finishAndExport() } }
@@ -951,6 +961,26 @@ struct TrainingSessionView: View {
               session.exercises[exerciseIndex].sets.indices.contains(setIndex) else { return false }
         let log = session.exercises[exerciseIndex]
         return TrainingSetTemplate.canRemove(log.sets, at: setIndex, prescribedWorkingSets: log.exercise.sets)
+    }
+    private func startWorkout() {
+        guard !hasStarted, !starting, !store.locked, !removed else { return }
+        starting = true
+        let library = store.data.training ?? TrainingLibrary(), snapshot = session
+        let revision = store.data.updatedAt, calendarMinutes = event?.durationMinutes
+        startTask = Task { @MainActor in
+            defer { starting = false; startTask = nil }
+            let now = Date()
+            let estimate = await Task.detached(priority: .userInitiated) {
+                TrainingDurationEstimate.make(session: snapshot, library: library, calendarMinutes: calendarMinutes,
+                                              now: now, scheduledStart: now)
+            }.value
+            guard !Task.isCancelled, !store.locked, !removed, !hasStarted else { return }
+            guard revision == store.data.updatedAt else { message = "Lo storico è cambiato: ripremi Inizia allenamento."; return }
+            session.start = Date()
+            if let estimate { session.durationPrediction = TrainingDurationPrediction.capture(estimate, session: session, now: session.start) }
+            hasStarted = true
+            if !save(startLiveActivity: true) { hasStarted = false }
+        }
     }
     @discardableResult private func save(startLiveActivity: Bool = false) -> Bool {
         guard !store.locked, !finishing, !removed else { return false }
