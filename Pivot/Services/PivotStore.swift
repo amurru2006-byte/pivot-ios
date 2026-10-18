@@ -72,6 +72,8 @@ final class PivotStore: ObservableObject {
         if ProcessInfo.processInfo.arguments.contains("--training-history-test") { storageName = "PivotTrainingHistoryTests" }
         if ProcessInfo.processInfo.arguments.contains("--training-concern-test") { storageName = "PivotTrainingConcernTests" }
         if ProcessInfo.processInfo.arguments.contains("--training-phase-test") { storageName = "PivotTrainingPhaseTests" }
+        if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--recovery-forecast-test"),
+           let id = UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_RECOVERY_ID"] ?? "") { storageName = "PivotRecoveryQA-" + id.uuidString }
         if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--training-forecast-test"),
            let id = UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_FORECAST_ID"] ?? "") { storageName = "PivotForecastQA-" + id.uuidString }
         if ProcessInfo.processInfo.arguments.contains("--training-progression-test") { storageName = "PivotTrainingProgressionTests" }
@@ -103,6 +105,10 @@ final class PivotStore: ObservableObject {
             diagnostics.record("Caricamento storico", seconds: ProcessInfo.processInfo.systemUptime - started)
             if !locked { applyInitialSettings() }
             #if DEBUG && targetEnvironment(simulator)
+            if !locked, ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--recovery-forecast-test"),
+               UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_RECOVERY_ID"] ?? "") != nil, data.rules["recovery-qa"] == nil {
+                change { $0.rules["recovery-qa"] = .init(flexibility: .movable, minimumMinutes: 60, travelConfirmed: true) }
+            }
             if !locked, ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--history-test"),
                UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_HISTORY_ID"] ?? "") != nil, data.clients.isEmpty {
                 change { data in

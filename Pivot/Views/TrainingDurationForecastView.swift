@@ -23,12 +23,15 @@ struct TrainingDurationForecastView: View {
                     if estimate.provisional { Text("Stima provvisoria: pochi allenamenti confrontabili.").font(.caption) }
                     if let band = estimate.timeBand { Text("Confronto con le sedute della \(band.label).").font(.caption) }
                     if let stats = estimate.statistics {
-                        Text("La fascia descrive la parte centrale delle durate osservate, non una garanzia. Non comprende preparazione e tragitti.").font(.caption)
+                        Text("La fascia descrive la parte centrale delle durate osservate, non una garanzia. Non aggiunge tempi per preparazione e tragitti.").font(.caption)
                         Text("Minimo \(stats.minimumMinutes) min · massimo \(stats.maximumMinutes) min").font(.caption)
                     }
                     if let error = quality.meanAbsoluteErrorMinutes {
                         Text("\(quality.evaluatedCount) riscontri · errore medio \(Int(ceil(error))) min")
                             .font(.caption).accessibilityIdentifier("training-duration-quality")
+                        if quality.bandCount > 0 {
+                            Text("Durata reale nella fascia osservata: \(quality.withinObservedBandCount) riscontri su \(quality.bandCount). Non è una probabilità per la prossima seduta.").font(.caption)
+                        }
                     } else { Text("Il confronto previsto/reale inizierà con le prossime sedute.").font(.caption) }
                 }.font(.caption).foregroundStyle(PivotTheme.muted)
             } else {

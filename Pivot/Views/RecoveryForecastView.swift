@@ -6,6 +6,7 @@ struct RecoveryForecastView: View {
     @State private var targetID: String?
     @State private var days = 7
     @State private var preferredBand: TrainingDurationTimeBand?
+    @State private var preparationIncluded = false
     @State private var temporary = false
     @State private var until = Date().addingTimeInterval(7 * 86400)
     @State private var options: [CoachOption] = []
@@ -41,8 +42,11 @@ struct RecoveryForecastView: View {
                     Text("Qualsiasi orario consentito").tag(TrainingDurationTimeBand?.none)
                     ForEach([TrainingDurationTimeBand.morning, .afternoon, .evening], id: \.self) { Text($0.label.capitalized).tag(Optional($0)) }
                 }.accessibilityIdentifier("prediction-recovery-band")
+                Toggle("La durata a calendario comprende cambio e preparazione necessari", isOn: $preparationIncluded)
+                    .accessibilityIdentifier("prediction-recovery-preparation")
+                if !preparationIncluded { Text("Se manca del tempo, correggi prima la durata nell’attività. Non considero cambio e preparazione pari a zero senza conferma.").font(.caption).foregroundStyle(PivotTheme.muted) }
                 Button("Cerca alternative") { search() }.buttonStyle(PivotPrimaryButton())
-                    .disabled(targetID == nil || planning || store.locked).accessibilityIdentifier("prediction-recovery-search")
+                    .disabled(targetID == nil || !preparationIncluded || planning || store.locked).accessibilityIdentifier("prediction-recovery-search")
                 if planning { ProgressView("Controllo calendario e tempi…") }
             }
             DisclosureGroup("Ricorda le mie preferenze") {
@@ -66,18 +70,19 @@ struct RecoveryForecastView: View {
                     Text(option.explanation).font(.headline)
                     Text(option.consequences).font(.subheadline).foregroundStyle(PivotTheme.muted)
                     if let move = option.moves.first {
-                        NavigationLink { TravelCalculatorView(destination: move.source.location, date: move.proposedStart, timing: .arriveBy) } label: {
+                        NavigationLink { TravelCalculatorView(destination: move.source.location, date: move.proposedStart, timing: .arriveBy,
+                                                             nextStart: move.proposedStart, context: .init(events: [move.source])) } label: {
                             Label("Controlla il tragitto per questo orario", systemImage: "map")
                         }.frame(minHeight: 44)
                     }
                     Toggle("Confermo durata e tragitti per questo orario", isOn: Binding(get: { reviewed.contains(option.id) }, set: { value in
                         if value { reviewed.insert(option.id) } else { reviewed.remove(option.id) }
-                    }))
+                    })).accessibilityIdentifier("prediction-recovery-review")
                     Button("Scegli questa alternativa in Pivot") { stage(option) }.buttonStyle(PivotPrimaryButton())
                         .disabled(store.locked || !reviewed.contains(option.id)).accessibilityIdentifier("prediction-recovery-stage")
                 }
             }
-            if staged { NavigationLink("Apri la conferma per il Calendario") { CoachView() }.buttonStyle(PivotSecondaryButton()) }
+            if staged { NavigationLink("Apri la conferma per il Calendario") { CoachView() }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("prediction-recovery-open-coach") }
             Text("Nessuna durata di guarigione, cancellazione o spostamento delle altre sedute viene inventato. Una stima personale più lunga richiede di rivedere la durata dell’attività, non di accorciarla per farla entrare.")
                 .font(.caption).foregroundStyle(PivotTheme.muted)
         }.navigationTitle("Alternative")
@@ -88,7 +93,8 @@ struct RecoveryForecastView: View {
                     temporary = value.expiresAt != nil; if let date = value.expiresAt { until = date }
                 }
             }
-            .onChange(of: targetID) { _, _ in invalidate() }
+            .onChange(of: targetID) { _, _ in preparationIncluded = false; invalidate() }
+            .onChange(of: preparationIncluded) { _, _ in invalidate() }
             .onChange(of: days) { _, _ in invalidate() }
             .onChange(of: preferredBand) { _, _ in invalidate() }
             .onChange(of: store.data.updatedAt) { _, _ in invalidate() }
@@ -98,11 +104,11 @@ struct RecoveryForecastView: View {
     private func invalidate() { task?.cancel(); planning = false; options = []; reviewed = [] }
     private func search() {
         guard let targetID else { return }
-        let events = calendar.events, snapshot = store.data, now = Date(), count = days, band = preferredBand
+        let events = calendar.events, snapshot = store.data, now = Date(), count = days, band = preferredBand, included = preparationIncluded
         options = []; reviewed = []; message = nil; planning = true; staged = false
         task = Task { @MainActor in
             let result = await Task.detached(priority: .userInitiated) {
-                RecoveryForecast.options(targetID: targetID, events: events, data: snapshot, now: now, days: count, preferredBand: band)
+                RecoveryForecast.options(targetID: targetID, events: events, data: snapshot, now: now, days: count, preferredBand: band, preparationIncluded: included)
             }.value
             guard !Task.isCancelled else { return }
             planning = false

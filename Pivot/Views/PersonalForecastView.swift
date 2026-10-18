@@ -8,6 +8,11 @@ private struct TrainingForecastSummary: Identifiable {
     var quality: TrainingPredictionQuality
     var id: String { planID.uuidString + ":" + dayID }
 }
+private struct UpcomingJourney: Identifiable {
+    var from: CalendarItem
+    var to: CalendarItem
+    var id: [String] { [from.id, to.id] }
+}
 
 struct PersonalForecastView: View {
     @EnvironmentObject private var store: PivotStore
@@ -18,6 +23,14 @@ struct PersonalForecastView: View {
     @State private var refreshedAt: Date?
     @State private var refreshID = UUID()
     private var refreshKey: String { "\(store.data.updatedAt)|\(agenda.revision)|\(refreshID)" }
+    private var journeys: [UpcomingJourney] {
+        let now = Date()
+        let future = agenda.planned.filter { !$0.isAllDay && $0.end > now && $0.start < now.addingTimeInterval(7 * 86400) }
+            .sorted { $0.start < $1.start }
+        guard future.count > 1 else { return [] }
+        return zip(future, future.dropFirst()).filter { !$0.0.location.isEmpty && !$0.1.location.isEmpty }.prefix(5)
+            .map { .init(from: $0.0, to: $0.1) }
+    }
     var body: some View {
         PivotScreen {
             PivotHeader(title: "Previsioni personali", subtitle: "Dati osservati, ipotesi dichiarate e decisioni tue.")
@@ -28,6 +41,21 @@ struct PersonalForecastView: View {
             NavigationLink { TravelCalculatorView() } label: {
                 PivotCard { ActionRow(title: "Tragitti reali", subtitle: "Luoghi scelti da te · Apple Maps con consenso", icon: "map.fill") }
             }.buttonStyle(.plain).accessibilityIdentifier("prediction-travel")
+            if !journeys.isEmpty {
+                SectionHeading(title: "Da un impegno al successivo")
+                ForEach(journeys) { journey in
+                    NavigationLink {
+                        TravelCalculatorView(origin: journey.from.location, destination: journey.to.location,
+                                             date: max(journey.from.end, Date().addingTimeInterval(60)), timing: .departAt,
+                                             nextStart: journey.to.start, context: .init(events: [journey.from, journey.to]))
+                    } label: {
+                        PivotCard {
+                            ActionRow(title: "\(journey.from.title) → \(journey.to.title)",
+                                      subtitle: "Partenza ipotizzata dal luogo del primo impegno · controlla se arrivi in tempo", icon: "arrow.triangle.branch")
+                        }
+                    }.buttonStyle(.plain)
+                }
+            }
             if !durations.isEmpty {
                 SectionHeading(title: "Il tempo dei tuoi allenamenti")
                 ForEach(durations) { value in

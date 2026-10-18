@@ -35,7 +35,7 @@ struct SavingsForecastView: View {
                                 .accessibilityIdentifier("forecast-completion")
                         } else if value.weeklyCents == 0 {
                             Text("Indica una quota settimanale per vedere una data possibile.")
-                        } else { Text("Il ritmo scelto porta oltre l’orizzonte di 100 anni: non mostro una data utile.") }
+                        } else { Text("Il ritmo scelto porta oltre l’orizzonte della simulazione: non mostro una data utile.") }
                         if let deadline = goal?.deadline {
                             Text("Scadenza \(DisplayDate.label(deadline, format: "d MMM yyyy"))").font(.subheadline)
                             if value.deadlineMissed { Text("La scadenza è passata: puoi rivalutare l’obiettivo.").foregroundStyle(PivotTheme.amber) }

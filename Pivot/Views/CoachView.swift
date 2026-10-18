@@ -303,7 +303,7 @@ struct CoachView: View {
             }
             #endif
             if onlineCoach.isConfigured && !useLocal {
-                Text("Conversazione, riordino del testo e bozze per nuovi impegni. Spostamenti verificati per pranzo e palestra di oggi; recuperi multigiorno, cancellazioni e tragitti automatici non sono ancora disponibili.")
+                Text("Chat, riordino del testo e bozze per nuovi impegni. Spostamenti verificati per pranzo e palestra di oggi. Previsioni, alternative fino a 7 giorni e Apple Maps si aprono qui sotto; la chat online non gestisce ancora automaticamente catene di spostamenti o cancellazioni.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
                 Button("Dati inviati") { showOnlineData = true }
                     .accessibilityIdentifier("coach-online-data")

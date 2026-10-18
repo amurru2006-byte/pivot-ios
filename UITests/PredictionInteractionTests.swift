@@ -2,6 +2,60 @@ import XCTest
 
 final class PredictionInteractionTests: XCTestCase {
     override func tearDown() { attachFailureDiagnostics(name); super.tearDown() }
+    func testRecoveryAlternativesRequireReviewAndStayPendingBeforeCalendarConfirmation() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--recovery-forecast-test"]
+        app.launchEnvironment["PIVOT_QA_RECOVERY_ID"] = UUID().uuidString
+        app.launch()
+        let coach = app.buttons["open-pivot-coach"]
+        XCTAssertTrue(coach.waitForExistence(timeout: 15)); tap(coach, app)
+        tap(app.buttons["coach-predictions"], app); tap(app.buttons["prediction-recovery"], app)
+        let activity = app.buttons["prediction-recovery-target"]
+        XCTAssertTrue(activity.waitForExistence(timeout: 5)); tap(activity, app)
+        tap(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Allenamento QA da recuperare")).firstMatch, app)
+        tap(app.switches["prediction-recovery-preparation"], app)
+        tap(app.buttons["prediction-recovery-search"], app)
+        let stage = app.buttons.matching(identifier: "prediction-recovery-stage").firstMatch
+        XCTAssertTrue(stage.waitForExistence(timeout: 8)); XCTAssertFalse(stage.isEnabled)
+        screenshot("recovery-alternatives-before-review", app)
+        let review = app.switches.matching(identifier: "prediction-recovery-review").firstMatch
+        tap(review, app); XCTAssertTrue(stage.isEnabled); tap(stage, app)
+        XCTAssertTrue(app.staticTexts["prediction-recovery-message"].label.contains("Il Calendario non è ancora cambiato"))
+        tap(app.buttons["prediction-recovery-open-coach"], app)
+        XCTAssertTrue(app.staticTexts["Da applicare al Calendario"].waitForExistence(timeout: 5))
+        // Do not tap the final Calendar write: only the pending draft is tested.
+        app.terminate(); app.launch()
+        XCTAssertTrue(coach.waitForExistence(timeout: 15)); tap(coach, app)
+        XCTAssertTrue(app.staticTexts["Da applicare al Calendario"].waitForExistence(timeout: 5))
+    }
+    func testSavingsScenarioChangesOnlyThePreviewAndRejectsUnavailableFunds() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--savings-test"]
+        app.launchEnvironment["PIVOT_QA_SAVINGS_ID"] = UUID().uuidString
+        app.launch()
+        let income = app.tabBars.buttons["Entrate"]
+        XCTAssertTrue(income.waitForExistence(timeout: 15)); income.tap()
+        tap(app.buttons["income-page-2"], app)
+        tap(app.buttons["savings-create-goal"], app)
+        let name = app.textFields["savings-goal-name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5)); name.tap(); name.typeText("Obiettivo QA")
+        let target = app.textFields["savings-goal-target"]; target.tap(); target.typeText("900")
+        dismissKeyboard(app); tap(app.buttons["savings-goal-save"], app)
+        XCTAssertTrue(app.staticTexts["savings-reserved-total"].label.contains("0,00"))
+        tap(app.buttons["savings-forecast"], app)
+        let upfront = app.textFields["forecast-upfront"]
+        XCTAssertTrue(upfront.waitForExistence(timeout: 5)); upfront.tap(); upfront.typeText("100")
+        let weekly = app.textFields["forecast-weekly"]; weekly.tap(); weekly.typeText("50")
+        dismissKeyboard(app)
+        XCTAssertTrue(app.staticTexts["forecast-remaining"].label.contains("800,00"))
+        XCTAssertTrue(app.staticTexts["forecast-completion"].label.contains("16 settimane"))
+        screenshot("savings-forecast-no-money-moved", app)
+        tap(upfront, app); upfront.typeText("0"); dismissKeyboard(app)
+        XCTAssertTrue(app.staticTexts["forecast-error"].waitForExistence(timeout: 5))
+        app.navigationBars["Scenario Salvadanaio"].buttons["Chiudi"].tap()
+        XCTAssertTrue(app.staticTexts["savings-reserved-total"].label.contains("0,00"))
+        XCTAssertTrue(app.staticTexts["savings-free-total"].label.contains("350,00"))
+    }
     func testWorkoutForecastIsCapturedAtStartAndPersistsWithoutInventedLegacyFeedback() {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--training-forecast-test"]
@@ -15,6 +69,7 @@ final class PredictionInteractionTests: XCTestCase {
         let forecast = app.staticTexts["training-duration-prediction"]
         XCTAssertTrue(forecast.waitForExistence(timeout: 8)); XCTAssertTrue(forecast.label.contains("75 min"))
         XCTAssertTrue(app.staticTexts["training-duration-band"].label.contains("3 sedute"))
+        screenshot("workout-personal-duration-band", app)
         tap(app.buttons["Inizia allenamento"], app)
         XCTAssertTrue(app.staticTexts["Allenamento in corso"].waitForExistence(timeout: 8))
         app.navigationBars["Allenamento"].buttons.element(boundBy: 0).tap()
@@ -66,6 +121,9 @@ final class PredictionInteractionTests: XCTestCase {
         let settings = app.tabBars.buttons["Impostazioni"]
         XCTAssertTrue(settings.waitForExistence(timeout: 15)); settings.tap()
         tap(app.buttons["settings-travel"], app)
+    }
+    private func screenshot(_ name: String, _ app: XCUIApplication) {
+        let item = XCTAttachment(screenshot: app.screenshot()); item.name = name; item.lifetime = .keepAlways; add(item)
     }
     private func tap(_ element: XCUIElement, _ app: XCUIApplication) {
         scrollControlIntoView(element, in: app); element.tap()

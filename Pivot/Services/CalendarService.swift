@@ -107,6 +107,7 @@ private actor CalendarWorker {
     #if DEBUG && targetEnvironment(simulator)
     private var creationFixture: Bool { ProcessInfo.processInfo.arguments.contains("--coach-calendar-create-test") }
     private var createdFixtureItems: [CalendarItem] = []
+    private var recoveryForecastFixture: CalendarItem?
     #endif
     func reviewCreation(_ draft: CoachCalendarDraft, calendarID: String, settings: Settings) throws -> [CalendarItem] {
         #if DEBUG && targetEnvironment(simulator)
@@ -291,6 +292,16 @@ private actor CalendarWorker {
     }
     #if DEBUG && targetEnvironment(simulator)
     private func interactionSnapshot() -> CalendarSnapshot {
+        if ProcessInfo.processInfo.arguments.contains("--recovery-forecast-test") {
+            if recoveryForecastFixture == nil {
+                let start = Date().addingTimeInterval(-3 * 3600)
+                recoveryForecastFixture = .init(id: "recovery-qa", eventIdentifier: "recovery-qa", calendarIdentifier: "recovery-qa",
+                    calendarTitle: "QA", title: "Allenamento QA da recuperare", start: start, end: start.addingTimeInterval(3600),
+                    location: "", notes: "", colorHex: "7EE6CD", isAllDay: false, writable: true, kind: .workout)
+            }
+            return .init(hasAccess: true, choices: [.init(id: "recovery-qa", title: "QA", colorHex: "7EE6CD", holiday: false, writable: true)],
+                         events: recoveryForecastFixture.map { [$0] } ?? [])
+        }
         if creationFixture {
             return .init(hasAccess: true, choices: [.init(id: "create-fixture", title: "Personale test", colorHex: "7EE6CD", holiday: false, writable: true, sourceTitle: "Account test", sourceIdentifier: "source-fixture")], events: createdFixtureItems)
         }

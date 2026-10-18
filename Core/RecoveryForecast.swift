@@ -4,8 +4,9 @@ import Foundation
 /// recovery-day requirement or medical restriction is inferred.
 enum RecoveryForecast {
     static func options(targetID: String, events: [CalendarItem], data: AppData, now: Date,
-                        days: Int = 7, preferredBand: TrainingDurationTimeBand? = nil) -> [CoachOption] {
-        guard (1...7).contains(days), now.timeIntervalSinceReferenceDate.isFinite,
+                        days: Int = 7, preferredBand: TrainingDurationTimeBand? = nil,
+                        preparationIncluded: Bool = false) -> [CoachOption] {
+        guard preparationIncluded, (1...7).contains(days), now.timeIntervalSinceReferenceDate.isFinite,
               let target = EventCoalescer.unique(events, data: data).first(where: { $0.id == targetID }),
               target.end <= now, target.writable,
               [.pending, .skipped].contains(data.records[targetID]?.status ?? .pending),

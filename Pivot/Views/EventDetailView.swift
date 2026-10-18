@@ -412,9 +412,10 @@ struct EventDetailView: View {
             DurationField(title: "Tragitto prima", seconds: Binding(get: { rule.travelBeforeMinutes * 60 }, set: { rule.travelBeforeMinutes = ($0 ?? 0) / 60 }), maxHours: 4)
             DurationField(title: "Tragitto dopo", seconds: Binding(get: { rule.travelAfterMinutes * 60 }, set: { rule.travelAfterMinutes = ($0 ?? 0) / 60 }), maxHours: 4)
             NavigationLink {
-                TravelCalculatorView(destination: event.location, date: max(event.start, Date().addingTimeInterval(300)), timing: .arriveBy) { estimate in
-                    guard estimate.minutes <= 240 else { message = "Il viaggio supera 4 ore: controlla i luoghi scelti."; return }
-                    rule.travelBeforeMinutes = estimate.minutes; rule.travelConfirmed = false
+                TravelCalculatorView(destination: event.location, date: max(event.start, Date().addingTimeInterval(300)), timing: .arriveBy,
+                                     nextStart: event.start, context: .init(events: [event])) { estimate in
+                    guard let minutes = estimate.minutes, minutes <= 240 else { message = "Il viaggio non è valido o supera 4 ore: controlla i luoghi scelti."; return }
+                    rule.travelBeforeMinutes = minutes; rule.travelConfirmed = false
                     message = "Stima di andata inserita. Verifica il tragitto dopo l’attività e conferma i tempi prima di salvare."
                 }
             } label: { Label("Calcola l’andata con Apple Maps", systemImage: "map") }

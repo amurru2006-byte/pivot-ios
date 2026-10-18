@@ -29,7 +29,7 @@ final class RecoveryForecastTests: XCTestCase {
         XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encode(data)))
     }
     func testFullDurationAndExplicitEveningPreferenceAreHonoredWithoutCalendarWrites() {
-        let options = RecoveryForecast.options(targetID: target.id, events: [target], data: data, now: now, preferredBand: .evening)
+        let options = RecoveryForecast.options(targetID: target.id, events: [target], data: data, now: now, preferredBand: .evening, preparationIncluded: true)
         XCTAssertFalse(options.isEmpty)
         for option in options {
             XCTAssertNil(CoachPlanner.validate(option, events: [target], data: data, now: now))
@@ -42,21 +42,21 @@ final class RecoveryForecastTests: XCTestCase {
         let day = PivotDate.calendar.startOfDay(for: now)
         var busy = target; busy.id = "busy"; busy.eventIdentifier = "busy"; busy.isAllDay = true
         busy.start = day; busy.end = PivotDate.calendar.date(byAdding: .day, value: 4, to: day)!
-        XCTAssertTrue(RecoveryForecast.options(targetID: target.id, events: [target, busy], data: data, now: now, days: 3).isEmpty)
-        let values = RecoveryForecast.options(targetID: target.id, events: [target, busy], data: data, now: now, days: 7)
+        XCTAssertTrue(RecoveryForecast.options(targetID: target.id, events: [target, busy], data: data, now: now, days: 3, preparationIncluded: true).isEmpty)
+        let values = RecoveryForecast.options(targetID: target.id, events: [target, busy], data: data, now: now, days: 7, preparationIncluded: true)
         XCTAssertFalse(values.isEmpty)
         XCTAssertGreaterThanOrEqual(values[0].moves[0].proposedStart, busy.end)
     }
     func testUnknownTargetOrOtherTravelDoesNotProduceUnsafeOptions() {
         var data = data; data.rules[target.id]?.travelConfirmed = false
-        XCTAssertTrue(RecoveryForecast.options(targetID: target.id, events: [target], data: data, now: now).isEmpty)
+        XCTAssertTrue(RecoveryForecast.options(targetID: target.id, events: [target], data: data, now: now, preparationIncluded: true).isEmpty)
         data.rules[target.id]?.travelConfirmed = true
         var busy = target; busy.id = "unknown"; busy.eventIdentifier = "unknown"; busy.location = "Luogo QA"
         busy.start = now.addingTimeInterval(3600); busy.end = busy.start.addingTimeInterval(3600)
-        XCTAssertTrue(RecoveryForecast.options(targetID: target.id, events: [target, busy], data: data, now: now, days: 1).isEmpty)
+        XCTAssertTrue(RecoveryForecast.options(targetID: target.id, events: [target, busy], data: data, now: now, days: 1, preparationIncluded: true).isEmpty)
     }
     func testFreshValidationRejectsDeletedMovedAndAllDayConflicts() throws {
-        let option = try XCTUnwrap(RecoveryForecast.options(targetID: target.id, events: [target], data: data, now: now).first)
+        let option = try XCTUnwrap(RecoveryForecast.options(targetID: target.id, events: [target], data: data, now: now, preparationIncluded: true).first)
         XCTAssertNotNil(CoachPlanner.validate(option, events: [], data: data, now: now))
         var changed = target; changed.location = "Nuovo luogo QA"
         XCTAssertNotNil(CoachPlanner.validate(option, events: [changed], data: data, now: now))
@@ -68,12 +68,16 @@ final class RecoveryForecastTests: XCTestCase {
         var data = data
         for status in [Completion.completed, .partial, .running] {
             data.records[target.id] = .init(id: target.id, snapshot: target, status: status)
-            XCTAssertTrue(RecoveryForecast.options(targetID: target.id, events: [target], data: data, now: now).isEmpty)
+            XCTAssertTrue(RecoveryForecast.options(targetID: target.id, events: [target], data: data, now: now, preparationIncluded: true).isEmpty)
         }
         data.records = [:]
         var future = target; future.start = now.addingTimeInterval(3600); future.end = future.start.addingTimeInterval(3600)
-        XCTAssertTrue(RecoveryForecast.options(targetID: target.id, events: [future], data: data, now: now).isEmpty)
+        XCTAssertTrue(RecoveryForecast.options(targetID: target.id, events: [future], data: data, now: now, preparationIncluded: true).isEmpty)
         data.moves = [.init(source: target, proposedStart: now.addingTimeInterval(3600), proposedEnd: now.addingTimeInterval(7200))]
+        XCTAssertTrue(RecoveryForecast.options(targetID: target.id, events: [target], data: data, now: now, preparationIncluded: true).isEmpty)
+    }
+    func testMissingPreparationConfirmationIsNotAssumedToMeanZeroMinutes() {
         XCTAssertTrue(RecoveryForecast.options(targetID: target.id, events: [target], data: data, now: now).isEmpty)
+        XCTAssertFalse(RecoveryForecast.options(targetID: target.id, events: [target], data: data, now: now, preparationIncluded: true).isEmpty)
     }
 }
