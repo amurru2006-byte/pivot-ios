@@ -236,6 +236,8 @@ struct TrainingSession: Codable, Identifiable, Equatable {
     var rest: TrainingRest? = nil
     // Snapshot of declared context at creation; never inferred retroactively.
     var phase: TrainingPhase? = nil
+    var durationExcluded: Bool? = nil
+    var durationPrediction: TrainingDurationPrediction? = nil
 }
 
 struct TrainingLibrary: Codable {
@@ -284,7 +286,9 @@ struct TrainingLibrary: Codable {
                     && ($0.kind != .rank || ($0.rankLevel != nil && $0.benchmark != nil)) }) else { throw TrainingError.invalidPlan }
         }
         for session in sessions {
-            guard session.end.map({ $0 >= session.start }) ?? true,
+            guard session.durationPrediction.map(\.isValid) ?? true,
+                  session.durationPrediction.map({ !$0.sampleIDs.contains(session.id) }) ?? true,
+                  session.end.map({ $0 >= session.start }) ?? true,
                   Set(session.exercises.map(\.id)).count == session.exercises.count else { throw TrainingError.invalidPlan }
             if let rest = session.rest {
                 guard (0...3600).contains(rest.plannedSeconds),
