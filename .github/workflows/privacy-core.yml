@@ -1,7 +1,7 @@
 name: Verifica privacy V8 senza rilascio
 on:
   push:
-    branches: ['codex/pivot-v8-privacy', 'codex/pivot-v8-backup', 'codex/pivot-v8-savings-core', 'codex/pivot-v8-savings-ui', 'codex/pivot-v8-history-core', 'codex/pivot-v8-history-ui', 'codex/pivot-v8-contacts-core', 'codex/pivot-v8-contacts-ui', 'codex/pivot-v8-backup-ui-fix', 'codex/pivot-v8-entrate-ui', 'codex/pivot-v8-voice-ui', 'codex/pivot-v8-actions-core', 'codex/pivot-v8-083-controls']
+    branches: ['codex/pivot-v8-privacy', 'codex/pivot-v8-backup', 'codex/pivot-v8-savings-core', 'codex/pivot-v8-savings-ui', 'codex/pivot-v8-history-core', 'codex/pivot-v8-history-ui', 'codex/pivot-v8-contacts-core', 'codex/pivot-v8-contacts-ui', 'codex/pivot-v8-backup-ui-fix', 'codex/pivot-v8-entrate-ui', 'codex/pivot-v8-voice-ui', 'codex/pivot-v8-actions-core', 'codex/pivot-v8-083-controls', 'codex/pivot-v8-084-predictions']
   workflow_dispatch:
 permissions:
   contents: read
@@ -55,6 +55,7 @@ jobs:
           PIVOT_QA_BRANCH: ${{ github.ref }}
         run: |
           case "$PIVOT_QA_BRANCH" in
+            refs/heads/codex/pivot-v8-084-predictions) PIVOT_UI_ONLY_TESTING=PivotUITests/PredictionInteractionTests ;;
             refs/heads/codex/pivot-v8-083-controls) PIVOT_UI_ONLY_TESTING=v8-083-controls-regression ;;
             refs/heads/codex/pivot-v8-backup-ui-fix) PIVOT_UI_ONLY_TESTING=PivotUITests/BackupPrivacyInteractionTests ;;
             refs/heads/codex/pivot-v8-entrate-ui) PIVOT_UI_ONLY_TESTING=v8-training-controls-regression ;;

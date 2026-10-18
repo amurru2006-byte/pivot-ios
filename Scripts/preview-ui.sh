@@ -19,7 +19,7 @@ case "$PIVOT_UI_ONLY_TESTING" in
     # Validate full coverage before any expensive build; no arbitrary filter.
     PIVOT_RELEASE_FLAGS=$(python3 Scripts/ui_release_shards.py --shard "$PIVOT_RELEASE_SHARD")
     ;;
-  PivotUITests/OnlineCoachInteractionTests|PivotUITests/BackupPrivacyInteractionTests|v8-privacy-regression|v8-savings-regression|v8-history-regression|v8-contacts-regression|v8-income-final-regression|v8-training-controls-regression|v8-083-controls-regression)
+  PivotUITests/PredictionInteractionTests|PivotUITests/OnlineCoachInteractionTests|PivotUITests/BackupPrivacyInteractionTests|v8-privacy-regression|v8-savings-regression|v8-history-regression|v8-contacts-regression|v8-income-final-regression|v8-training-controls-regression|v8-083-controls-regression)
     PIVOT_PREVIEW_OUTPUT=build/Previews/OnlinePrivacy
     PIVOT_UI_BUILD_LOG=build/online-privacy-build.log
     PIVOT_UI_LOG=build/online-privacy-tests.log

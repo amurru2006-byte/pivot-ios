@@ -63,6 +63,17 @@ struct LessonLogisticsView: View {
         Group {
                     DurationField(title: "Viaggio per arrivare", seconds: Binding(get: { logistics.travelBeforeMinutes * 60 }, set: { logistics.travelBeforeMinutes = ($0 ?? 0) / 60; invalidateTravel() }), maxHours: 4)
                     DurationField(title: "Viaggio dopo la lezione", seconds: Binding(get: { logistics.travelAfterMinutes * 60 }, set: { logistics.travelAfterMinutes = ($0 ?? 0) / 60; invalidateTravel() }), maxHours: 4)
+                    NavigationLink {
+                        TravelCalculatorView(origin: logistics.departure?.address ?? "", destination: logistics.address,
+                                             mode: logistics.departure?.mode ?? .transit,
+                                             date: max(event.start, Date().addingTimeInterval(300)), timing: .arriveBy) { estimate in
+                            guard estimate.minutes <= 240 else { message = "Il viaggio supera 4 ore: controlla il luogo scelto e i tempi."; return }
+                            logistics.travelBeforeMinutes = estimate.minutes
+                            invalidateTravel()
+                            message = "Stima di andata inserita. Controlla anche il viaggio successivo e conferma i tempi di questa lezione."
+                        }
+                    } label: { Label("Calcola l’andata con Apple Maps", systemImage: "map") }
+                        .frame(minHeight: 44).accessibilityIdentifier("lesson-apple-maps")
                     Toggle("Ho verificato i tempi di viaggio", isOn: $logistics.travelConfirmed)
                         .accessibilityIdentifier("lesson-travel-confirm")
                     if selectedOriginID != nil, logistics.travelConfirmed,
