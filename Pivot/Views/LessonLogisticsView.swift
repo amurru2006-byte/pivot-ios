@@ -66,9 +66,10 @@ struct LessonLogisticsView: View {
                     NavigationLink {
                         TravelCalculatorView(origin: logistics.departure?.address ?? "", destination: logistics.address,
                                              mode: logistics.departure?.mode ?? .transit,
-                                             date: max(event.start, Date().addingTimeInterval(300)), timing: .arriveBy) { estimate in
-                            guard estimate.minutes <= 240 else { message = "Il viaggio supera 4 ore: controlla il luogo scelto e i tempi."; return }
-                            logistics.travelBeforeMinutes = estimate.minutes
+                                             date: max(event.start, Date().addingTimeInterval(300)), timing: .arriveBy,
+                                             nextStart: event.start, context: .init(events: [event])) { estimate in
+                            guard let minutes = estimate.minutes, minutes <= 240 else { message = "Il viaggio non è valido o supera 4 ore: controlla il luogo scelto e i tempi."; return }
+                            logistics.travelBeforeMinutes = minutes
                             invalidateTravel()
                             message = "Stima di andata inserita. Controlla anche il viaggio successivo e conferma i tempi di questa lezione."
                         }

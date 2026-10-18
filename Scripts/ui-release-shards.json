@@ -3,7 +3,11 @@
     "BackupPrivacyInteractionTests",
     "HistoricalIncomeInteractionTests",
     "IncomeCorrectionInteractionTests",
-    "OnlineCoachInteractionTests",
+    "OnlineCoachInteractionTests/testDictationPauseKeepsEarlierPhraseAndTypedPrefix",
+    "OnlineCoachInteractionTests/testOnlineSettingsRequireConsentAndProtectTokenEntry",
+    "OnlineCoachInteractionTests/testQuotaCountdownKeepsComposerAndLocalConversationInsidePivot",
+    "OnlineCoachInteractionTests/testRewriteIsSeparateFromSendingAndOriginalCanBeRestored",
+    "OnlineCoachInteractionTests/testSwitchingToLocalCancelsPreflightWithoutSendingOrLosingComposer",
     "SavingsInteractionTests",
     "PivotInteractionTests/testIncomeSummarySwipesToChart"
   ],
@@ -38,5 +42,14 @@
     "TrainingPhaseInteractionTests",
     "TrainingRepProgressionInteractionTests"
   ],
-  "pairing": ["OnlineCoachSetupInteractionTests", "PredictionInteractionTests"]
+  "pairing": [
+    "OnlineCoachSetupInteractionTests",
+    "PredictionInteractionTests",
+    "OnlineCoachInteractionTests/testCalendarDraftNeedsSeparateConfirmationAndCanCancelBeforeSaving",
+    "OnlineCoachInteractionTests/testConversationPermissionAvoidsRepeatedReviewAndCanBeRevoked",
+    "OnlineCoachInteractionTests/testOnlineReviewRequiresConfirmationAndCancelPreservesComposer",
+    "OnlineCoachInteractionTests/testPreviousMessageCanBeCopiedOrReusedWithoutAutomaticallySending",
+    "OnlineCoachInteractionTests/testRoutingPreferencesCanBeRememberedWithoutCreatingAnEvent",
+    "OnlineCoachInteractionTests/testSavedDraftCanCloseReopenAndRetainEditsAfterRelaunch"
+  ]
 }

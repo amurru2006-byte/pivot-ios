@@ -12,6 +12,19 @@ final class TravelEstimateTests: XCTestCase {
         .init(request: request, fetchedAt: now, departure: request.date, arrival: request.date.addingTimeInterval(1201),
               travelSeconds: 1201, distanceMeters: 1500)
     }
+    func testEventContextRejectsDeletedMovedOrChangedLocationsBeforeNewMapRequests() {
+        let event = CalendarItem(id: "event-qa", eventIdentifier: "event-qa", calendarIdentifier: "qa", calendarTitle: "QA", title: "Attività QA",
+                                 start: now.addingTimeInterval(3600), end: now.addingTimeInterval(7200), location: "Luogo QA", notes: "", colorHex: "7EE6CD",
+                                 isAllDay: false, writable: true, kind: .other)
+        let context = TravelEventContext(events: [event])
+        XCTAssertTrue(context.isCurrent(events: [event], data: .init()))
+        XCTAssertFalse(context.isCurrent(events: [], data: .init()))
+        var changed = event; changed.location = "Altro luogo QA"
+        XCTAssertFalse(context.isCurrent(events: [changed], data: .init()))
+        changed = event; changed.start.addTimeInterval(60)
+        XCTAssertFalse(context.isCurrent(events: [changed], data: .init()))
+        XCTAssertFalse(TravelEventContext(events: [event, event]).isCurrent(events: [event], data: .init()))
+    }
     func testExplicitConsentIsRequiredForEveryRequest() {
         XCTAssertFalse(request.canRequest(consent: false, now: now))
         XCTAssertTrue(request.canRequest(consent: true, now: now))
@@ -35,10 +48,16 @@ final class TravelEstimateTests: XCTestCase {
     func testFreshEstimateRoundsUpWithoutTurningUnknownIntoZero() {
         XCTAssertTrue(estimate.isValid); XCTAssertEqual(estimate.minutes, 21)
         var value = estimate
-        value.travelSeconds = 0; XCTAssertFalse(value.isValid)
+        value.travelSeconds = 0; XCTAssertFalse(value.isValid); XCTAssertNil(value.minutes)
         value.travelSeconds = .infinity; XCTAssertFalse(value.isValid)
         value = estimate; value.distanceMeters = -1; XCTAssertFalse(value.isValid)
         value = estimate; value.arrival = value.departure; XCTAssertFalse(value.isValid)
+    }
+    func testTransitOccupancyIncludesWaitingWithoutInventingAServiceStatus() {
+        var value = estimate
+        value.arrival.addTimeInterval(600)
+        XCTAssertTrue(value.isValid); XCTAssertEqual(value.minutes, 31)
+        XCTAssertEqual(value.conflicts(nextStart: estimate.arrival), true)
     }
     func testChangingTimeModeOrPlacesInvalidatesEvenAFreshResult() {
         XCTAssertTrue(estimate.isUsable(for: request, consent: true, now: now))

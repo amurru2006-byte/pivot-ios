@@ -29,6 +29,7 @@ import MapKit
         }
     }
     private init() {
+        #if DEBUG && targetEnvironment(simulator)
         let args = ProcessInfo.processInfo.arguments
         interactionTest = args.contains("--interaction-test")
         if interactionTest, args.contains("--travel-estimate-test"),
@@ -36,6 +37,9 @@ import MapKit
            let isolated = UserDefaults(suiteName: "PivotTravelQA-\(id.uuidString)") {
             defaults = isolated; synthetic = true
         } else { defaults = .standard; synthetic = false }
+        #else
+        interactionTest = false; synthetic = false; defaults = .standard
+        #endif
         consentGranted = defaults.bool(forKey: Self.consentKey)
     }
     func setConsent(_ allowed: Bool) {
