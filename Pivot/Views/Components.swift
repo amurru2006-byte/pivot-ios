@@ -75,6 +75,7 @@ enum DisplayDate {
 
 struct PivotScreen<Content: View>: View {
     @ViewBuilder var content: Content
+    @State private var keyboardToolbarVisible = false
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) { content }
@@ -84,10 +85,15 @@ struct PivotScreen<Content: View>: View {
         .background(LinearGradient(colors: [Color(pivotHex: "101D2A"), PivotTheme.background], startPoint: .topLeading, endPoint: .center).ignoresSafeArea())
         .foregroundStyle(PivotTheme.text)
         .scrollDismissesKeyboard(.interactively)
+        .onAppear { keyboardToolbarVisible = true }
+        .onDisappear { keyboardToolbarVisible = false }
         .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Fine") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
+            if keyboardToolbarVisible {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Fine") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
+                        .accessibilityIdentifier("pivot-keyboard-done")
+                }
             }
         }
         .navigationBarTitleDisplayMode(.inline)

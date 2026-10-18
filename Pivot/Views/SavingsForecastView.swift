@@ -55,7 +55,6 @@ struct SavingsForecastView: View {
             }.navigationTitle("Scenario Salvadanaio")
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) { Button("Chiudi") { dismiss() } }
-                    ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Fine") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) } }
                 }
         }
     }

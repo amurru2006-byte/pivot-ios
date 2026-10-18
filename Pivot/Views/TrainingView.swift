@@ -985,7 +985,7 @@ struct TrainingSessionView: View {
             guard !Task.isCancelled, !store.locked, !removed, !hasStarted else { return }
             guard revision == store.data.updatedAt else { message = "Lo storico è cambiato: ripremi Inizia allenamento."; return }
             session.start = Date()
-            if let estimate { session.durationPrediction = TrainingDurationPrediction.capture(estimate, session: session, now: session.start) }
+            session.durationPrediction = estimate.flatMap { TrainingDurationPrediction.capture($0, session: session, now: session.start) }
             hasStarted = true
             if !save(startLiveActivity: true) { hasStarted = false }
         }
