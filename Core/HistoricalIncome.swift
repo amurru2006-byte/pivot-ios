@@ -11,13 +11,14 @@ struct HistoricalIncomeSource: Codable, Equatable {
 }
 
 enum HistoricalIncomeError: LocalizedError {
-    case ineligible, alreadyRecorded, reviewRequired, missingClient, changed, invalid
+    case ineligible, alreadyRecorded, reviewRequired, missingClient, historicalRateRequired, changed, invalid
     var errorDescription: String? {
         switch self {
         case .ineligible: return "Seleziona una lezione conclusa nell’anno scelto, con una durata valida."
         case .alreadyRecorded: return "Questa attività è già nel registro."
         case .reviewRequired: return "C’è già una registrazione o un pagamento che potrebbe comprendere questa lezione. Verifica prima di importarla."
         case .missingClient: return "Conferma il contatto e la sua tariffa prima di importare."
+        case .historicalRateRequired: return "Conferma la tariffa per l’anno della lezione: potrebbe essere diversa da quella attuale."
         case .changed: return "Calendario o registro modificati: ricarica l’anteprima prima di confermare."
         case .invalid: return "Ricostruzione non valida. Nessun importo è stato modificato."
         }
@@ -35,6 +36,9 @@ enum HistoricalIncome {
         let minutes: Int
         let amountCents: Int
         let year: Int
+        // An explicit historical rate belongs to this review, not to the live
+        // client profile. Nil retains the existing current-rate freshness check.
+        var confirmedRateCents: Int? = nil
     }
     struct Result: Equatable {
         var lessons = 0
@@ -43,8 +47,14 @@ enum HistoricalIncome {
         var extraAnnualCents: Int { receiptsCents - openingAttributedCents }
     }
 
+    static func validYear(_ year: Int, now: Date) -> Bool {
+        now.timeIntervalSinceReferenceDate.isFinite && (1900...9999).contains(year)
+            && year <= PivotDate.calendar.component(.year, from: now)
+    }
+
     static func isEligible(_ event: CalendarItem, year: Int, now: Date) -> Bool {
-        (2026...9999).contains(year) && year <= PivotDate.calendar.component(.year, from: now)
+        validYear(year, now: now)
+            && event.start.timeIntervalSinceReferenceDate.isFinite && event.end.timeIntervalSinceReferenceDate.isFinite
             && [.tutoring, .work].contains(event.kind) && !event.isAllDay
             && event.end > event.start && event.end <= now
             && event.end.timeIntervalSince(event.start) <= 8 * 3600
@@ -61,12 +71,17 @@ enum HistoricalIncome {
         }
     }
 
-    static func quote(_ event: CalendarItem, clientID: UUID, year: Int, now: Date, data: AppData) throws -> Quote {
+    static func quote(_ event: CalendarItem, clientID: UUID, year: Int, now: Date, data: AppData,
+        confirmedRateCents: Int? = nil) throws -> Quote {
         guard isEligible(event, year: year, now: now) else { throw HistoricalIncomeError.ineligible }
         guard existingEntry(for: event, data: data) == nil else { throw HistoricalIncomeError.alreadyRecorded }
         guard let client = data.clients.first(where: { $0.id == clientID }),
-              client.activityKind == .lesson, client.billingMode == .hourly,
-              (1...100_000_000).contains(client.rateCents) else { throw HistoricalIncomeError.missingClient }
+              client.activityKind == .lesson, client.billingMode == .hourly else { throw HistoricalIncomeError.missingClient }
+        if year < PivotDate.calendar.component(.year, from: now), confirmedRateCents == nil {
+            throw HistoricalIncomeError.historicalRateRequired
+        }
+        let rate = confirmedRateCents ?? client.rateCents
+        guard (1...100_000_000).contains(rate) else { throw HistoricalIncomeError.missingClient }
         let records = data.records.values.filter { EventCoalescer.savedOccurrence($0.snapshot, event) }
         // Explicit diary answers are not overwritten by "all past lessons paid".
         guard !records.contains(where: { [.skipped, .partial, .running].contains($0.status)
@@ -84,10 +99,10 @@ enum HistoricalIncome {
         }) else { throw HistoricalIncomeError.reviewRequired }
         let minutes = event.durationMinutes
         // Positive bounded rates and <= 480 minutes cannot overflow Int64.
-        let cents = Money.lessonAmount(rateCents: client.rateCents, minutes: minutes)
+        let cents = Money.lessonAmount(rateCents: rate, minutes: minutes)
         guard (1...100_000_000).contains(cents) else { throw HistoricalIncomeError.invalid }
         return Quote(event: event, clientID: client.id, clientName: client.name,
-                     rateCents: client.rateCents, minutes: minutes, amountCents: cents, year: year)
+                     rateCents: rate, minutes: minutes, amountCents: cents, year: year, confirmedRateCents: confirmedRateCents)
     }
 
     /// Re-evaluate against a fresh EventKit snapshot and latest store. Atomic on failure.
@@ -110,7 +125,8 @@ enum HistoricalIncome {
                       existing.amountCents == expected.amountCents else { throw HistoricalIncomeError.changed }
                 continue
             }
-            guard try quote(fresh, clientID: expected.clientID, year: expected.year, now: now, data: next) == expected else { throw HistoricalIncomeError.changed }
+            guard try quote(fresh, clientID: expected.clientID, year: expected.year, now: now, data: next,
+                confirmedRateCents: expected.confirmedRateCents) == expected else { throw HistoricalIncomeError.changed }
             guard !pending.contains(where: { EventCoalescer.savedOccurrence($0.event, fresh) }) else { throw HistoricalIncomeError.invalid }
             pending.append(expected)
         }

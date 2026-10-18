@@ -16,11 +16,13 @@ struct CoachCalendarDraft: Codable, Equatable, Identifiable {
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               title.count <= 160, notes.count <= 3000 else { return "Controlla titolo e note della proposta." }
         guard !calendarID.isEmpty else { return "Scegli il calendario dove salvare l'impegno." }
-        guard let start, let end, end > start, end.timeIntervalSince(start) <= 86400 else {
+        guard now.timeIntervalSinceReferenceDate.isFinite,
+              let start, let end, start.timeIntervalSinceReferenceDate.isFinite, end.timeIntervalSinceReferenceDate.isFinite,
+              end > start, end.timeIntervalSince(start) <= 86400 else {
             return "Conferma inizio e fine, con la data corretta anche dopo mezzanotte."
         }
-        guard start >= now.addingTimeInterval(-60), start <= now.addingTimeInterval(366 * 86400) else {
-            return "Scegli un inizio futuro entro un anno: nessun evento è stato creato."
+        guard start <= now.addingTimeInterval(366 * 86400) else {
+            return "Scegli una data non oltre un anno nel futuro: nessun evento è stato creato."
         }
         return nil
     }

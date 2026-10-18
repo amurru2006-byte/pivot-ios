@@ -34,10 +34,15 @@ struct CoachCalendarDraftView: View {
     private var suggestion: CoachCalendarRouting.Suggestion {
         CoachCalendarRouting.suggest(title: draft.title, hint: draft.calendarHint, choices: routingChoices, settings: store.data.settings, context: sourceMessage)
     }
+    private var historical: Bool { draft.start.map { $0 < Date().addingTimeInterval(-60) } ?? false }
     var body: some View {
         NavigationStack {
             Form {
                 Section("Bozza, non ancora salvata") {
+                    if historical {
+                        Label("Registrazione nel passato", systemImage: "clock.arrow.circlepath").foregroundStyle(PivotTheme.accent)
+                        Text("La data non sarà spostata a domani. Verrà aggiunto un solo evento agli orari indicati, senza cancellare gli altri.").font(.caption)
+                    }
                     TextField("Titolo", text: $draft.title).focused($focusedField, equals: .title).accessibilityIdentifier("coach-create-title")
                     if draft.start != nil {
                         DatePicker("Inizio", selection: Binding(get: { draft.start! }, set: { draft.start = $0 }))
@@ -98,8 +103,9 @@ struct CoachCalendarDraftView: View {
                     Button("Crea nel Calendario") { save() }.accessibilityIdentifier("coach-create-confirm")
                     Button("Annulla", role: .cancel) { }
                 } message: {
-                    Text(conflicts.isEmpty ? "Nessuna sovrapposizione rilevata nei calendari inclusi. Il salvataggio aggiunge un solo evento." :
+                    Text((historical ? "Stai registrando un evento nel passato. " : "") + (conflicts.isEmpty ? "Nessuna sovrapposizione rilevata nei calendari inclusi. Il salvataggio aggiunge un solo evento." :
                         "Si sovrappone a: " + conflicts.map(\.title).joined(separator: ", ") + ". Conferma solo se vuoi mantenere la sovrapposizione.")
+                    )
                 }
         }.interactiveDismissDisabled(busy)
     }
