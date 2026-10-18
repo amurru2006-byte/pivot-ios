@@ -10,12 +10,18 @@ struct TrainingDurationEstimate: Equatable {
     var sampleMinutes: [Double]
     var observedMinimumMinutes: Double?
     var observedMaximumMinutes: Double?
+    var timeBand: TrainingDurationTimeBand? = nil
     var provisional: Bool { sampleIDs.count < 5 }
+    var statistics: DurationStatistics? { source == .historyMedian ? DurationStatistics.make(sampleMinutes) : nil }
+    // An observed upper quartile, not a guarantee or a calibrated probability.
+    var schedulingMinutes: Int { provisional ? activityMinutes : max(activityMinutes, statistics?.upperMinutes ?? activityMinutes) }
 
     static func make(plan: TrainingPlan, day: TrainingDay, library: TrainingLibrary,
-                     calendarMinutes: Int, now: Date) -> Self? {
-        guard (1...1440).contains(calendarMinutes),
+                     calendarMinutes: Int?, now: Date, scheduledStart: Date? = nil) -> Self? {
+        guard calendarMinutes.map({ (1...1440).contains($0) }) ?? true,
               now.timeIntervalSinceReferenceDate.isFinite,
+              scheduledStart.map({ $0.timeIntervalSinceReferenceDate.isFinite }) ?? true,
+              scheduledStart.map({ $0 >= now.addingTimeInterval(-60) }) ?? true,
               plan.payload.days.contains(where: { $0.id == day.id }),
               !day.exercises.isEmpty, day.exercises.allSatisfy(\.isValid) else { return nil }
         let phase = TrainingPhase.resolved(plan: plan.payload, day: day)
@@ -26,6 +32,7 @@ struct TrainingDurationEstimate: Equatable {
                       let end = session.end, end.timeIntervalSinceReferenceDate.isFinite,
                       session.start >= from, end <= now, end > session.start,
                       end.timeIntervalSince(session.start) <= 86400,
+                      session.durationExcluded != true,
                       session.phase == phase, session.exercises.map(\.exercise) == day.exercises else { return false }
                 return session.exercises.allSatisfy { log in
                     let required = TrainingSetTemplate.markingOrigins(log.sets, prescribedWorkingSets: log.exercise.sets)
@@ -40,7 +47,12 @@ struct TrainingDurationEstimate: Equatable {
         let next = library.makeSession(plan: plan, day: day, eventID: nil, now: now)
         let expected = structure(next)
         var seen: Set<UUID> = []
-        let samples = Array(candidates.filter { seen.insert($0.id).inserted && structure($0) == expected }.prefix(8))
+        let comparable = candidates.filter { seen.insert($0.id).inserted && structure($0) == expected }
+        let band = scheduledStart.map(TrainingDurationTimeBand.at)
+        let contextual = band.map { target in comparable.filter { TrainingDurationTimeBand.at($0.start) == target } } ?? []
+        // Do not split sparse data into a misleading personalized subgroup.
+        let usesContext = contextual.count >= 5
+        let samples = Array((usesContext ? contextual : comparable).prefix(8))
         let minutes = samples.map { $0.end!.timeIntervalSince($0.start) / 60 }
         let sorted = minutes.sorted()
         let activity: Int
@@ -51,10 +63,12 @@ struct TrainingDurationEstimate: Equatable {
             // Round upwards: the estimate must not lose the last partial minute.
             activity = Int(ceil(median)); source = .historyMedian
         } else {
+            guard let calendarMinutes else { return nil }
             activity = calendarMinutes; source = .calendar
         }
         return .init(source: source, activityMinutes: activity, sampleIDs: samples.map(\.id),
-                     sampleMinutes: minutes, observedMinimumMinutes: sorted.first, observedMaximumMinutes: sorted.last)
+                     sampleMinutes: minutes, observedMinimumMinutes: sorted.first, observedMaximumMinutes: sorted.last,
+                     timeBand: usesContext ? band : nil)
     }
 
     private struct SetShape: Equatable {
