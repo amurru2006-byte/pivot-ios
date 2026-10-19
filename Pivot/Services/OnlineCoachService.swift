@@ -186,15 +186,34 @@ final class OnlineCoachService: ObservableObject {
         #if DEBUG && targetEnvironment(simulator)
         if actionFixture {
             interactionRequestCount += 1
+            if ProcessInfo.processInfo.arguments.contains("--calendar-mutations-test"), snapshot.request.version == 3,
+               UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_COACH_ACTION_ID"] ?? "") != nil {
+                let updating = snapshot.request.message.localizedCaseInsensitiveContains("modifica")
+                let ids = updating ? Array(snapshot.request.events.prefix(1)).map(\.id) : snapshot.request.events.map(\.id)
+                let actions = ids.map { CoachCalendarEdit(kind: updating ? .update : .delete, eventID: $0,
+                    title: updating ? "Impegno QA modificato" : nil, start: nil, end: nil, notes: nil) }
+                return .init(version: 3, requestID: snapshot.request.requestID, mode: .actions, eventIDs: [], reply: "Anteprima QA, nessuna scrittura.", actions: actions)
+            }
+            if ProcessInfo.processInfo.arguments.contains("--conversation-continuity-test"), snapshot.request.version == 3,
+               UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_COACH_ACTION_ID"] ?? "") != nil {
+                if var draft = snapshot.request.draftContext?.last {
+                    draft.end = draft.start?.addingTimeInterval(3600)
+                    return .init(version: 3, requestID: snapshot.request.requestID, mode: .create, eventIDs: [], reply: "Bozza completata con i dati precedenti.", draft: draft, actions: [])
+                }
+                let draft = CoachCalendarDraft(title: "Attività passata QA", start: Date().addingTimeInterval(-7200), end: nil,
+                    calendarHint: "Personale test", notes: "Nota dettata QA", endEstimated: false)
+                return .init(version: 3, requestID: snapshot.request.requestID, mode: .clarify, eventIDs: [], reply: "A che ora è finita?", draft: draft, actions: [])
+            }
             if snapshot.request.purpose == "rewrite" {
-                return .init(version: 2, requestID: snapshot.request.requestID, mode: .rewrite, eventIDs: [], reply: "Testo riordinato",
+                return .init(version: snapshot.request.version, requestID: snapshot.request.requestID, mode: .rewrite, eventIDs: [], reply: "Testo riordinato",
                              draft: nil, rewrittenMessage: snapshot.request.message.replacingOccurrences(of: "latte uova farina", with: "\n- latte\n- uova\n- farina"))
             }
             let start = PivotDate.calendar.startOfDay(for: Date()).addingTimeInterval(22 * 3600)
             let draft = CoachCalendarDraft(title: "Impegno di prova", start: start > Date() ? start : Date().addingTimeInterval(3600),
                                           end: start > Date() ? start.addingTimeInterval(7200) : Date().addingTimeInterval(7200),
                                           calendarHint: "Personale test", notes: "Nota sintetica", endEstimated: false)
-            return .init(version: 2, requestID: snapshot.request.requestID, mode: .create, eventIDs: [], reply: "Bozza pronta, nessun evento creato.", draft: draft)
+            return .init(version: snapshot.request.version, requestID: snapshot.request.requestID, mode: .create, eventIDs: [], reply: "Bozza pronta, nessun evento creato.", draft: draft,
+                actions: snapshot.request.version == 3 ? [] : nil)
         }
         if preflightFixture || reviewFixture {
             interactionRequestCount += 1
@@ -239,7 +258,7 @@ final class OnlineCoachService: ObservableObject {
             var body = Data()
             for try await byte in stream {
                 if Task.isCancelled || generation != currentGeneration { throw CancellationError() }
-                guard body.count < (snapshot.request.version == 2 ? 32_000 : 8192) else { throw CoachOnlineFailure(kind: .invalidResponse, receivedAt: Date()) }
+                guard body.count < (snapshot.request.version >= 2 ? 32_000 : 8192) else { throw CoachOnlineFailure(kind: .invalidResponse, receivedAt: Date()) }
                 body.append(byte)
             }
             guard generation == currentGeneration, !Task.isCancelled else { throw CancellationError() }

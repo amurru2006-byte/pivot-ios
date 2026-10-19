@@ -171,7 +171,10 @@ struct CoachV8Snapshot {
             let messages = data.coachState.messages
             let drafts = (data.coachState.calendarDrafts ?? []).filter { saved in
                 saved.dayKey == PivotDate.key(now) && saved.createdEventID == nil
-                    && messages.contains { $0.id == saved.messageID && $0.onlineHistoryEligible == true && $0.healthDerived != true }
+                    && messages.contains {
+                        ($0.id == saved.userMessageID || (saved.userMessageID == nil && $0.id == saved.messageID))
+                            && $0.onlineHistoryEligible == true && $0.healthDerived != true
+                    }
             }.sorted { $0.updatedAt < $1.updatedAt }
             request.draftContext = drafts.last.map { saved in
                 var draft = saved.draft

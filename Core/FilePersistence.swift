@@ -22,6 +22,15 @@ actor FilePersistence {
     }
 
     func save(_ data: AppData, restoring: Bool = false) throws {
+        #if DEBUG && os(iOS) && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--interaction-test"),
+           ProcessInfo.processInfo.arguments.contains("--calendar-mutations-test"),
+           ProcessInfo.processInfo.arguments.contains("--calendar-archive-write-failure-test"),
+           UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_COACH_ACTION_ID"] ?? "") != nil,
+           (data.calendarActionArchive ?? []).contains(where: { $0.status == .prepared }) {
+            throw CocoaError(.fileWriteNoPermission)
+        }
+        #endif
         try prepareDirectory()
         let bytes = try BackupCodec.encodeCompact(data)
         let previous = try lastBytes ?? (FileManager.default.fileExists(atPath: file.path) ? Data(contentsOf: file) : nil)

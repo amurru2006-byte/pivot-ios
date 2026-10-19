@@ -81,6 +81,15 @@ final class CoachCalendarMutationTests: XCTestCase {
         XCTAssertFalse(CalendarArchive.valid(data))
         XCTAssertEqual(CalendarArchive.logicalEvent(restored, data: data).id, restored.id)
     }
+    func testInterruptedRestorationBlocksHistoricalImportUntilItsIdentityIsReconciled() throws {
+        var source = item(); source.kind = .tutoring
+        var entry = archive(source); entry.status = .restorationPrepared; entry.committedAt = now
+        var data = AppData(); data.clients = [Client(name: "Contatto Test", rateCents: 1000)]
+        data.calendarActionArchive = [entry]
+        XCTAssertTrue(CalendarArchive.valid(data))
+        XCTAssertThrowsError(try HistoricalIncome.quote(source, clientID: data.clients[0].id, year: 2026, now: now, data: data))
+        XCTAssertTrue(data.income.isEmpty); XCTAssertTrue(data.payments.isEmpty)
+    }
     func testBatchBackupRequiresConversationProvenanceAndDoesNotTouchFinance() throws {
         var data = AppData(); let message = CoachMessage(dayKey: PivotDate.key(now), role: .coach, text: "Proposta")
         let batch = try CoachCalendarBatch.make([edit()], sources: ["e0": item()], messageID: message.id, now: now, data: data)

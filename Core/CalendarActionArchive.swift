@@ -50,6 +50,7 @@ struct ArchivedCalendarMutation: Codable, Identifiable, Equatable {
     var kind: CalendarMutationKind
     var original: CalendarEventBackup
     var after: CalendarItem?
+    var afterBackup: CalendarEventBackup? = nil
     var status: CalendarArchiveStatus = .prepared
     var preparedAt: Date
     var committedAt: Date?
@@ -60,9 +61,10 @@ struct ArchivedCalendarMutation: Codable, Identifiable, Equatable {
               committedAt.map({ $0.timeIntervalSinceReferenceDate.isFinite && $0 >= preparedAt }) ?? true,
               restoredAt.map({ $0.timeIntervalSinceReferenceDate.isFinite && $0 >= preparedAt }) ?? true,
               after.map(CalendarEventBackup.valid) ?? true,
+              afterBackup.map({ $0.isValid && $0.snapshot == after }) ?? true,
               restoredEvent.map(CalendarEventBackup.valid) ?? true else { return false }
-        if kind == .delete && after != nil { return false }
-        if kind == .update && [.committed, .restorationPrepared, .restored].contains(status) && after == nil { return false }
+        if kind == .delete && (after != nil || afterBackup != nil) { return false }
+        if kind == .update && [.committed, .restorationPrepared, .restored].contains(status) && (after == nil || afterBackup == nil) { return false }
         if [.committed, .restorationPrepared, .restored].contains(status) && committedAt == nil { return false }
         if status == .restored { return restoredAt != nil && restoredEvent != nil }
         return restoredAt == nil && restoredEvent == nil

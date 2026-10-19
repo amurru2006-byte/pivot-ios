@@ -116,6 +116,17 @@ final class PivotStore: ObservableObject {
                     data.ledger = .init(openingCents: [String(PivotDate.calendar.component(.year, from: Date())): 2500])
                 }
             }
+            if !locked, ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--calendar-mutations-test"),
+               UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_COACH_ACTION_ID"] ?? "") != nil, data.clients.isEmpty {
+                change { data in
+                    let client = Client(name: "Contatto mutazioni QA", rateCents: 1000)
+                    let income = IncomeEntry(clientID: client.id, clientName: client.name, date: Date(), minutes: 60,
+                        amountCents: 1000, paidCents: 500, calendarEventID: "mutation-qa-1")
+                    data.clients = [client]; data.income = [income]
+                    data.payments = [.init(incomeID: income.id, clientName: client.name, date: Date(), amountCents: 500)]
+                    data.ledger = .init(); data.savingsBudget = .init(openingFundsCents: 0)
+                }
+            }
             if !locked, ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--savings-test"),
                UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_SAVINGS_ID"] ?? "") != nil,
                data.savingsBudget == nil, data.clients.isEmpty, data.payments.isEmpty, data.ledger?.openingCents.isEmpty != false {
