@@ -91,6 +91,10 @@ final class CalendarMutationInteractionTests: XCTestCase {
     }
     func testOriginalArchiveWriteFailurePreventsExternalDeletion() {
         let app = launch(archiveFailure: true)
+        tap(app.buttons["calendar-restore-interlock-audit"], app)
+        let interlock = app.staticTexts["calendar-mutation-audit-result"]
+        XCTAssertTrue(interlock.waitForExistence(timeout: 8))
+        XCTAssertEqual(interlock.label, "Ripristino QA bloccato prima della lettura; dati invariati")
         send("Cancella i due impegni QA di oggi", app)
         tap(batch(app), app); tap(app.buttons["coach-mutations-review"], app)
         let alert = app.alerts["Confermare le modifiche selezionate?"]

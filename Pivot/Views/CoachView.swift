@@ -71,6 +71,18 @@ struct CoachView: View {
                 Button("Verifica dati QA") {
                     mutationAudit = "\(calendar.events.count) eventi · \(store.data.income.count) attività · \(store.data.payments.count) incassi · \(store.data.payments.reduce(0) { $0 + $1.amountCents }) ricevuti · \(store.data.income.reduce(0) { $0 + $1.outstandingCents }) da incassare · " + calendar.events.map(\.title).sorted().joined(separator: ", ")
                 }.accessibilityIdentifier("calendar-mutation-audit")
+                Button("Verifica protezione ripristino QA") {
+                    let identity = store.data.installationID, revision = store.data.updatedAt
+                    guard store.beginCalendarMutation() else { mutationAudit = "Interblocco QA non acquisito"; return }
+                    Task {
+                        await store.restore(URL(fileURLWithPath: "/pivot-synthetic-nonexistent-backup"))
+                        let blocked = store.calendarMutationInProgress && !store.isRestoring
+                            && store.data.installationID == identity && store.data.updatedAt == revision
+                            && store.error == "Attendi la conclusione della modifica al Calendario prima di ripristinare un backup."
+                        store.error = nil; store.endCalendarMutation()
+                        mutationAudit = blocked ? "Ripristino QA bloccato prima della lettura; dati invariati" : "Protezione ripristino QA fallita"
+                    }
+                }.accessibilityIdentifier("calendar-restore-interlock-audit")
                 if let mutationAudit { Text(mutationAudit).accessibilityIdentifier("calendar-mutation-audit-result") }
             }
             #endif
