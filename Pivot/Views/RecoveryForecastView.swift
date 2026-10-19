@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct RecoveryForecastView: View {
+    var initialRequest: CoachRecoveryRequest? = nil
     @EnvironmentObject private var store: PivotStore
     @EnvironmentObject private var calendar: CalendarService
     @State private var targetID: String?
@@ -15,18 +16,25 @@ struct RecoveryForecastView: View {
     @State private var planning = false
     @State private var didLoad = false
     @State private var staged = false
+    @State private var searchDay: Date?
     @State private var task: Task<Void, Never>?
     private var candidates: [CalendarItem] {
         let now = Date()
-        return EventCoalescer.unique(calendar.events, data: store.data).filter {
-            $0.end <= now && $0.end >= now.addingTimeInterval(-14 * 86400) && !$0.isAllDay && $0.writable
-                && [.pending, .skipped].contains(store.data.records[$0.id]?.status ?? .pending)
-        }.sorted { $0.start > $1.start }
+        return CoachRecoveryRequest.candidates(events: calendar.events, data: store.data, now: now, workoutOnly: initialRequest?.workoutOnly == true)
     }
     var body: some View {
         PivotScreen {
             PivotHeader(title: "Troviamo un’alternativa", subtitle: "Fino a 7 giorni, senza cambiare nulla finché non scegli.")
             PivotCard {
+                if let text = initialRequest?.instruction {
+                    DisclosureGroup("La tua richiesta") { Text(text).textSelection(.enabled) }
+                }
+                if let searchDay {
+                    Text("Giorno richiesto: " + DisplayDate.label(searchDay, format: "d MMM yyyy"))
+                        .font(.subheadline).accessibilityIdentifier("prediction-recovery-requested-day")
+                    Button("Cerca anche negli altri giorni") { self.searchDay = nil }.frame(minHeight: 44)
+                        .accessibilityIdentifier("prediction-recovery-expand-days")
+                }
                 if candidates.isEmpty { Text("Non ci sono attività passate da chiarire negli ultimi 14 giorni.").foregroundStyle(PivotTheme.muted) }
                 Picker("Attività", selection: $targetID) {
                     Text("Scegli l’attività da recuperare").tag(String?.none)
@@ -37,7 +45,7 @@ struct RecoveryForecastView: View {
                         EventDetailView(event: target, initial: store.record(for: target), rule: store.rule(for: target))
                     }.frame(minHeight: 44)
                 }
-                Stepper("Cerca nei prossimi \(days) giorni", value: $days, in: 1...7)
+                if searchDay == nil { Stepper("Cerca nei prossimi \(days) giorni", value: $days, in: 1...7) }
                 Picker("Fascia per questo recupero", selection: $preferredBand) {
                     Text("Qualsiasi orario consentito").tag(TrainingDurationTimeBand?.none)
                     ForEach([TrainingDurationTimeBand.morning, .afternoon, .evening], id: \.self) { Text($0.label.capitalized).tag(Optional($0)) }
@@ -92,10 +100,19 @@ struct RecoveryForecastView: View {
                     days = value.horizonDays; preferredBand = value.preferredBand
                     temporary = value.expiresAt != nil; if let date = value.expiresAt { until = date }
                 }
+                if let request = initialRequest, request.isValid {
+                    searchDay = request.day
+                    if let band = request.band { preferredBand = band }
+                    if let id = request.targetID, candidates.contains(where: { $0.id == id }) { targetID = id }
+                    if let day = request.day, day < PivotDate.calendar.startOfDay(for: Date()) {
+                        message = "Il giorno di questa richiesta è passato. Scegli di cercare negli altri giorni: non lo sposto automaticamente a una nuova data."
+                    }
+                }
             }
             .onChange(of: targetID) { _, _ in preparationIncluded = false; invalidate() }
             .onChange(of: preparationIncluded) { _, _ in invalidate() }
             .onChange(of: days) { _, _ in invalidate() }
+            .onChange(of: searchDay) { _, _ in invalidate() }
             .onChange(of: preferredBand) { _, _ in invalidate() }
             .onChange(of: store.data.updatedAt) { _, _ in invalidate() }
             .onChange(of: calendar.events) { _, _ in invalidate() }
@@ -104,11 +121,11 @@ struct RecoveryForecastView: View {
     private func invalidate() { task?.cancel(); planning = false; options = []; reviewed = [] }
     private func search() {
         guard let targetID else { return }
-        let events = calendar.events, snapshot = store.data, now = Date(), count = days, band = preferredBand, included = preparationIncluded
+        let events = calendar.events, snapshot = store.data, now = Date(), count = days, band = preferredBand, included = preparationIncluded, day = searchDay
         options = []; reviewed = []; message = nil; planning = true; staged = false
         task = Task { @MainActor in
             let result = await Task.detached(priority: .userInitiated) {
-                RecoveryForecast.options(targetID: targetID, events: events, data: snapshot, now: now, days: count, preferredBand: band, preparationIncluded: included)
+                RecoveryForecast.options(targetID: targetID, events: events, data: snapshot, now: now, days: count, preferredBand: band, preparationIncluded: included, onDay: day)
             }.value
             guard !Task.isCancelled else { return }
             planning = false

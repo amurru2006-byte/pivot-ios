@@ -106,12 +106,15 @@ enum BackupCodec {
             guard draft.source.kind == .workout, draft.end.map({ $0 > draft.start }) ?? true else { throw BackupError.invalidData }
         }
         if let coach = data.coach {
+            guard coach.contextStartedAt.map({ $0.timeIntervalSinceReferenceDate.isFinite }) ?? true else { throw BackupError.invalidData }
             guard CoachDraftStore.valid(coach) else { throw BackupError.invalidData }
             guard Set(coach.messages.map(\.id)).count == coach.messages.count,
                   Set(coach.options.map(\.id)).count == coach.options.count,
                   Set(coach.pendingCalendarChanges.map(\.id)).count == coach.pendingCalendarChanges.count,
                   Set(coach.memories.map(\.id)).count == coach.memories.count,
                   coach.memories.allSatisfy(\.isValid),
+                  coach.memories.filter({ $0.onlineSharingAllowed == true }).count <= CoachMemoryContext.onlineLimit,
+                  coach.messages.allSatisfy({ $0.recoveryRequest?.isValid ?? true }),
                   coach.options.allSatisfy({ !$0.moves.isEmpty && $0.moves.allSatisfy { $0.proposedEnd > $0.proposedStart } }),
                   coach.pendingCalendarChanges.allSatisfy({ $0.move.proposedEnd > $0.move.proposedStart }) else { throw BackupError.invalidData }
         }

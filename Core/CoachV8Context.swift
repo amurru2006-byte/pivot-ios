@@ -125,6 +125,8 @@ struct CoachV8Snapshot {
     private(set) var originalEvents: [CalendarItem]
     private(set) var dataUpdatedAt: Date
     private(set) var sources: [String: CalendarItem]
+    // Local provenance, deliberately not encoded in the cloud DTO.
+    private(set) var focusedDraft: CoachSavedCalendarDraft? = nil
 
     static func make(message: String, events: [CalendarItem], data: AppData, now: Date, purpose: String? = nil,
         protocolVersion: Int = 2) throws -> Self {
@@ -153,30 +155,29 @@ struct CoachV8Snapshot {
                          start: item.start, end: item.end, durationMinutes: item.durationMinutes,
                          flexibility: rule.flexibility, travelConfirmed: rule.travelConfirmed)
         }
-        let eligibleHistory = data.coachState.messages.filter {
-            purpose != "rewrite" && $0.dayKey == PivotDate.key(now) && $0.onlineHistoryEligible == true
-                && $0.healthDerived != true && ($0.role == .user || $0.role == .coach)
+        let eligibleHistory = data.coachState.messages.filter { item in
+            purpose != "rewrite" && item.dayKey == PivotDate.key(now) && item.onlineHistoryEligible == true
+                && item.healthDerived != true && (item.role == .user || item.role == .coach)
+                && (data.coachState.contextStartedAt.map { item.createdAt >= $0 } ?? true)
         }
         let version = purpose == nil ? 1 : (purpose == "conversation" && protocolVersion == 3 ? 3 : 2)
         let history = eligibleHistory.suffix(version == 3 ? 20 : 6).map {
             let text = CoachPrivacy.text($0.text, events: events, data: data)
             return CoachV8Request.Message(role: $0.role == .user ? "user" : "assistant", text: version == 3 ? text : String(text.prefix(400)))
         }
+        let sharedMemories: [String]
+        if purpose == "conversation" {
+            sharedMemories = try CoachMemoryContext.online(memories: data.coachState.memories, events: events, data: data, now: now)
+        } else { sharedMemories = [] }
         var request = CoachV8Request(version: version, purpose: purpose,
                                      requestID: UUID().uuidString, now: now, dayKey: PivotDate.key(now),
                                      message: CoachPrivacy.text(clean, events: events, data: data), events: summaries, history: history,
-                                     // Memories lack provenance and per-message cloud consent.
-                                     memories: [])
+                                     memories: sharedMemories)
+        var focusedDraft: CoachSavedCalendarDraft?
         if version == 3 {
-            let messages = data.coachState.messages
-            let drafts = (data.coachState.calendarDrafts ?? []).filter { saved in
-                saved.dayKey == PivotDate.key(now) && saved.createdEventID == nil
-                    && messages.contains {
-                        ($0.id == saved.userMessageID || (saved.userMessageID == nil && $0.id == saved.messageID))
-                            && $0.onlineHistoryEligible == true && $0.healthDerived != true
-                    }
-            }.sorted { $0.updatedAt < $1.updatedAt }
-            request.draftContext = drafts.last.map { saved in
+            let selected = CoachConversationFocus.draft(in: data.coachState, dayKey: PivotDate.key(now))
+            if data.coachState.focusedCalendarDraftID != nil { focusedDraft = selected }
+            request.draftContext = selected.map { saved in
                 var draft = saved.draft
                 draft.title = CoachPrivacy.text(draft.title, events: events, data: data)
                 draft.notes = CoachPrivacy.text(draft.notes, events: events, data: data)
@@ -203,7 +204,7 @@ struct CoachV8Snapshot {
         guard request.message.count <= (purpose == nil ? 1500 : 12_000) else { throw CoachV8Error.contextTooLarge }
         let bytes = try request.encoded()
         guard bytes.count <= 24_000 else { throw CoachV8Error.contextTooLarge }
-        return .init(request: request, encodedRequest: bytes, originalEvents: events, dataUpdatedAt: data.updatedAt, sources: sources)
+        return .init(request: request, encodedRequest: bytes, originalEvents: events, dataUpdatedAt: data.updatedAt, sources: sources, focusedDraft: focusedDraft)
     }
 
     func isCurrent(events: [CalendarItem], data: AppData, now: Date) -> Bool {

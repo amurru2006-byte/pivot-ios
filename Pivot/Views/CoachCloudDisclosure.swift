@@ -14,6 +14,13 @@ struct CoachCloudDisclosure: View {
                 .accessibilityIdentifier("coach-online-reviewed-message")
             Text("Il testo viene filtrato, ma nomi o informazioni personali possono rimanere. I servizi online leggono ciò che invii. Per informazioni sanitarie usa la base locale.")
                 .font(.caption).foregroundStyle(PivotTheme.muted)
+            if !request.memories.isEmpty {
+                DisclosureGroup("Preferenze che hai autorizzato: \(request.memories.count)") {
+                    ForEach(Array(request.memories.enumerated()), id: \.offset) { _, value in
+                        Text(value).font(.subheadline).textSelection(.enabled)
+                    }
+                }.accessibilityIdentifier("coach-online-memories")
+            }
             DisclosureGroup("Messaggi recenti inclusi: \(request.history.count)") {
                 ForEach(Array(request.history.enumerated()), id: \.offset) { _, item in
                     VStack(alignment: .leading, spacing: 4) {
@@ -45,7 +52,7 @@ struct CoachCloudDisclosure: View {
                 }
             }
             if request.version == 3 { Text("Le corrispondenze fra il tuo messaggio e gli eventi sono indicate solo con sigle interne. La bozza da continuare viene filtrata come il messaggio e resta visibile qui sopra.").font(.caption).foregroundStyle(PivotTheme.muted) }
-            Text("Non vengono aggiunti automaticamente audio, dati Salute o memorie personali. Quello che scrivi tu può comunque contenere informazioni sensibili. Sono inclusi data, ora e un identificativo tecnico della richiesta.")
+            Text("Non vengono aggiunti automaticamente audio, dati Salute o memorie private. Sono incluse solo le preferenze abilitate esplicitamente per l’AI online, se presenti qui sopra. Quello che scrivi tu può comunque contenere informazioni sensibili. Sono inclusi data, ora e un identificativo tecnico della richiesta.")
                 .font(.caption).foregroundStyle(PivotTheme.muted)
             DisclosureGroup("Dati tecnici completi") {
                 if let bytes = try? request.encoded() {

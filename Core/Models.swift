@@ -277,6 +277,8 @@ struct CoachMessage: Codable, Identifiable, Equatable {
     var healthDerived: Bool? = nil
     // Nil (including legacy/local messages) is NOT permission to retransmit.
     var onlineHistoryEligible: Bool? = nil
+    // Local hand-off, never part of the provider's message schema.
+    var recoveryRequest: CoachRecoveryRequest? = nil
 }
 
 struct CoachOption: Codable, Identifiable {
@@ -301,8 +303,11 @@ struct CoachMemory: Codable, Identifiable, Equatable {
     var text: String
     var createdAt = Date()
     var expiresAt: Date? = nil
+    // Explicit opt-in for this exact user-written memory. Legacy entries stay local.
+    var onlineSharingAllowed: Bool? = nil
     var isValid: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && text.count <= 1500
+            && (onlineSharingAllowed != true || text.utf16.count <= 240)
             && createdAt.timeIntervalSinceReferenceDate.isFinite
             && (expiresAt.map { $0.timeIntervalSinceReferenceDate.isFinite && $0 > createdAt } ?? true)
     }
@@ -318,6 +323,9 @@ struct CoachState: Codable {
     var memories: [CoachMemory] = []
     var calendarDrafts: [CoachSavedCalendarDraft]? = nil
     var calendarBatches: [CoachCalendarBatch]? = nil
+    var focusedCalendarDraftID: UUID? = nil
+    var omitPreviousDraft: Bool? = nil
+    var contextStartedAt: Date? = nil
 }
 
 struct Settings: Codable, Equatable {

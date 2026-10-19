@@ -1,0 +1,42 @@
+name: Verifica contesto e preferenze Premium V8
+on:
+  push:
+    branches: ['codex/pivot-v8-086-premium']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pivot-premium-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Core e confini privacy senza rete reale
+        run: |
+          swift test
+          node --test Backend/coach-gateway/worker.test.mjs
+          python3 -m unittest discover -s Scripts -p 'test_*.py'
+  premium-ui:
+    needs: core
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash Scripts/prepare-ios-ci.sh
+      - name: Preferenze, continuità e recupero da chat con dati sintetici
+        env:
+          PIVOT_UI_ONLY_TESTING: PivotUITests/PremiumCoachInteractionTests
+        run: bash Scripts/preview-ui.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Pivot-premium-preflight
+          path: |
+            build/online-privacy-build.log
+            build/online-privacy-tests.log
+            build/Previews/OnlinePrivacy/
+          retention-days: 2
+          if-no-files-found: ignore

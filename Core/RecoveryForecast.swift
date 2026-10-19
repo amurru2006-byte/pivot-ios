@@ -5,7 +5,7 @@ import Foundation
 enum RecoveryForecast {
     static func options(targetID: String, events: [CalendarItem], data: AppData, now: Date,
                         days: Int = 7, preferredBand: TrainingDurationTimeBand? = nil,
-                        preparationIncluded: Bool = false) -> [CoachOption] {
+                        preparationIncluded: Bool = false, onDay: Date? = nil) -> [CoachOption] {
         guard preparationIncluded, (1...7).contains(days), now.timeIntervalSinceReferenceDate.isFinite,
               let target = EventCoalescer.unique(events, data: data).first(where: { $0.id == targetID }),
               target.end <= now, target.writable,
@@ -27,9 +27,16 @@ enum RecoveryForecast {
             searchData.settings.quietEndHour = max(data.settings.quietEndHour, interval.0)
             searchData.settings.quietStartHour = min(data.settings.quietStartHour, interval.1)
         }
-        let earliest = now.addingTimeInterval(5 * 60)
+        var earliest = now.addingTimeInterval(5 * 60)
+        if let onDay {
+            guard onDay.timeIntervalSinceReferenceDate.isFinite,
+                  let distance = PivotDate.calendar.dateComponents([.day], from: PivotDate.calendar.startOfDay(for: now), to: PivotDate.calendar.startOfDay(for: onDay)).day,
+                  (0...6).contains(distance) else { return [] }
+            earliest = max(earliest, PivotDate.calendar.startOfDay(for: onDay))
+            guard PivotDate.calendar.isDate(earliest, inSameDayAs: onDay) else { return [] }
+        }
         let windows = CalendarRecoveryWindows.find(target: target, budget: budget, events: events,
-                                                  data: searchData, now: earliest, days: days)
+                                                  data: searchData, now: earliest, days: onDay == nil ? days : 1)
         return windows.enumerated().compactMap { index, window in
             let move = PlanMove(source: target, proposedStart: window.activityStart,
                                 proposedEnd: window.activityStart.addingTimeInterval(seconds))
