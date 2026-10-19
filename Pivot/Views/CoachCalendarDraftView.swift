@@ -52,61 +52,12 @@ struct CoachCalendarDraftView: View {
                     }
                 }
                 Group {
-                Section {
-                    TextField("Titolo", text: $draft.title).font(.title3)
-                        .focused($focusedField, equals: .title).accessibilityIdentifier("coach-create-title")
-                    TextField("Posizione", text: $options.location)
-                        .focused($focusedField, equals: .location).accessibilityIdentifier("creation-location")
-                }
-                Section {
-                    if historical {
-                        Label("Registrazione nel passato", systemImage: "clock.arrow.circlepath").foregroundStyle(PivotTheme.accent)
-                        Text("Gli orari resteranno quelli indicati, senza spostare la data a domani o cancellare altri impegni.").font(.caption)
-                    }
-                    if draft.start != nil {
-                        DatePicker("Inizio", selection: Binding(get: { draft.start! }, set: { draft.start = $0 }))
-                            .accessibilityIdentifier("creation-start")
-                    } else { Button("Imposta inizio") { draft.start = Date().addingTimeInterval(3600) } }
-                    if draft.end != nil {
-                        DatePicker("Fine", selection: Binding(get: { draft.end! }, set: { draft.end = $0; draft.endEstimated = false }))
-                    } else { Button("Imposta fine") { draft.end = (draft.start ?? Date()).addingTimeInterval(3600); draft.endEstimated = true } }
-                    if draft.endEstimated { Text("La fine è una stima: controllala prima di confermare.").foregroundStyle(PivotTheme.amber) }
-                    Button { focusedField = nil; showTravel = true } label: {
-                        HStack {
-                            Label("Tempo di percorrenza", systemImage: "figure.walk")
-                            Spacer()
-                            Text(options.travel.map { "\($0.minutes) min" } ?? "Nessuno").foregroundStyle(.secondary)
-                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
-                        }.foregroundStyle(.primary)
-                    }.accessibilityIdentifier("creation-travel-open")
-                }
+                identitySection
+                timingSection
                 Section {
                     CalendarCreationPreview(draft: draft, options: options, color: PivotTheme.accent)
                 }
-                Section("Opzioni") {
-                    Picker("Calendario", selection: $calendarID) {
-                        Text("Scegli calendario").tag("")
-                        ForEach(choices) { choice in
-                            Text(choice.title + (choice.sourceTitle.isEmpty ? "" : " · " + choice.sourceTitle)).tag(choice.id)
-                        }
-                    }.accessibilityIdentifier("coach-create-calendar")
-                    if let hint = draft.calendarHint, calendarID.isEmpty {
-                        Text("Hai indicato ‘\(hint)’. Scegli il calendario corrispondente: non ne seleziono uno ambiguo.").font(.caption)
-                    }
-                    if suggestion.reason == .missingAccount && calendarID.isEmpty {
-                        Text("L’account abituale non è disponibile. Scegli esplicitamente dove salvare: non passo a un altro account.").font(.caption).foregroundStyle(PivotTheme.amber)
-                    }
-                    Picker(selection: $options.availability) {
-                        Text("Non disponibile").tag(0)
-                        Text("Disponibile").tag(1)
-                    } label: { Label("Mostra come", systemImage: "hand.raised") }
-                    Picker(selection: $options.alertMinutes) {
-                        Text("Nessuno").tag(nil as Int?)
-                        ForEach([0, 5, 10, 15, 30, 60, 120, 1440], id: \.self) { value in
-                            Text(value == 0 ? "All’inizio" : (value == 1440 ? "1 giorno prima" : "\(value) min prima")).tag(Optional(value))
-                        }
-                    } label: { Label("Avviso", systemImage: "bell") }
-                }
+                calendarOptionsSection
                 Section {
                     TextField("Note o elenco", text: $draft.notes, axis: .vertical).lineLimit(3...12)
                         .focused($focusedField, equals: .notes)
@@ -156,16 +107,77 @@ struct CoachCalendarDraftView: View {
                     Button(options.travel == nil ? "Crea nel Calendario" : "Crea attività e spostamento") { save() }.accessibilityIdentifier("coach-create-confirm")
                     Button("Annulla", role: .cancel) { }
                 } message: {
-                    Text((historical ? "Stai registrando un evento nel passato. " : "") +
-                        (options.travel == nil ? "Aggiungerò un evento. " : "Aggiungerò due eventi nello stesso calendario: attività e Spostamento. " ) +
-                        (conflicts.isEmpty ? "Nessuna sovrapposizione rilevata nei calendari inclusi per questi orari, compreso il viaggio scelto." :
-                        "Si sovrappone a: " + conflicts.map(\.title).joined(separator: ", ") + ". Conferma solo se vuoi mantenere la sovrapposizione.")
-                    )
+                    Text(confirmationText)
                 }
                 .sheet(isPresented: $showTravel) {
                     CalendarTravelEditor(options: options, start: draft.start, suggestedOrigin: suggestedOrigin) { options = $0 }
                 }
         }.interactiveDismissDisabled(busy)
+    }
+    private var identitySection: some View {
+        Section {
+            TextField("Titolo", text: $draft.title).font(.title3)
+                .focused($focusedField, equals: .title).accessibilityIdentifier("coach-create-title")
+            TextField("Posizione", text: $options.location)
+                .focused($focusedField, equals: .location).accessibilityIdentifier("creation-location")
+        }
+    }
+    private var timingSection: some View {
+        Section {
+            if historical {
+                Label("Registrazione nel passato", systemImage: "clock.arrow.circlepath").foregroundStyle(PivotTheme.accent)
+                Text("Gli orari resteranno quelli indicati, senza spostare la data a domani o cancellare altri impegni.").font(.caption)
+            }
+            if let start = draft.start {
+                DatePicker("Inizio", selection: Binding(get: { draft.start ?? start }, set: { draft.start = $0 }))
+                    .accessibilityIdentifier("creation-start")
+            } else { Button("Imposta inizio") { draft.start = Date().addingTimeInterval(3600) } }
+            if let end = draft.end {
+                DatePicker("Fine", selection: Binding(get: { draft.end ?? end }, set: { draft.end = $0; draft.endEstimated = false }))
+            } else { Button("Imposta fine") { draft.end = (draft.start ?? Date()).addingTimeInterval(3600); draft.endEstimated = true } }
+            if draft.endEstimated { Text("La fine è una stima: controllala prima di confermare.").foregroundStyle(PivotTheme.amber) }
+            Button { focusedField = nil; showTravel = true } label: {
+                HStack {
+                    Label("Tempo di percorrenza", systemImage: "figure.walk")
+                    Spacer()
+                    Text(options.travel.map { "\($0.minutes) min" } ?? "Nessuno").foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+                }.foregroundStyle(.primary)
+            }.accessibilityIdentifier("creation-travel-open")
+        }
+    }
+    private var calendarOptionsSection: some View {
+        Section("Opzioni") {
+            Picker("Calendario", selection: $calendarID) {
+                Text("Scegli calendario").tag("")
+                ForEach(choices) { choice in
+                    Text(choice.title + (choice.sourceTitle.isEmpty ? "" : " · " + choice.sourceTitle)).tag(choice.id)
+                }
+            }.accessibilityIdentifier("coach-create-calendar")
+            if let hint = draft.calendarHint, calendarID.isEmpty {
+                Text("Hai indicato ‘\(hint)’. Scegli il calendario corrispondente: non ne seleziono uno ambiguo.").font(.caption)
+            }
+            if suggestion.reason == .missingAccount && calendarID.isEmpty {
+                Text("L’account abituale non è disponibile. Scegli esplicitamente dove salvare: non passo a un altro account.").font(.caption).foregroundStyle(PivotTheme.amber)
+            }
+            Picker(selection: $options.availability) {
+                Text("Non disponibile").tag(0)
+                Text("Disponibile").tag(1)
+            } label: { Label("Mostra come", systemImage: "hand.raised") }
+            Picker(selection: $options.alertMinutes) {
+                Text("Nessuno").tag(nil as Int?)
+                ForEach([0, 5, 10, 15, 30, 60, 120, 1440], id: \.self) { value in
+                    Text(value == 0 ? "All’inizio" : (value == 1440 ? "1 giorno prima" : "\(value) min prima")).tag(Optional(value))
+                }
+            } label: { Label("Avviso", systemImage: "bell") }
+        }
+    }
+    private var confirmationText: String {
+        let prefix = historical ? "Stai registrando un evento nel passato. " : ""
+        let count = options.travel == nil ? "Aggiungerò un evento. " : "Aggiungerò due eventi nello stesso calendario: attività e Spostamento. "
+        let warning = conflicts.isEmpty ? "Nessuna sovrapposizione rilevata nei calendari inclusi per questi orari, compreso il viaggio scelto." :
+            "Si sovrappone a: " + conflicts.map(\.title).joined(separator: ", ") + ". Conferma solo se vuoi mantenere la sovrapposizione."
+        return prefix + count + warning
     }
     private func closeDraft() {
         guard !busy, persistDraft() else { return }
