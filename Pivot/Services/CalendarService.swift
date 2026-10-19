@@ -331,7 +331,7 @@ private actor CalendarWorker {
         var result: [CalendarItem] = []
         for entry in entries where entry.kind == .update {
             guard let after = entry.after else { throw CalendarFailure.changed }
-            let draft = CoachCalendarDraft(title: after.title, start: after.start, end: after.end, calendarHint: nil, notes: "", endEstimated: false)
+            let draft = CoachCalendarDraft(title: "Verifica sovrapposizioni", start: after.start, end: after.end, calendarHint: nil, notes: "", endEstimated: false)
             let overlaps = try reviewCreation(draft, calendarID: after.calendarIdentifier, settings: settings)
             result += overlaps.filter { overlap in
                 !entries.contains { $0.original.snapshot.calendarIdentifier == overlap.calendarIdentifier

@@ -36,6 +36,8 @@ struct CoachCalendarMutation: Codable, Identifiable, Equatable {
         if kind == .delete { return after == nil }
         guard let after, CalendarEventBackup.valid(after), !after.isAllDay,
               after.end.timeIntervalSince(after.start) <= 86400 else { return false }
+        if after.title != source.title && (after.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || after.title.count > 160) { return false }
+        if after.notes != source.notes && after.notes.count > 3000 { return false }
         // A patch cannot switch account, identity, recurrence or location.
         var before = source, patched = after
         before.title = ""; before.start = .distantPast; before.end = .distantFuture; before.notes = ""

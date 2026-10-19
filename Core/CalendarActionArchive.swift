@@ -85,8 +85,11 @@ struct CalendarRestorationLink: Codable, Identifiable, Equatable {
             && (restored.eventIdentifier != original.eventIdentifier || restored.calendarIdentifier != original.calendarIdentifier)
     }
     func recognizes(_ current: CalendarItem) -> Bool {
-        isValid && current.calendarIdentifier == restored.calendarIdentifier
-            && current.eventIdentifier == restored.eventIdentifier && current.recurring == false
+        guard isValid, current.calendarIdentifier == restored.calendarIdentifier, current.recurring == false else { return false }
+        if current.eventIdentifier == restored.eventIdentifier { return true }
+        // EventKit's native identifier can change during synchronization. Only
+        // an already captured external UID in this same calendar is a fallback.
+        return restored.externalIdentifier != nil && restored.externalIdentifier == current.externalIdentifier
     }
 }
 
@@ -109,16 +112,35 @@ enum CalendarArchive {
         logicalEvents([current], data: data)[0]
     }
     static func logicalEvents(_ events: [CalendarItem], data: AppData) -> [CalendarItem] {
+        let trusted = trustedLinks(data)
+        let grouped = Dictionary(grouping: trusted) { $0.restored.calendarIdentifier + "|" + $0.restored.eventIdentifier }
+        let external = Dictionary(grouping: trusted.filter { $0.restored.externalIdentifier != nil }) {
+            $0.restored.calendarIdentifier + "|" + $0.restored.externalIdentifier!
+        }
+        return events.map { event in
+            let native = grouped[event.calendarIdentifier + "|" + event.eventIdentifier] ?? []
+            let byUID = event.externalIdentifier.flatMap { external[event.calendarIdentifier + "|" + $0] } ?? []
+            let candidates = Dictionary((native + byUID).filter { $0.recognizes(event) }.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            let ids = Set(candidates.values.map { $0.original.id })
+            guard ids.count == 1, let id = ids.first else { return event }
+            var logical = event; logical.id = id; return logical
+        }
+    }
+    private static func trustedLinks(_ data: AppData) -> [CalendarRestorationLink] {
         let archived = Dictionary((data.calendarActionArchive ?? []).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let trusted = (data.calendarRestorations ?? []).filter { link in
+        return (data.calendarRestorations ?? []).filter { link in
             guard link.isValid, let entry = archived[link.archiveID], entry.isValid, entry.kind == .delete else { return false }
             return entry.status == .restored && entry.original.snapshot == link.original && entry.restoredEvent == link.restored
         }
-        let grouped = Dictionary(grouping: trusted) { $0.restored.calendarIdentifier + "|" + $0.restored.eventIdentifier }
-        return events.map { event in
-            let key = event.calendarIdentifier + "|" + event.eventIdentifier
-            guard let links = grouped[key], links.count == 1, let link = links.first, link.recognizes(event) else { return event }
-            var logical = event; logical.id = link.original.id; return logical
+    }
+    static func requiresIdentityReview(_ event: CalendarItem, data: AppData) -> Bool {
+        let trusted = trustedLinks(data)
+        if Set(trusted.filter { $0.recognizes(event) }.map { $0.original.id }).count > 1 { return true }
+        return trusted.contains { link in
+            let restored = link.restored
+            return !link.recognizes(event) && event.calendarIdentifier == restored.calendarIdentifier
+                && event.title == restored.title && event.start == restored.start && event.end == restored.end
+                && event.location == restored.location && event.notes == restored.notes
         }
     }
 }

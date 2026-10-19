@@ -9,7 +9,7 @@ const exactKeys = (x, keys) => x && typeof x === 'object' && !Array.isArray(x) &
 const string = (x, max) => typeof x === 'string' && x.length > 0 && x.length <= max;
 const reply = (status, code, failureClass) => Response.json({ error: code }, {
   status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
-    'X-Pivot-Gateway-Revision':'20261014-manual-redirect',
+    'X-Pivot-Gateway-Revision':'20261019-reviewed-actions',
     ...(failureClass ? {'X-Pivot-Failure-Class':failureClass} : {}) }
 });
 
@@ -333,7 +333,7 @@ export async function handle(request, env, dependencies = {}) {
       result.mode === 'create' ? {...result,reply:'Ho preparato una bozza. Controlla calendario, date e note prima di confermare: nessun evento è stato creato.'} :
       result.mode === 'actions' ? {...result,reply:'Ho preparato le modifiche da controllare. Apri l’anteprima e conferma soltanto quelle che vuoi applicare: il Calendario non è ancora cambiato.'} : result;
     return Response.json(safeResult,{ headers:{ 'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
-      'X-Pivot-Gateway-Revision':'20261014-manual-redirect' } });
+      'X-Pivot-Gateway-Revision':'20261019-reviewed-actions' } });
   } catch (error) {
     const code = controller.signal.aborted ? 'provider_timeout' :
       error instanceof SyntaxError ? 'invalid_response' :
