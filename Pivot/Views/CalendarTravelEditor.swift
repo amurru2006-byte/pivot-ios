@@ -25,9 +25,13 @@ struct CalendarTravelEditor: View {
         NavigationStack {
             Form {
                 Section("Stima basata sulla posizione") {
-                    TextField("Posizione di partenza", text: $origin)
-                        .focused($editingOrigin).textInputAutocapitalization(.words)
-                        .accessibilityIdentifier("creation-travel-origin")
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Posizione di partenza")
+                        TextField("Indirizzo o luogo", text: $origin)
+                            .font(.subheadline).foregroundStyle(.secondary)
+                            .focused($editingOrigin).textInputAutocapitalization(.words).autocorrectionDisabled()
+                            .accessibilityLabel("Posizione di partenza").accessibilityIdentifier("creation-travel-origin")
+                    }
                     LabeledContent("Destinazione", value: options.location.isEmpty ? "Da scegliere nell’evento" : options.location)
                     if let start, start >= Date() {
                         NavigationLink {
@@ -59,10 +63,11 @@ struct CalendarTravelEditor: View {
                             HStack(spacing: 16) {
                                 Image(systemName: minutes == value && estimate == nil ? "checkmark" : "circle")
                                     .foregroundStyle(minutes == value ? PivotTheme.accent : .clear).frame(width: 20)
-                                Text(value == 0 ? "Nessuno" : duration(value)).foregroundStyle(.primary)
+                                Text(value == 0 ? "Nessuno" : duration(value)).foregroundStyle(PivotTheme.text)
                                 Spacer()
-                            }.frame(minHeight: 36)
-                        }.accessibilityIdentifier("creation-travel-minutes-\(value)")
+                            }.frame(minHeight: 44).contentShape(Rectangle())
+                        }.buttonStyle(.plain).accessibilityIdentifier("creation-travel-minutes-\(value)")
+                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     }
                     DurationField(title: "Altro tempo", seconds: Binding(get: { minutes * 60 }, set: {
                         minutes = max(0, ($0 ?? 0) / 60); estimate = nil
@@ -110,14 +115,15 @@ struct CalendarCreationPreview: View {
                 let departure = travel.estimate?.departure ?? start.addingTimeInterval(-Double(travel.minutes) * 60)
                 let day = PivotDate.calendar.isDate(departure, inSameDayAs: start) ? "" : PivotDate.shortDate(departure) + " "
                 Label("Spostamento · \(day)\(PivotDate.time(departure)) – \(PivotDate.time(start))",
-                      systemImage: "figure.walk")
+                      systemImage: travel.symbolName)
                     .font(.subheadline).accessibilityIdentifier("creation-travel-preview")
                 Divider()
             }
             Text(draft.title.isEmpty ? "Nuovo impegno" : draft.title).font(.headline)
             if let start = draft.start, let end = draft.end {
-                Label("\(PivotDate.shortDate(start)) · \(PivotDate.time(start)) – \(PivotDate.time(end))", systemImage: "clock")
-                    .font(.subheadline)
+                let finalDay = PivotDate.calendar.isDate(start, inSameDayAs: end) ? "" : PivotDate.shortDate(end) + " "
+                Label("\(PivotDate.shortDate(start)) · \(PivotDate.time(start)) – \(finalDay)\(PivotDate.time(end))", systemImage: "clock")
+                    .font(.subheadline).accessibilityIdentifier("creation-time-summary")
             }
             if !options.location.isEmpty { Label(options.location, systemImage: "mappin.and.ellipse").font(.subheadline) }
         }.foregroundStyle(color).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 6)

@@ -119,7 +119,8 @@ struct CoachCalendarDraftView: View {
             TextField("Titolo", text: $draft.title).font(.title3)
                 .focused($focusedField, equals: .title).accessibilityIdentifier("coach-create-title")
             TextField("Posizione", text: $options.location)
-                .focused($focusedField, equals: .location).accessibilityIdentifier("creation-location")
+                .focused($focusedField, equals: .location).autocorrectionDisabled()
+                .accessibilityLabel("Posizione dell’evento").accessibilityIdentifier("creation-location")
         }
     }
     private var timingSection: some View {
@@ -138,7 +139,7 @@ struct CoachCalendarDraftView: View {
             if draft.endEstimated { Text("La fine è una stima: controllala prima di confermare.").foregroundStyle(PivotTheme.amber) }
             Button { focusedField = nil; showTravel = true } label: {
                 HStack {
-                    Label("Tempo di percorrenza", systemImage: "figure.walk")
+                    Label("Tempo di percorrenza", systemImage: options.travel?.symbolName ?? "arrow.triangle.turn.up.right.diamond")
                     Spacer()
                     Text(options.travel.map { "\($0.minutes) min" } ?? "Nessuno").foregroundStyle(.secondary)
                     Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)

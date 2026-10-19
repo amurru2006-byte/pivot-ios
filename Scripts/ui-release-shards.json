@@ -12,6 +12,7 @@
     "PivotInteractionTests/testIncomeSummarySwipesToChart"
   ],
   "workout": [
+    "CalendarCreationInteractionTests",
     "PivotInteractionTests/testDayHistoryCorrectsCompletedWorkoutWithoutStartingRecoveryAndPersists",
     "PivotInteractionTests/testDayHistoryConfirmsDeletionOfRealAndEmptyWorkoutsAndPersists",
     "PivotInteractionTests/testFinishFromBottomAutomaticallyOpensPDFAndKeepsEndOnReopen",
@@ -43,7 +44,6 @@
     "TrainingRepProgressionInteractionTests"
   ],
   "pairing": [
-    "CalendarCreationInteractionTests",
     "CalendarMutationInteractionTests",
     "OnlineCoachSetupInteractionTests",
     "PredictionInteractionTests",
