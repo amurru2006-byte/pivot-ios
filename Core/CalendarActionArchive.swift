@@ -94,6 +94,12 @@ struct CalendarRestorationLink: Codable, Identifiable, Equatable {
 }
 
 enum CalendarArchive {
+    /// Only a fresh attempt that is proven to have stopped before any external
+    /// write may release the historical-import interlock. An older interrupted
+    /// restore stays unresolved even if its next preflight is rejected.
+    static func failedRestorationStatus(previous: CalendarArchiveStatus, stoppedBeforeWrite: Bool) -> CalendarArchiveStatus {
+        previous == .committed && stoppedBeforeWrite ? .committed : .restorationPrepared
+    }
     static func valid(_ data: AppData) -> Bool {
         let entries = data.calendarActionArchive ?? [], links = data.calendarRestorations ?? []
         guard entries.count <= 20_000 && links.count <= 20_000,

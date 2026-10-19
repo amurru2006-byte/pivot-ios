@@ -55,6 +55,15 @@ final class CoachCalendarMutationTests: XCTestCase {
         var data = AppData(); data.calendarActionArchive = [value]
         XCTAssertFalse(CalendarArchive.valid(data), "Deleted-event restoration requires its identity link")
     }
+    func testFreshRestorationRejectedBeforeWritingDoesNotBlockHistoricalImports() {
+        XCTAssertEqual(CalendarArchive.failedRestorationStatus(previous: .committed, stoppedBeforeWrite: true), .committed)
+        XCTAssertEqual(CalendarArchive.failedRestorationStatus(previous: .committed, stoppedBeforeWrite: false), .restorationPrepared)
+    }
+    func testAlreadyInterruptedRestorationCannotBeClearedByALaterPreflightFailure() {
+        for stopped in [true, false] {
+            XCTAssertEqual(CalendarArchive.failedRestorationStatus(previous: .restorationPrepared, stoppedBeforeWrite: stopped), .restorationPrepared)
+        }
+    }
     func testRestoredLessonKeepsLogicalIdentityAndCannotBecomeAnotherReceipt() throws {
         var original = item(); original.kind = .tutoring
         var restored = original; restored.id = "new-logical-test"; restored.eventIdentifier = "new-native-test"

@@ -36,6 +36,10 @@ final class CalendarService: ObservableObject {
         events = items; hasAccess = true
         choices = [.init(id: "preview", title: "Esempio", colorHex: "7EE6CD", holiday: false)]
     }
+    func toggleExternalMutationFixture() async {
+        guard await worker.toggleExternalMutationFixture() else { return }
+        invalidateSnapshot(); await refresh(settings: Settings())
+    }
     #endif
     func invalidateSnapshot() { invalidation &+= 1 }
     func refresh(settings: Settings, force: Bool = true) async {
@@ -125,13 +129,27 @@ final class CalendarService: ObservableObject {
               var entry = store.data.calendarActionArchive?.first(where: { $0.id == id }),
               [.committed, .restorationPrepared].contains(entry.status), store.beginCalendarMutation() else { throw CalendarFailure.changed }
         mutationInProgress = true; defer { mutationInProgress = false; store.endCalendarMutation() }
+        let previousStatus = entry.status
         entry.status = .restorationPrepared
         guard store.change({ data in
             if let index = data.calendarActionArchive?.firstIndex(where: { $0.id == id }) { data.calendarActionArchive?[index] = entry }
         }), await store.flushPendingWrites() else { throw CalendarFailure.archiveNotSaved }
-        try Task.checkCancellation()
-        guard !store.locked, !store.isRestoring else { throw CalendarFailure.archiveNotSaved }
-        let result = try await worker.restoreMutation(entry, settings: store.data.settings)
+        let result: CalendarRestoreResult
+        do {
+            try Task.checkCancellation()
+            guard !store.locked, !store.isRestoring else { throw CalendarFailure.archiveNotSaved }
+            result = try await worker.restoreMutation(entry, settings: store.data.settings)
+        } catch {
+            let stoppedBeforeWrite = error is CancellationError || (error as? CalendarFailure)?.stoppedBeforeCalendarWrite == true
+            if CalendarArchive.failedRestorationStatus(previous: previousStatus, stoppedBeforeWrite: stoppedBeforeWrite) == .committed {
+                guard store.change({ data in
+                    if let index = data.calendarActionArchive?.firstIndex(where: { $0.id == id && $0.status == .restorationPrepared }) {
+                        data.calendarActionArchive?[index].status = .committed
+                    }
+                }), await store.flushPendingWrites() else { throw CalendarFailure.acknowledgementNotSaved }
+            }
+            throw error
+        }
         entry.status = result.originalPresent ? .failed : .restored
         if !result.originalPresent { entry.restoredAt = Date(); entry.restoredEvent = result.item }
         guard store.change({ data in
@@ -225,6 +243,15 @@ private actor CalendarWorker {
         mutationFixtureCache = items
         let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .millisecondsSince1970
         if let bytes = try? encoder.encode(items) { UserDefaults.standard.set(bytes, forKey: key) }
+    }
+    func toggleExternalMutationFixture() -> Bool {
+        guard mutationFixtureKey != nil else { return false }
+        var items = mutationFixtureItems()
+        guard let index = items.firstIndex(where: { $0.eventIdentifier == "mutation-qa-1" }) else { return false }
+        items[index].location = items[index].location.isEmpty ? "Luogo esterno QA" : ""
+        items[index].calendarModifiedAt = Date()
+        saveMutationFixture(items)
+        return true
     }
     private func fixtureBackup(_ item: CalendarItem) -> CalendarEventBackup {
         .init(snapshot: item, originalNotes: item.notes, url: nil, timeZoneIdentifier: "Europe/Rome", availabilityRawValue: 0, alarms: [])
@@ -753,6 +780,12 @@ private actor CalendarWorker {
 }
 enum CalendarFailure: LocalizedError {
     case noAccess, changed, notWritable, unsupportedMetadata, archiveNotSaved, acknowledgementNotSaved, uncertainOccurrence
+    var stoppedBeforeCalendarWrite: Bool {
+        switch self {
+        case .noAccess, .changed, .notWritable, .unsupportedMetadata: true
+        default: false
+        }
+    }
     var errorDescription: String? {
         switch self {
         case .noAccess: return "Consenti l'accesso completo ai calendari nelle impostazioni di iOS."
