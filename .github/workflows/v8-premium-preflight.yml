@@ -26,9 +26,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: bash Scripts/prepare-ios-ci.sh
-      - name: Preferenze, continuità e recupero da chat con dati sintetici
+      - name: Preferenza online, persistenza e revoca con dati sintetici
         env:
-          PIVOT_UI_ONLY_TESTING: PivotUITests/PremiumCoachInteractionTests
+          PIVOT_UI_ONLY_TESTING: PivotUITests/PremiumCoachInteractionTests/testMemoryOptInPersistsAppearsInExactDisclosureAndCanBeRevoked
         run: bash Scripts/preview-ui.sh
       - uses: actions/upload-artifact@v4
         if: always()

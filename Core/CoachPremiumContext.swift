@@ -11,7 +11,7 @@ enum CoachMemoryContext {
             .prefix(onlineLimit).map {
                 let clean = CoachPrivacy.text($0.text, events: events, data: data)
                 // Never trim a preference mid-sentence or drop its qualification.
-                guard !clean.isEmpty, clean.utf16.count <= 240 else { throw CoachV8Error.contextTooLarge }
+                guard !clean.isEmpty, clean.utf16.count <= 240 else { throw CoachV8Error.sharedMemoryTooLarge }
                 return clean
             }
     }

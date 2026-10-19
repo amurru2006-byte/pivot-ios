@@ -60,12 +60,12 @@ private struct CoachMemoryEditor: View {
                     Text("\(online ? text.utf16.count : text.count)/\(online ? 240 : 1500)").font(.caption).foregroundStyle(.secondary)
                 }
                 Section {
-                    Toggle("Usa anche con l’AI online", isOn: $online).accessibilityIdentifier("coach-memory-online")
+                    preferenceSwitch("Usa anche con l’AI online", value: $online, identifier: "coach-memory-online")
                 } footer: {
                     Text("Se attivi questa scelta, la preferenza filtrata viene inclusa nei prossimi messaggi online a Cloudflare → Groq. Sarà visibile in Dati inviati. Non aggiungere dolori, infortuni o altri dati sanitari. La revoca interrompe gli invii futuri, non ritira quelli già effettuati.")
                 }
                 Section {
-                    Toggle("Preferenza temporanea", isOn: $temporary).accessibilityIdentifier("coach-memory-temporary")
+                    preferenceSwitch("Preferenza temporanea", value: $temporary, identifier: "coach-memory-temporary")
                     if temporary { DatePicker("Valida fino a", selection: $until, in: Date()...) }
                 }
                 if let problem { Section { Text(problem).foregroundStyle(PivotTheme.amber).accessibilityIdentifier("coach-memory-error") } }
@@ -79,6 +79,16 @@ private struct CoachMemoryEditor: View {
                     text = memory.text; online = memory.onlineSharingAllowed == true
                     temporary = memory.expiresAt != nil; if let expiry = memory.expiresAt { until = expiry }
                 }
+        }
+    }
+    private func preferenceSwitch(_ title: String, value: Binding<Bool>, identifier: String) -> some View {
+        HStack(spacing: 12) {
+            Text(title).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            // Keep the native switch's accessibility/hit frame on the actual
+            // control, not the center of a full-width Form label row.
+            Toggle(title, isOn: value).labelsHidden().fixedSize()
+                .frame(minWidth: 44, minHeight: 44).accessibilityIdentifier(identifier)
         }
     }
     private func save() {

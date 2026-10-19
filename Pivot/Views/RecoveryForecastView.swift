@@ -91,7 +91,7 @@ struct RecoveryForecastView: View {
                 }
             }
             if staged { NavigationLink("Apri la conferma per il Calendario") { CoachView() }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("prediction-recovery-open-coach") }
-            Text("Nessuna durata di guarigione, cancellazione o spostamento delle altre sedute viene inventato. Una stima personale più lunga richiede di rivedere la durata dell’attività, non di accorciarla per farla entrare.")
+            Text("Nessun altro impegno viene spostato e non deduco tempi di guarigione. Se usi eventi Spostamento separati, vanno aggiornati anche quelli nel Calendario. Una stima più lunga richiede di rivedere la durata, non di accorciarla per farla entrare.")
                 .font(.caption).foregroundStyle(PivotTheme.muted)
         }.navigationTitle("Alternative")
             .onAppear {

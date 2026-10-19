@@ -176,7 +176,7 @@ struct CoachView: View {
 
             PivotCard {
                 if let id = state.focusedCalendarDraftID,
-                   let focused = state.calendarDrafts?.first(where: { $0.id == id && $0.createdEventID == nil && $0.dayKey == PivotDate.key(Date()) }) {
+                   let focused = state.calendarDrafts?.first(where: { $0.id == id && CoachConversationFocus.eligible($0, state: state, dayKey: PivotDate.key(Date())) }) {
                     Label("Stai continuando: " + (focused.draft.title.isEmpty ? "Nuovo impegno" : focused.draft.title), systemImage: "text.bubble")
                         .font(.subheadline).accessibilityIdentifier("coach-focused-draft")
                     Button("Nuovo argomento") { clearDraftFocus() }.frame(minHeight: 44)
@@ -237,6 +237,9 @@ struct CoachView: View {
         .onAppear { onlineCoach.reload() }
         .onChange(of: state.memories) { _, _ in
             store.onlineConversationPermission.revoke(); cancelTurn(); lastAuthorizedRequest = nil
+        }
+        .onChange(of: store.isRestoring) { _, restoring in
+            if restoring { cancelTurn(); lastAuthorizedRequest = nil }
         }
         .onReceive(NotificationCenter.default.publisher(for: OnlineCoachService.settingsChanged)) { _ in
             store.onlineConversationPermission.revoke(); cancelTurn(); onlineCoach.reload()
@@ -538,7 +541,7 @@ struct CoachView: View {
 
     private func sendReviewed(_ review: OnlineCoachReview) {
         onlineReview = nil
-        guard !isPlanning, !store.locked, !useLocal, onlineCoach.isConfigured else { return }
+        guard !isPlanning, !store.locked, !store.isRestoring, !useLocal, onlineCoach.isConfigured else { return }
         store.onlineConversationPermission.authorize(dayKey: review.snapshot.request.dayKey)
         turnGeneration += 1
         let generation = turnGeneration
@@ -566,7 +569,7 @@ struct CoachView: View {
                 data.coachState.messages.append(.init(dayKey: PivotDate.key(now), role: .user, text: clean))
                 data.coachState.messages.append(reply)
             }) {
-                input = ""
+                input = ""; message = nil
                 if !(await store.flushPendingWrites()) { message = "Richiesta in memoria, ma il salvataggio su disco non è ancora riuscito." }
             } else { message = "Non riesco a salvare la richiesta. Il testo resta qui." }
             return
@@ -634,6 +637,7 @@ struct CoachView: View {
                             purpose: String = "conversation", rewrite: CoachRewriteDraft? = nil) async {
         do {
             try Task.checkCancellation()
+            guard !store.locked, !store.isRestoring else { throw CoachV8Error.staleContext }
             var authorizedSnapshot = approved
             var rewriteDraft = rewrite
             if let approved {
@@ -671,6 +675,7 @@ struct CoachView: View {
                 }
             }
             guard let snapshot = authorizedSnapshot,
+                  !store.locked, !store.isRestoring,
                   store.onlineConversationPermission.allows(dayKey: snapshot.request.dayKey) else { throw CoachV8Error.staleContext }
             // First message: exact reviewed bytes. Following messages: the same
             // bounded data policy, authorized for this conversation, freshly checked.

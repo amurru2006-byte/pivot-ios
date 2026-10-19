@@ -391,6 +391,9 @@ final class PivotStore: ObservableObject {
             return
         }
         guard !isRestoring, !isLoading, !isConfiguringBackupPassword, !isExportingBackup else { return }
+        // A restored backup can contain a different set of opt-in preferences.
+        // Never reuse this session's conversation approval for those contents.
+        onlineConversationPermission.revoke()
         isRestoring = true
         defer { isRestoring = false }
         guard await flushPendingWrites() else { return }

@@ -52,15 +52,19 @@ enum CoachDraftStore {
         guard valid(coach) else { return false }
         data.coachState = coach; return true
     }
-    @discardableResult static func markCreated(id: UUID, eventID: String, calendarID: String, data: inout AppData) -> Bool {
+    @discardableResult static func markCreated(id: UUID, eventID: String, calendarID: String, data: inout AppData, now: Date = Date()) -> Bool {
         var coach = data.coachState
-        guard let index = coach.calendarDrafts?.firstIndex(where: { $0.id == id }),
+        guard now.timeIntervalSinceReferenceDate.isFinite,
+              let index = coach.calendarDrafts?.firstIndex(where: { $0.id == id }),
               coach.calendarDrafts?[index].createdEventID.map({ $0 == eventID }) ?? true else { return false }
         coach.calendarDrafts?[index].createdEventID = eventID
         coach.calendarDrafts?[index].creationNeedsVerification = false
         coach.calendarDrafts?[index].calendarID = calendarID
-        coach.calendarDrafts?[index].updatedAt = Date()
-        if coach.focusedCalendarDraftID == id { coach.focusedCalendarDraftID = nil }
+        coach.calendarDrafts?[index].updatedAt = now
+        if coach.focusedCalendarDraftID == id {
+            coach.focusedCalendarDraftID = nil; coach.omitPreviousDraft = true
+            coach.contextStartedAt = now
+        }
         guard valid(coach) else { return false }
         data.coachState = coach; return true
     }
