@@ -95,7 +95,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tee build/build.log
       - name: Conserva build intermedia con permessi e commit esatti
         run: |
-          tar -czf build/Pivot-compiled.tar.gz -C build/DerivedData/Build/Products/Release-iphoneos Pivot.app
+          COPYFILE_DISABLE=1 tar -czf build/Pivot-compiled.tar.gz -C build/DerivedData/Build/Products/Release-iphoneos Pivot.app
           python3 Scripts/compiled_iphone.py create build/Pivot-compiled.tar.gz build/Pivot-compiled-manifest.json --commit "$GITHUB_SHA"
       - uses: actions/upload-artifact@v4
         with:
