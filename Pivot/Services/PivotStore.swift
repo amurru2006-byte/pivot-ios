@@ -11,6 +11,9 @@ final class PivotStore: ObservableObject {
     @Published var error: String?
     @Published private(set) var locked = false
     @Published private(set) var isRestoring = false
+    // Main-actor interlock: restoring another database must not replace the
+    // durable originals while an external Calendar write is awaiting its ack.
+    @Published private(set) var calendarMutationInProgress = false
     @Published private(set) var isLoading = !PreviewMode.enabled
     @Published private(set) var isSaving = false
     @Published private(set) var saveStatus = "Dati salvati"
@@ -375,7 +378,18 @@ final class PivotStore: ObservableObject {
         }.value
     }
 
+    func beginCalendarMutation() -> Bool {
+        guard !locked, !isLoading, !isRestoring, !calendarMutationInProgress else { return false }
+        calendarMutationInProgress = true
+        return true
+    }
+    func endCalendarMutation() { calendarMutationInProgress = false }
+
     func restore(_ url: URL, password: String? = nil) async {
+        guard !calendarMutationInProgress else {
+            error = "Attendi la conclusione della modifica al Calendario prima di ripristinare un backup."
+            return
+        }
         guard !isRestoring, !isLoading, !isConfiguringBackupPassword, !isExportingBackup else { return }
         isRestoring = true
         defer { isRestoring = false }

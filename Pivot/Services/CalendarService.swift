@@ -90,8 +90,9 @@ final class CalendarService: ObservableObject {
               review.entries.allSatisfy({ entry in batch.actions.contains { $0.id == entry.actionID && CalendarSnapshotMatch.revision($0.source, entry.original.snapshot) && $0.kind == entry.kind && $0.after == entry.after }
                   && store.data.records[entry.original.snapshot.id]?.status != .running
                   && !store.data.moves.contains(where: { !$0.syncedToCalendar && $0.source.id == entry.original.snapshot.id }) }),
-              !(store.data.calendarActionArchive ?? []).contains(where: { $0.batchID == batchID }) else { throw CalendarFailure.changed }
-        mutationInProgress = true; defer { mutationInProgress = false }
+              !(store.data.calendarActionArchive ?? []).contains(where: { $0.batchID == batchID }),
+              store.beginCalendarMutation() else { throw CalendarFailure.changed }
+        mutationInProgress = true; defer { mutationInProgress = false; store.endCalendarMutation() }
         guard store.change({ data in
             var archive = data.calendarActionArchive ?? []; archive.append(contentsOf: review.entries); data.calendarActionArchive = archive
             if let index = data.coachState.calendarBatches?.firstIndex(where: { $0.id == batchID }) { data.coachState.calendarBatches?[index].status = .reviewRequired }
@@ -122,8 +123,8 @@ final class CalendarService: ObservableObject {
     func restoreMutation(_ id: UUID, store: PivotStore) async throws -> String {
         guard !mutationInProgress, !store.locked, !store.isRestoring,
               var entry = store.data.calendarActionArchive?.first(where: { $0.id == id }),
-              [.committed, .restorationPrepared].contains(entry.status) else { throw CalendarFailure.changed }
-        mutationInProgress = true; defer { mutationInProgress = false }
+              [.committed, .restorationPrepared].contains(entry.status), store.beginCalendarMutation() else { throw CalendarFailure.changed }
+        mutationInProgress = true; defer { mutationInProgress = false; store.endCalendarMutation() }
         entry.status = .restorationPrepared
         guard store.change({ data in
             if let index = data.calendarActionArchive?.firstIndex(where: { $0.id == id }) { data.calendarActionArchive?[index] = entry }
@@ -146,8 +147,9 @@ final class CalendarService: ObservableObject {
     }
     func reconcileMutation(_ id: UUID, store: PivotStore) async throws -> String {
         guard !mutationInProgress, !store.locked, !store.isRestoring,
-              var entry = store.data.calendarActionArchive?.first(where: { $0.id == id }), [.prepared, .uncertain].contains(entry.status) else { throw CalendarFailure.changed }
-        mutationInProgress = true; defer { mutationInProgress = false }
+              var entry = store.data.calendarActionArchive?.first(where: { $0.id == id }), [.prepared, .uncertain].contains(entry.status),
+              store.beginCalendarMutation() else { throw CalendarFailure.changed }
+        mutationInProgress = true; defer { mutationInProgress = false; store.endCalendarMutation() }
         let applied = try await worker.reconcileMutation(entry)
         if let after = applied.after { entry.after = after.snapshot; entry.afterBackup = after }
         entry.status = applied.performed ? .committed : .failed
