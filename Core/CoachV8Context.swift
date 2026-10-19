@@ -108,11 +108,12 @@ struct CoachV8Response: Decodable {
 }
 
 enum CoachV8Error: Error, LocalizedError {
-    case invalidResponse, contextTooLarge, emptyMessage, staleContext
+    case invalidResponse, contextTooLarge, sharedMemoryTooLarge, emptyMessage, staleContext
     var errorDescription: String? {
         switch self {
         case .invalidResponse: return "La risposta AI non supera i controlli. Nessuna modifica preparata."
         case .contextTooLarge: return "Il messaggio o il calendario supera i limiti di questo collegamento AI. Il testo resta qui e non viene tagliato: dividi il messaggio o usa la base locale."
+        case .sharedMemoryTooLarge: return "Una preferenza online è troppo lunga dopo il filtro privacy. Accorciala in Preferenze di Pivot oppure lasciala solo sul dispositivo. Nessun testo è stato tagliato o inviato."
         case .emptyMessage: return "Scrivi un messaggio prima di inviare."
         case .staleContext: return "La richiesta è scaduta o i dati sono cambiati. Prepara una nuova anteprima."
         }

@@ -44,7 +44,10 @@ final class PremiumCoachInteractionTests: XCTestCase {
         navTap(app.buttons["coach-memory-save"])
         XCTAssertTrue(app.staticTexts["Solo sul dispositivo"].waitForExistence(timeout: 8))
         let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "coach-memory-")).matching(NSPredicate(format: "label CONTAINS %@", "Preferisco allenarmi")).firstMatch
-        tap(row, app); tap(app.switches["coach-memory-online"], app); navTap(app.buttons["coach-memory-save"])
+        tap(row, app); tap(app.switches["coach-memory-online"], app)
+        XCTAssertEqual(app.switches["coach-memory-online"].value as? String, "1", "Consent must really change before Save, not just receive a tap on its label")
+        capture("premium-memory-switch-enabled", app)
+        navTap(app.buttons["coach-memory-save"])
         XCTAssertTrue(app.staticTexts["Locale e AI online"].waitForExistence(timeout: 8))
         app.terminate(); app.launch(); openCoach(app)
         tap(app.buttons["coach-memories"], app)
@@ -55,7 +58,9 @@ final class PremiumCoachInteractionTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Preferisco allenarmi la sera"].waitForExistence(timeout: 8))
         capture("premium-memory-explicit-online-disclosure", app); cancelReview(app)
         tap(app.buttons["coach-memories"], app); tap(row, app)
-        tap(app.switches["coach-memory-online"], app); navTap(app.buttons["coach-memory-save"])
+        tap(app.switches["coach-memory-online"], app)
+        XCTAssertEqual(app.switches["coach-memory-online"].value as? String, "0", "Revocation must really switch off before Save")
+        navTap(app.buttons["coach-memory-save"])
         XCTAssertTrue(app.staticTexts["Solo sul dispositivo"].waitForExistence(timeout: 8)); backFromMemories(app)
         // The canceled message is still in the composer; do not type a duplicate.
         tap(app.buttons["coach-send"], app)

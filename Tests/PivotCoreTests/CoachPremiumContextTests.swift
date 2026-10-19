@@ -129,8 +129,11 @@ final class CoachPremiumContextTests: XCTestCase {
     func testCreationClearsFocusAndRoundTripKeepsNewTopicBoundary() throws {
         var data = fixture(); let first = data.coachState.calendarDrafts![0]
         data.coachState.focusedCalendarDraftID = first.id; data.coachState.contextStartedAt = now
-        XCTAssertTrue(CoachDraftStore.markCreated(id: first.id, eventID: "saved-qa", calendarID: "calendar-qa", data: &data))
+        XCTAssertTrue(CoachDraftStore.markCreated(id: first.id, eventID: "saved-qa", calendarID: "calendar-qa", data: &data, now: now))
         XCTAssertNil(data.coachState.focusedCalendarDraftID)
+        XCTAssertEqual(data.coachState.omitPreviousDraft, true)
+        XCTAssertTrue(try snapshot(data).request.draftContext?.isEmpty == true, "Saving must not resurrect the other old pending draft")
+        XCTAssertTrue(try snapshot(data).request.history.isEmpty)
         let restored = try BackupCodec.decode(BackupCodec.encode(data))
         XCTAssertEqual(restored.coachState.contextStartedAt, now)
         XCTAssertEqual(restored.coachState.calendarDrafts?[0].createdEventID, "saved-qa")
@@ -141,6 +144,8 @@ final class CoachPremiumContextTests: XCTestCase {
         // A short known name is not replaced; a longer one expands to an alias.
         data.clients[0].name = "Ana"
         data.coachState.memories = [.init(text: String(repeating: "Ana ", count: 60), createdAt: now, onlineSharingAllowed: true)]
-        XCTAssertThrowsError(try snapshot(data), "Never silently truncate or omit the qualification of a shared preference")
+        XCTAssertThrowsError(try snapshot(data), "Never silently truncate or omit the qualification of a shared preference") { error in
+            guard case CoachV8Error.sharedMemoryTooLarge = error else { return XCTFail("Expected an actionable preference error, not a generic payload error") }
+        }
     }
 }

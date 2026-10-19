@@ -383,6 +383,27 @@ test('v3 expanded context is still strict bounded and cannot carry raw calendar 
   assert.equal(response.status,413);
 });
 
+test('v3 opt-in preferences stay bounded user data and cannot introduce provider tools or identities', async () => {
+  const body = fixtureV3();
+  body.memories = ['Preferisco la sera', 'Evita due appuntamenti senza margine'];
+  let calls = 0;
+  const response = await handle(request(body), await environment(), {clock, fetchProvider:async (_url, init) => {
+    calls++;
+    const payload = JSON.parse(init.body);
+    assert.deepEqual(JSON.parse(payload.messages[1].content).memories, body.memories);
+    assert.equal(payload.messages[1].role, 'user');
+    assert.equal(payload.messages.length, 2);
+    assert.equal(Object.hasOwn(payload, 'tools'), false);
+    assert.equal(Object.hasOwn(payload, 'tool_choice'), false);
+    return upstream({...responseV3(),mode:'conversation',actions:[],eventIDs:[],draft:null});
+  }});
+  assert.equal(response.status,200); assert.equal(calls,1);
+  for (const memories of [Array(5).fill('QA'), ['x'.repeat(241)], ['😀'.repeat(121)], [{text:'QA',calendarID:'private-id'}]]) {
+    const rejected = await handle(request({...body,memories}), await environment(), {clock,fetchProvider:forbidden});
+    assert.equal(rejected.status,400);
+  }
+});
+
 test('v2 rejects malformed drafts, extra capabilities and mixed protocol identities', async () => {
   const body={...fixture(),version:2,purpose:'conversation'};
   const generated={mode:'create',eventIDs:[],reply:'Bozza',rewrittenMessage:null,
