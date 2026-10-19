@@ -139,7 +139,7 @@ enum CalendarArchive {
         return trusted.contains { link in
             let restored = link.restored
             return !link.recognizes(event) && event.calendarIdentifier == restored.calendarIdentifier
-                && event.title == restored.title && event.start == restored.start && event.end == restored.end
+                && event.title == restored.title && CalendarSnapshotMatch.instant(event.start, restored.start) && CalendarSnapshotMatch.instant(event.end, restored.end)
                 && event.location == restored.location && event.notes == restored.notes
         }
     }

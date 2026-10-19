@@ -15,7 +15,18 @@ final class CalendarMutationInteractionTests: XCTestCase {
         app.launch(); openCoach(app); return app
     }
     private func tap(_ element: XCUIElement, _ app: XCUIApplication) {
-        XCTAssertTrue(element.waitForExistence(timeout: 12)); scrollControlIntoView(element, in: app, maxSwipes: 20); element.tap()
+        // Form virtualizes rows below the viewport: waiting for their AX
+        // existence before scrolling never materializes the review button.
+        _ = element.waitForExistence(timeout: 2)
+        scrollControlIntoView(element, in: app, maxSwipes: 20)
+        XCTAssertTrue(element.exists); XCTAssertTrue(element.isEnabled); element.tap()
+    }
+    private func tapNavigation(_ element: XCUIElement, _ app: XCUIApplication) {
+        // A fixed navigation control is outside the scroll-content viewport.
+        // Check its real screen bounds and hittability, without swiping the Form.
+        XCTAssertTrue(element.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.frame.contains(element.frame)); XCTAssertTrue(element.isHittable)
+        XCTAssertTrue(element.isEnabled); element.tap()
     }
     private func openCoach(_ app: XCUIApplication) { tap(app.buttons["open-pivot-coach"], app) }
     private func send(_ text: String, _ app: XCUIApplication, authorize: Bool = true) {
@@ -45,7 +56,7 @@ final class CalendarMutationInteractionTests: XCTestCase {
         if cancelFirst {
             alert.buttons["Annulla"].tap()
             XCTAssertTrue(alert.waitForNonExistence(timeout: 5))
-            tap(app.navigationBars["Modifiche proposte"].buttons["Chiudi"], app)
+            tapNavigation(app.navigationBars["Modifiche proposte"].buttons["Chiudi"], app)
             _ = audit(2, app)
             tap(batch(app), app); tap(review, app)
         }
@@ -58,17 +69,18 @@ final class CalendarMutationInteractionTests: XCTestCase {
         tap(app.buttons["Storico modifiche"], app)
         let restore = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "calendar-history-restore-")).firstMatch
         tap(restore, app)
-        tap(app.buttons.matching(identifier: "calendar-history-confirm").firstMatch, app)
+        let confirm = app.buttons.matching(identifier: "calendar-history-confirm").firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 8)); XCTAssertTrue(confirm.isHittable); confirm.tap()
         let result = app.staticTexts["calendar-history-message"]
         XCTAssertTrue(result.waitForExistence(timeout: 15)); XCTAssertTrue(result.label.contains("Modifica annullata"), result.label)
-        tap(app.navigationBars["Storico modifiche"].buttons.element(boundBy: 0), app)
-        tap(app.navigationBars["Modifiche proposte"].buttons["Chiudi"], app)
+        tapNavigation(app.navigationBars["Storico modifiche"].buttons.element(boundBy: 0), app)
+        tapNavigation(app.navigationBars["Modifiche proposte"].buttons["Chiudi"], app)
     }
     func testDeletePreviewCancelAndSingleRestoreKeepMoneyAfterRelaunch() {
         let app = launch(); _ = audit(2, app)
         send("Cancella i due impegni QA di oggi", app)
         tap(batch(app), app); confirmBatch(app, cancelFirst: true)
-        tap(app.navigationBars["Modifiche proposte"].buttons["Chiudi"], app)
+        tapNavigation(app.navigationBars["Modifiche proposte"].buttons["Chiudi"], app)
         _ = audit(0, app)
         tap(batch(app), app); restoreFirst(app)
         _ = audit(1, app)
@@ -87,7 +99,7 @@ final class CalendarMutationInteractionTests: XCTestCase {
         if storageAlert.waitForExistence(timeout: 5) { storageAlert.buttons["OK"].tap() }
         let error = app.staticTexts["coach-mutations-error"]
         XCTAssertTrue(error.waitForExistence(timeout: 15)); XCTAssertTrue(error.label.contains("non è salvata su disco"), error.label)
-        tap(app.navigationBars["Modifiche proposte"].buttons["Chiudi"], app)
+        tapNavigation(app.navigationBars["Modifiche proposte"].buttons["Chiudi"], app)
         _ = audit(2, app)
         app.terminate(); app.launch(); openCoach(app); _ = audit(2, app)
     }
@@ -97,7 +109,9 @@ final class CalendarMutationInteractionTests: XCTestCase {
         tap(batch(app), app)
         XCTAssertTrue(app.staticTexts["Impegno QA modificato"].waitForExistence(timeout: 8))
         confirmBatch(app)
-        tap(app.navigationBars["Modifiche proposte"].buttons["Chiudi"], app)
+        tapNavigation(app.navigationBars["Modifiche proposte"].buttons["Chiudi"], app)
+        XCTAssertTrue(audit(2, app).contains("Impegno QA modificato"))
+        app.terminate(); app.launch(); openCoach(app)
         XCTAssertTrue(audit(2, app).contains("Impegno QA modificato"))
         tap(batch(app), app); restoreFirst(app)
         XCTAssertFalse(audit(2, app).contains("Impegno QA modificato"))
