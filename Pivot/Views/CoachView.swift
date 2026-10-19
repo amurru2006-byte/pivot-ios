@@ -69,8 +69,11 @@ struct CoachView: View {
             if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--calendar-mutations-test"),
                UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_COACH_ACTION_ID"] ?? "") != nil {
                 Button("Verifica dati QA") {
-                    mutationAudit = "\(calendar.events.count) eventi · \(store.data.income.count) attività · \(store.data.payments.count) incassi · \(store.data.payments.reduce(0) { $0 + $1.amountCents }) ricevuti · \(store.data.income.reduce(0) { $0 + $1.outstandingCents }) da incassare · " + calendar.events.map(\.title).sorted().joined(separator: ", ")
+                    mutationAudit = "\(calendar.events.count) eventi · \(store.data.income.count) attività · \(store.data.payments.count) incassi · \(store.data.payments.reduce(0) { $0 + $1.amountCents }) ricevuti · \(store.data.income.reduce(0) { $0 + $1.outstandingCents }) da incassare · \((store.data.calendarActionArchive ?? []).filter { $0.status == .restorationPrepared }.count) ripristini incompleti · " + calendar.events.map(\.title).sorted().joined(separator: ", ")
                 }.accessibilityIdentifier("calendar-mutation-audit")
+                Button("Simula modifica esterna QA") {
+                    Task { await calendar.toggleExternalMutationFixture(); mutationAudit = "Modifica esterna QA simulata" }
+                }.accessibilityIdentifier("calendar-external-change-audit")
                 Button("Verifica protezione ripristino QA") {
                     let identity = store.data.installationID, revision = store.data.updatedAt
                     guard store.beginCalendarMutation() else { mutationAudit = "Interblocco QA non acquisito"; return }

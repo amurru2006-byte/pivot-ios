@@ -65,16 +65,27 @@ final class CalendarMutationInteractionTests: XCTestCase {
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Revisione conclusa.")).firstMatch.waitForExistence(timeout: 15))
         XCTAssertFalse(app.staticTexts["coach-mutations-error"].exists)
     }
-    private func restoreFirst(_ app: XCUIApplication) {
+    private func restoreFirst(_ app: XCUIApplication, shouldSucceed: Bool = true) {
         tap(app.buttons["Storico modifiche"], app)
         let restore = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "calendar-history-restore-")).firstMatch
         tap(restore, app)
         let confirm = app.buttons.matching(identifier: "calendar-history-confirm").firstMatch
         XCTAssertTrue(confirm.waitForExistence(timeout: 8)); XCTAssertTrue(confirm.isHittable); confirm.tap()
         let result = app.staticTexts["calendar-history-message"]
-        XCTAssertTrue(result.waitForExistence(timeout: 15)); XCTAssertTrue(result.label.contains("Modifica annullata"), result.label)
+        XCTAssertTrue(result.waitForExistence(timeout: 15))
+        if shouldSucceed { XCTAssertTrue(result.label.contains("Modifica annullata"), result.label) }
+        else {
+            XCTAssertTrue(result.label.contains("cambiato"), result.label)
+            XCTAssertTrue(restore.exists, "A preflight refusal must keep the confirmed action retryable, not block imports forever")
+        }
         tapNavigation(app.navigationBars["Storico modifiche"].buttons.element(boundBy: 0), app)
         tapNavigation(app.navigationBars["Modifiche proposte"].buttons["Chiudi"], app)
+    }
+    private func toggleExternalChange(_ app: XCUIApplication) {
+        tap(app.buttons["calendar-external-change-audit"], app)
+        let result = app.staticTexts["calendar-mutation-audit-result"]
+        let finished = expectation(for: NSPredicate(format: "label == %@", "Modifica esterna QA simulata"), evaluatedWith: result)
+        wait(for: [finished], timeout: 12)
     }
     func testDeletePreviewCancelAndSingleRestoreKeepMoneyAfterRelaunch() {
         let app = launch(); _ = audit(2, app)
@@ -117,6 +128,11 @@ final class CalendarMutationInteractionTests: XCTestCase {
         XCTAssertTrue(audit(2, app).contains("Impegno QA modificato"))
         app.terminate(); app.launch(); openCoach(app)
         XCTAssertTrue(audit(2, app).contains("Impegno QA modificato"))
+        toggleExternalChange(app)
+        tap(batch(app), app); restoreFirst(app, shouldSucceed: false)
+        let refused = audit(2, app)
+        XCTAssertTrue(refused.contains("Impegno QA modificato")); XCTAssertTrue(refused.contains("0 ripristini incompleti"))
+        toggleExternalChange(app)
         tap(batch(app), app); restoreFirst(app)
         XCTAssertFalse(audit(2, app).contains("Impegno QA modificato"))
         app.terminate(); app.launch(); openCoach(app)
