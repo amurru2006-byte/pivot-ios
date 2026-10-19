@@ -54,6 +54,15 @@ struct CalendarCreationTravel: Codable, Equatable {
     var minutes: Int
     var origin: String
     var estimate: TravelEstimate? = nil
+    var symbolName: String {
+        switch estimate?.request.mode {
+        case .some(.transit): return "tram"
+        case .some(.car): return "car"
+        case .some(.bicycle): return "bicycle"
+        case .some(.walking): return "figure.walk"
+        default: return "arrow.triangle.turn.up.right.diamond"
+        }
+    }
     var isValid: Bool {
         (1...1440).contains(minutes) && origin.count <= 1000 && (estimate?.isValid ?? true)
     }
