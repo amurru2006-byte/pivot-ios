@@ -35,6 +35,9 @@ struct CoachView: View {
     @State private var lastAuthorizedRequest: CoachV8Request?
     @State private var showOnlineData = false
     @State private var calendarDraft: CoachSavedCalendarDraft?
+    #if DEBUG && targetEnvironment(simulator)
+    @State private var mutationAudit: String?
+    #endif
     @State private var reuseText: String?
     @State private var confirmReuse = false
     @FocusState private var composerFocused: Bool
@@ -59,6 +62,18 @@ struct CoachView: View {
             NavigationLink { PersonalForecastView() } label: {
                 Label("Previsioni personali", systemImage: "sparkles").frame(maxWidth: .infinity)
             }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("coach-predictions")
+            NavigationLink { CalendarMutationHistoryView() } label: {
+                Label("Storico modifiche al Calendario", systemImage: "clock.arrow.circlepath").frame(maxWidth: .infinity)
+            }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("coach-calendar-history")
+            #if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--calendar-mutations-test"),
+               UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_COACH_ACTION_ID"] ?? "") != nil {
+                Button("Verifica dati QA") {
+                    mutationAudit = "\(calendar.events.count) eventi · \(store.data.income.count) attività · \(store.data.payments.count) incassi · \(store.data.payments.reduce(0) { $0 + $1.amountCents }) ricevuti · \(store.data.income.reduce(0) { $0 + $1.outstandingCents }) da incassare · " + calendar.events.map(\.title).sorted().joined(separator: ", ")
+                }.accessibilityIdentifier("calendar-mutation-audit")
+                if let mutationAudit { Text(mutationAudit).accessibilityIdentifier("calendar-mutation-audit-result") }
+            }
+            #endif
             if store.data.actualWorkoutDraft != nil { WorkoutChatCard() }
             ForEach(reviews) { review in
                 PivotCard(tint: PivotTheme.blue) {
@@ -281,7 +296,7 @@ struct CoachView: View {
         .confirmationDialog("Eliminare questa conversazione? Anche il resoconto non la includerà più.", isPresented: $deleteHistory, titleVisibility: .visible) {
             Button("Elimina", role: .destructive) {
                 let key = PivotDate.key(historyDay)
-                store.change { data in var coach = data.coachState; coach.messages.removeAll { $0.dayKey == key }; coach.calendarDrafts?.removeAll { $0.dayKey == key }; data.coachState = coach }
+                store.change { data in var coach = data.coachState; coach.messages.removeAll { $0.dayKey == key }; coach.calendarDrafts?.removeAll { $0.dayKey == key }; coach.calendarBatches?.removeAll { $0.dayKey == key }; data.coachState = coach }
                 if key == PivotDate.key(Date()) { store.onlineConversationPermission.revoke() }
             }
         }
@@ -303,7 +318,7 @@ struct CoachView: View {
             }
             #endif
             if onlineCoach.isConfigured && !useLocal {
-                Text("Chat, riordino del testo e bozze per nuovi impegni. Spostamenti verificati per pranzo e palestra di oggi. Previsioni, alternative fino a 7 giorni e Apple Maps si aprono qui sotto; la chat online non gestisce ancora automaticamente catene di spostamenti o cancellazioni.")
+                Text("Chat, riordino del testo e bozze anche per eventi passati. Puoi chiedere modifiche o cancellazioni agli eventi di oggi: controlli l’elenco e confermi prima di applicarle. Le copie originali sono nello storico modifiche. Previsioni, recuperi e Maps restano strumenti locali separati; nessuna gestione automatica di intere serie o catene di spostamenti.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
                 Button("Dati inviati") { showOnlineData = true }
                     .accessibilityIdentifier("coach-online-data")
@@ -431,6 +446,14 @@ struct CoachView: View {
         }
         if let saved = state.calendarDrafts?.first(where: { $0.messageID == item.id }) {
             CoachDraftCard(saved: saved) { calendarDraft = saved }
+        }
+        if let batch = state.calendarBatches?.first(where: { $0.messageID == item.id }) {
+            NavigationLink { CoachCalendarBatchView(batchID: batch.id) } label: {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Modifiche proposte · \(batch.actions.count)", systemImage: "calendar.badge.exclamationmark").font(.headline)
+                    Text(batch.status == .pending ? "Apri l’anteprima e scegli cosa confermare" : "Apri il riepilogo delle modifiche").font(.caption)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("coach-calendar-batch-" + batch.id.uuidString)
         }
         }
     }
@@ -594,7 +617,7 @@ struct CoachView: View {
                 let preparedRewrite = purpose == "rewrite" ? CoachRewriteDraft(original: clean, events: events, data: snapshotData) : nil
                 let outbound = preparedRewrite?.message ?? clean
                 let snapshot = try await Task.detached(priority: .userInitiated) {
-                    try CoachV8Snapshot.make(message: outbound, events: events, data: snapshotData, now: now, purpose: purpose)
+                    try CoachV8Snapshot.make(message: outbound, events: events, data: snapshotData, now: now, purpose: purpose, protocolVersion: 3)
                 }.value
                 rewriteDraft = preparedRewrite
                 try Task.checkCancellation()
@@ -629,10 +652,10 @@ struct CoachView: View {
             }.value
             try Task.checkCancellation()
             guard snapshot.isCurrent(events: calendar.events, data: store.data, now: Date()) else { throw CoachV8Error.staleContext }
-            let replyMessage = CoachMessage(dayKey: PivotDate.key(now), role: .coach, text: result.reply, onlineHistoryEligible: response.mode != .plan)
+            let replyMessage = CoachMessage(dayKey: PivotDate.key(now), role: .coach, text: result.reply, onlineHistoryEligible: response.mode != .plan && response.mode != .actions)
             let userMessage = CoachMessage(dayKey: PivotDate.key(now), role: .user, text: clean, createdAt: now, onlineHistoryEligible: true)
             var savedDraft: CoachSavedCalendarDraft?
-            if var draft = response.draft, response.mode == .create {
+            if var draft = response.draft, [.create, .clarify, .actions].contains(response.mode) {
                 for (index, client) in store.data.clients.enumerated() {
                     let alias = "[contatto \(index + 1)]"
                     draft.title = draft.title.replacingOccurrences(of: alias, with: client.name)
@@ -641,6 +664,8 @@ struct CoachView: View {
                 }
                 savedDraft = CoachSavedCalendarDraft(messageID: replyMessage.id, userMessageID: userMessage.id, dayKey: replyMessage.dayKey, draft: draft)
             }
+            let savedBatch = response.mode == .actions ? try CoachCalendarBatch.make(response.actions ?? [], sources: snapshot.sources,
+                messageID: replyMessage.id, now: currentTime, data: currentData) : nil
             guard store.change({ data in
                 var coach = data.coachState
                 coach.messages.append(userMessage)
@@ -648,6 +673,7 @@ struct CoachView: View {
                 // provider conversation/clarification prose is safe for history.
                 coach.messages.append(replyMessage)
                 if let savedDraft { var drafts = coach.calendarDrafts ?? []; drafts.append(savedDraft); coach.calendarDrafts = drafts }
+                if let savedBatch { var batches = coach.calendarBatches ?? []; batches.append(savedBatch); coach.calendarBatches = batches }
                 coach.options = result.options
                 data.coachState = coach
             }) else { message = "Non riesco a salvare la conversazione. Il messaggio resta qui."; return }
@@ -657,9 +683,9 @@ struct CoachView: View {
             }
             try Task.checkCancellation()
             if input.trimmingCharacters(in: .whitespacesAndNewlines) == clean { input = ""; originalDictation = nil }
-            if let savedDraft { calendarDraft = savedDraft }
+            if let savedDraft, response.mode == .create { calendarDraft = savedDraft }
             message = response.mode == .create ? "Bozza pronta: controllala prima di creare l'impegno." :
-                (result.options.isEmpty ? "Nessuna modifica è stata preparata." : nil)
+                (savedBatch != nil ? "Apri le modifiche proposte per controllarle e confermarle." : result.options.isEmpty && savedDraft == nil ? "Nessuna modifica è stata preparata." : nil)
         } catch let failure as CoachOnlineFailure {
             guard !Task.isCancelled else { return }
             // Keep the composer intact; retries are manual and never queued invisibly.

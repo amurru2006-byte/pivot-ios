@@ -11,7 +11,7 @@ struct HistoricalIncomeSource: Codable, Equatable {
 }
 
 enum HistoricalIncomeError: LocalizedError {
-    case ineligible, alreadyRecorded, reviewRequired, missingClient, historicalRateRequired, changed, invalid
+    case ineligible, alreadyRecorded, reviewRequired, calendarRecoveryRequired, missingClient, historicalRateRequired, changed, invalid
     var errorDescription: String? {
         switch self {
         case .ineligible: return "Seleziona una lezione conclusa nell’anno scelto, con una durata valida."
@@ -19,6 +19,7 @@ enum HistoricalIncomeError: LocalizedError {
         case .reviewRequired: return "C’è già una registrazione o un pagamento che potrebbe comprendere questa lezione. Verifica prima di importarla."
         case .missingClient: return "Conferma il contatto e la sua tariffa prima di importare."
         case .historicalRateRequired: return "Conferma la tariffa per l’anno della lezione: potrebbe essere diversa da quella attuale."
+        case .calendarRecoveryRequired: return "Completa prima il ripristino interrotto nello storico modifiche del Calendario, per non importare due volte una lezione."
         case .changed: return "Calendario o registro modificati: ricarica l’anteprima prima di confermare."
         case .invalid: return "Ricostruzione non valida. Nessun importo è stato modificato."
         }
@@ -74,6 +75,7 @@ enum HistoricalIncome {
     static func quote(_ event: CalendarItem, clientID: UUID, year: Int, now: Date, data: AppData,
         confirmedRateCents: Int? = nil) throws -> Quote {
         guard isEligible(event, year: year, now: now) else { throw HistoricalIncomeError.ineligible }
+        guard !(data.calendarActionArchive ?? []).contains(where: { $0.status == .restorationPrepared }) else { throw HistoricalIncomeError.calendarRecoveryRequired }
         guard existingEntry(for: event, data: data) == nil else { throw HistoricalIncomeError.alreadyRecorded }
         guard let client = data.clients.first(where: { $0.id == clientID }),
               client.activityKind == .lesson, client.billingMode == .hourly else { throw HistoricalIncomeError.missingClient }

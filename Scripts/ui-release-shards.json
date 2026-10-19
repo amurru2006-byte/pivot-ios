@@ -43,6 +43,7 @@
     "TrainingRepProgressionInteractionTests"
   ],
   "pairing": [
+    "CalendarMutationInteractionTests",
     "OnlineCoachSetupInteractionTests",
     "PredictionInteractionTests",
     "OnlineCoachInteractionTests/testCalendarDraftNeedsSeparateConfirmationAndCanCancelBeforeSaving",
