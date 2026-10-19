@@ -340,7 +340,10 @@ private actor CalendarWorker {
         }
         if let duplicate = candidates.first(where: { $0.startDate == main.start && $0.endDate == main.end &&
             EventCoalescer.normalized($0.title ?? "") == EventCoalescer.normalized(main.title) }) {
-            guard parts.count == 1, (duplicate.location ?? "") == main.location else { throw CalendarFailure.uncertainOccurrence }
+            guard parts.count == 1, (duplicate.location ?? "") == main.location,
+                  duplicate.availability.rawValue == main.availability,
+                  (duplicate.alarms ?? []).count == (main.alertMinutes == nil ? 0 : 1),
+                  main.alertMinutes.map({ duplicate.alarms?.first?.relativeOffset == -Double($0) * 60 }) ?? true else { throw CalendarFailure.uncertainOccurrence }
             try draft.checkExistingNotes(Self.item(duplicate).notes)
             return (Self.item(duplicate), true)
         }
@@ -357,8 +360,13 @@ private actor CalendarWorker {
                 if let minutes = part.alertMinutes { event.addAlarm(EKAlarm(relativeOffset: -Double(minutes) * 60)) }
                 try eventStore.save(event, span: .thisEvent, commit: false); staged.append(event)
             }
-            // Stage both before the one commit. A failure is not evidence that
-            // nothing reached the calendar: markers detect partial/unknown retries.
+        } catch {
+            eventStore.reset()
+            throw CalendarFailure.invalidCreationOptions("Non riesco a preparare attività e spostamento. Nessun evento è stato salvato: controlla calendario, luogo e avviso.")
+        }
+        do {
+            // Stage both before the one commit. A failed commit is not evidence
+            // that nothing reached the calendar: reconcile before another write.
             try eventStore.commit()
             return (Self.item(staged.last!), false)
         } catch {

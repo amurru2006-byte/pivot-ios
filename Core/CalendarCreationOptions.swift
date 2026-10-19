@@ -72,6 +72,15 @@ struct CalendarCreationPart: Equatable {
 }
 
 enum CalendarCreationBundle {
+    static func suggestedOrigin(before start: Date, events: [CalendarItem]) -> String {
+        let candidates = events.filter { !$0.isAllDay && $0.end <= start && start.timeIntervalSince($0.end) <= 3 * 3600
+            && !$0.location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !$0.location.contains("://") }
+        guard let last = candidates.max(by: { $0.end < $1.end }) else { return "" }
+        let overlapping = candidates.filter { $0.end >= last.start && $0.start <= last.end }
+        guard Set(overlapping.map { EventCoalescer.normalized($0.location) }).count == 1 else { return "" }
+        return last.location
+    }
     /// A previous partial/changed write must not be completed or duplicated blindly.
     static func existing(parts: [CalendarCreationPart], items: [CalendarItem]) -> Bool {
         !parts.isEmpty && parts.count == items.count && zip(parts, items).allSatisfy { part, item in

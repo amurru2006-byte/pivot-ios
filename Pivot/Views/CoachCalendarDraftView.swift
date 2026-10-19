@@ -221,8 +221,7 @@ struct CoachCalendarDraftView: View {
     }
     private var suggestedOrigin: String {
         guard let start = draft.start else { return "" }
-        return calendar.events.filter { !$0.isAllDay && $0.end <= start && !$0.location.isEmpty &&
-            start.timeIntervalSince($0.end) <= 3 * 3600 }.max(by: { $0.end < $1.end })?.location ?? ""
+        return CalendarCreationBundle.suggestedOrigin(before: start, events: calendar.events)
     }
     private func save(verifyOnly: Bool = false) {
         guard !busy, !store.locked, !store.isRestoring, store.beginCalendarMutation() else { return }
