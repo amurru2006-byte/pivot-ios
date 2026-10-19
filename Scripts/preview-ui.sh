@@ -100,6 +100,9 @@ PIVOT_UI_TEST_COMMAND=(
   -destination "platform=iOS Simulator,id=$PIVOT_SIMULATOR"
   ONLY_ACTIVE_ARCH=YES
   -derivedDataPath build/DerivedData -parallel-testing-enabled NO
+  -test-timeouts-enabled YES
+  -default-test-execution-time-allowance 600
+  -maximum-test-execution-time-allowance 600
   -resultBundlePath "$PIVOT_UI_RESULT" "${PIVOT_SIM_SIGNING[@]}" test
 )
 if [ -n "$PIVOT_RELEASE_SHARD" ]; then

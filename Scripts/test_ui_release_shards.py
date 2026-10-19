@@ -46,8 +46,22 @@ class UIReleaseShardTests(unittest.TestCase):
         self.assertIn("fail-fast: false", source)
         self.assertNotRegex(source, r"(?m)^\s*continue-on-error:")
         release = source.split("  release:", 1)[1]
-        self.assertIn("needs: [core, ui]", release)
-        self.assertLess(release.index("--verify-all-logs build"), release.index("xcodebuild -project"))
+        self.assertIn("needs: [core, ui, build-iphone]", release)
+        self.assertIn('compiled_iphone.py verify', release)
+        self.assertLess(release.index('--verify-all-logs'), release.index('tar -xzf'))
+        self.assertLess(release.index('compiled_iphone.py verify'), release.index('tar -xzf'))
+        build = source.split('  build-iphone:', 1)[1].split('  release:', 1)[0]
+        self.assertIn('needs: core', build)
+        self.assertNotIn('package-v8-candidate.sh', build)
+        self.assertLess(release.index("--verify-all-logs build"), release.index("package-v8-candidate.sh"))
+        self.assertNotIn('xcodebuild -project', release)
+
+    def test_ui_execution_is_bounded_without_automatic_retry_or_skips(self):
+        source = (ROOT / 'Scripts/preview-ui.sh').read_text(encoding='utf-8')
+        self.assertIn('-test-timeouts-enabled YES', source)
+        self.assertIn('-maximum-test-execution-time-allowance 600', source)
+        self.assertNotIn('-retry-tests-on-failure', source)
+        self.assertNotIn('-skip-testing:', source)
 
 
 if __name__ == "__main__": unittest.main()

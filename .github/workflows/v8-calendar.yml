@@ -77,20 +77,13 @@ jobs:
             build/Pivot-QA-*.pdf
           retention-days: 1
           if-no-files-found: ignore
-  release:
-    # Every shard must succeed. No continue-on-error or partial promotion.
-    needs: [core, ui]
+  build-iphone:
+    # Compile in parallel; this unsigned tar cannot be installed or promoted.
+    needs: core
     runs-on: macos-15-intel
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: Pivot-V8-test-*
-          path: build
-          merge-multiple: true
-      - name: Verifica tutti i risultati UI dello stesso run prima di compilare
-        run: python3 Scripts/ui_release_shards.py --verify-all-logs build > build/ui-release-verification.json
       - name: Prepara Xcode, progetto e unica macro approvata
         run: bash Scripts/prepare-ios-ci.sh
       - name: Compila app senza firma
@@ -100,6 +93,47 @@ jobs:
             -sdk iphoneos -destination 'generic/platform=iOS' \
             -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tee build/build.log
+      - name: Conserva build intermedia con permessi e commit esatti
+        run: |
+          tar -czf build/Pivot-compiled.tar.gz -C build/DerivedData/Build/Products/Release-iphoneos Pivot.app
+          python3 Scripts/compiled_iphone.py create build/Pivot-compiled.tar.gz build/Pivot-compiled-manifest.json --commit "$GITHUB_SHA"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pivot-V8-compiled-iPhone
+          path: |
+            build/Pivot-compiled.tar.gz
+            build/Pivot-compiled-manifest.json
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Pivot-V8-compile-log
+          path: build/build.log
+          retention-days: 1
+          if-no-files-found: ignore
+  release:
+    # All same-run gates must pass before unpacking/signing an installable IPA.
+    needs: [core, ui, build-iphone]
+    runs-on: macos-15-intel
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: Pivot-V8-test-*
+          path: build
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: Pivot-V8-compiled-iPhone
+          path: build
+      - name: Verifica tutti i risultati UI e la build dello stesso commit
+        run: |
+          python3 Scripts/ui_release_shards.py --verify-all-logs build > build/ui-release-verification.json
+          python3 Scripts/compiled_iphone.py verify build/Pivot-compiled.tar.gz build/Pivot-compiled-manifest.json --commit "$GITHUB_SHA"
+          mkdir -p build/DerivedData/Build/Products/Release-iphoneos
+          tar -xzf build/Pivot-compiled.tar.gz -C build/DerivedData/Build/Products/Release-iphoneos
       - name: Prepara candidata V8 solo dopo tutte le verifiche
         run: bash Scripts/package-v8-candidate.sh
       - uses: actions/upload-artifact@v4
