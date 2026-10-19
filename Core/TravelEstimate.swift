@@ -2,7 +2,7 @@ import Foundation
 
 /// Local-only values. Neither selected places nor route requests belong in the
 /// online Coach DTO. A coordinate is a user-selected result, not a GPS fix.
-struct TravelPlace: Equatable, Identifiable {
+struct TravelPlace: Codable, Equatable, Identifiable {
     var id = UUID()
     var name: String
     var address: String
@@ -19,7 +19,7 @@ struct TravelPlace: Equatable, Identifiable {
     }
 }
 
-enum TravelTiming: String, CaseIterable {
+enum TravelTiming: String, Codable, CaseIterable {
     case departAt, arriveBy
     var label: String { self == .departAt ? "Parti alle" : "Arriva entro" }
 }
@@ -35,7 +35,7 @@ struct TravelEventContext {
     }
 }
 
-struct TravelRouteRequest: Equatable {
+struct TravelRouteRequest: Codable, Equatable {
     var origin: TravelPlace
     var destination: TravelPlace
     var mode: ClientTravelMode
@@ -52,7 +52,7 @@ struct TravelRouteRequest: Equatable {
     }
 }
 
-struct TravelEstimate: Equatable {
+struct TravelEstimate: Codable, Equatable {
     var request: TravelRouteRequest
     var fetchedAt: Date
     var departure: Date

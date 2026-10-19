@@ -68,6 +68,23 @@ final class CoachSavedDraftTests: XCTestCase {
         var data = AppData(); data.coach = CoachState()
         XCTAssertNil(try BackupCodec.decode(BackupCodec.encodeCompact(data)).coachState.calendarDrafts)
     }
+    func testUnknownCreationOutcomeCannotChangePayloadBeforeReadOnlyReconciliation() {
+        var data = fixture(); let saved = data.coachState.calendarDrafts![0]
+        data.coach?.calendarDrafts?[0].creationNeedsVerification = true
+        var changed = saved.draft; changed.title = "Titolo diverso QA"
+        XCTAssertFalse(CoachDraftStore.update(id: saved.id, draft: changed, calendarID: saved.calendarID, data: &data))
+        XCTAssertEqual(data.coachState.calendarDrafts?[0].draft.title, saved.draft.title)
+        XCTAssertTrue(data.coachState.calendarDrafts?[0].creationNeedsVerification == true)
+    }
+    func testCreationAcknowledgementClearsPendingVerificationButPreservesLocalOptions() {
+        var data = fixture(); let saved = data.coachState.calendarDrafts![0]
+        let options = CalendarCreationOptions(location: "Luogo privato QA", travel: .init(minutes: 15, origin: "Partenza privata QA"))
+        XCTAssertTrue(CoachDraftStore.update(id: saved.id, draft: saved.draft, calendarID: saved.calendarID, data: &data, options: options))
+        data.coach?.calendarDrafts?[0].creationNeedsVerification = true
+        XCTAssertTrue(CoachDraftStore.markCreated(id: saved.id, eventID: "Evento QA", calendarID: saved.calendarID!, data: &data))
+        XCTAssertEqual(data.coachState.calendarDrafts?[0].creationNeedsVerification, false)
+        XCTAssertEqual(data.coachState.calendarDrafts?[0].creationOptions, options)
+    }
     func testOriginalRequestLinkSurvivesBackupAndMustPointToUserMessage() throws {
         var data = fixture(); let key = data.coachState.messages[0].dayKey
         let user = CoachMessage(dayKey: key, role: .user, text: "Richiesta sintetica")

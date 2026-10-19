@@ -299,7 +299,8 @@ struct CoachView: View {
         }
         .sheet(item: $calendarDraft) { savedDraft in
             CoachCalendarDraftView(draft: savedDraft.draft, savedDraftID: savedDraft.id, initialCalendarID: savedDraft.calendarID,
-                sourceMessage: state.messages.first(where: { $0.id == savedDraft.userMessageID })?.text ?? "") { event, existing in
+                sourceMessage: state.messages.first(where: { $0.id == savedDraft.userMessageID })?.text ?? "",
+                initialOptions: savedDraft.creationOptions ?? .init(), initialNeedsVerification: savedDraft.creationNeedsVerification == true) { event, existing in
                 let text = existing ? "Questo impegno era già presente: non ne ho creata un'altra copia." : "Impegno creato nel Calendario: \(event.title)."
                 let saved = store.change { data in
                     _ = CoachDraftStore.markCreated(id: savedDraft.id, eventID: event.id, calendarID: event.calendarIdentifier, data: &data)
@@ -324,6 +325,12 @@ struct CoachView: View {
 
     private var onlineStatusCard: some View {
         PivotCard(tint: PivotTheme.blue) {
+            #if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.arguments.contains("--calendar-travel-test") {
+                Text("\(calendar.events.count) eventi · \(calendar.events.filter { $0.title == "Spostamento" }.count) spostamenti · \(store.data.income.count) incassi")
+                    .font(.caption).accessibilityIdentifier("creation-events-audit")
+            }
+            #endif
             Label(onlineCoach.isConfigured && !useLocal ? "AI online" : "Base locale", systemImage: onlineCoach.isConfigured && !useLocal ? "network" : "iphone")
                 .font(.headline).accessibilityIdentifier("coach-online-mode")
             #if DEBUG && targetEnvironment(simulator)

@@ -10,6 +10,8 @@ struct CoachSavedCalendarDraft: Codable, Identifiable {
     var createdAt = Date()
     var updatedAt = Date()
     var createdEventID: String? = nil
+    var creationOptions: CalendarCreationOptions? = nil
+    var creationNeedsVerification: Bool? = nil
 }
 
 enum CoachDraftStore {
@@ -23,7 +25,8 @@ enum CoachDraftStore {
                   saved.draft.title.count <= 160, saved.draft.notes.count <= 3000,
                   (saved.draft.calendarHint?.count ?? 0) <= 160,
                   saved.calendarID.map({ !$0.isEmpty && $0.count <= 1024 }) ?? true,
-                  saved.createdEventID.map({ !$0.isEmpty && $0.count <= 2048 }) ?? true else { return false }
+                  saved.createdEventID.map({ !$0.isEmpty && $0.count <= 2048 }) ?? true,
+                  saved.creationOptions?.isValid ?? true else { return false }
             if let userID = saved.userMessageID {
                 guard let user = messages[userID], user.role == .user, user.dayKey == saved.dayKey else { return false }
             }
@@ -34,12 +37,17 @@ enum CoachDraftStore {
         }
     }
     @discardableResult static func update(id: UUID, draft: CoachCalendarDraft, calendarID: String?,
-                                         data: inout AppData, now: Date = Date()) -> Bool {
+                                         data: inout AppData, now: Date = Date(), options: CalendarCreationOptions? = nil) -> Bool {
         var coach = data.coachState
         guard let index = coach.calendarDrafts?.firstIndex(where: { $0.id == id }),
               coach.calendarDrafts?[index].createdEventID == nil else { return false }
+        if let previous = coach.calendarDrafts?[index], previous.creationNeedsVerification == true {
+            guard previous.draft == draft, previous.calendarID == calendarID,
+                  options == nil || previous.creationOptions == options else { return false }
+        }
         coach.calendarDrafts?[index].draft = draft
         coach.calendarDrafts?[index].calendarID = calendarID
+        if let options { coach.calendarDrafts?[index].creationOptions = options }
         coach.calendarDrafts?[index].updatedAt = now
         guard valid(coach) else { return false }
         data.coachState = coach; return true
@@ -49,6 +57,7 @@ enum CoachDraftStore {
         guard let index = coach.calendarDrafts?.firstIndex(where: { $0.id == id }),
               coach.calendarDrafts?[index].createdEventID.map({ $0 == eventID }) ?? true else { return false }
         coach.calendarDrafts?[index].createdEventID = eventID
+        coach.calendarDrafts?[index].creationNeedsVerification = false
         coach.calendarDrafts?[index].calendarID = calendarID
         coach.calendarDrafts?[index].updatedAt = Date()
         guard valid(coach) else { return false }
