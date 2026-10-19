@@ -87,7 +87,7 @@ final class CalendarService: ObservableObject {
         guard !mutationInProgress, !store.locked, !store.isRestoring,
               let batchID = review.entries.first?.batchID,
               let batch = store.data.coachState.calendarBatches?.first(where: { $0.id == batchID }), batch.status == .pending,
-              review.entries.allSatisfy({ entry in batch.actions.contains { $0.id == entry.actionID && $0.source == entry.original.snapshot && $0.kind == entry.kind && $0.after == entry.after }
+              review.entries.allSatisfy({ entry in batch.actions.contains { $0.id == entry.actionID && CalendarSnapshotMatch.revision($0.source, entry.original.snapshot) && $0.kind == entry.kind && $0.after == entry.after }
                   && store.data.records[entry.original.snapshot.id]?.status != .running
                   && !store.data.moves.contains(where: { !$0.syncedToCalendar && $0.source.id == entry.original.snapshot.id }) }),
               !(store.data.calendarActionArchive ?? []).contains(where: { $0.batchID == batchID }) else { throw CalendarFailure.changed }
@@ -204,7 +204,7 @@ private actor CalendarWorker {
     private func mutationFixtureItems() -> [CalendarItem] {
         guard let key = mutationFixtureKey else { return [] }
         if let mutationFixtureCache { return mutationFixtureCache }
-        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .millisecondsSince1970
         if let bytes = UserDefaults.standard.data(forKey: key), let saved = try? decoder.decode([CalendarItem].self, from: bytes) {
             mutationFixtureCache = saved; return saved
         }
@@ -213,14 +213,15 @@ private actor CalendarWorker {
             CalendarItem(id: "mutation-qa-\(index)", eventIdentifier: "mutation-qa-\(index)", calendarIdentifier: "create-fixture",
                 calendarTitle: "Personale test", title: "Impegno QA \(index)", start: start.addingTimeInterval(Double(8 + index) * 3600),
                 end: start.addingTimeInterval(Double(9 + index) * 3600), location: "", notes: "Nota QA", colorHex: "7EE6CD", isAllDay: false,
-                writable: true, kind: .other, sourceIdentifier: "source-fixture", sourceTitle: "Account test", recurring: false)
+                writable: true, kind: .other, sourceIdentifier: "source-fixture", sourceTitle: "Account test",
+                calendarModifiedAt: start.addingTimeInterval(3600.375), recurring: false, calendarCreatedAt: start.addingTimeInterval(1800.625))
         }
         saveMutationFixture(initial); return initial
     }
     private func saveMutationFixture(_ items: [CalendarItem]) {
         guard let key = mutationFixtureKey else { return }
         mutationFixtureCache = items
-        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .millisecondsSince1970
         if let bytes = try? encoder.encode(items) { UserDefaults.standard.set(bytes, forKey: key) }
     }
     private func fixtureBackup(_ item: CalendarItem) -> CalendarEventBackup {
@@ -297,26 +298,41 @@ private actor CalendarWorker {
         calendar.allowsContentModifications && !settings.excludedCalendarIDs.contains(calendar.calendarIdentifier)
             && !settings.excludedCalendarTitles.contains(calendar.title) && !(settings.excludeHolidays && Self.isHoliday(calendar.title))
     }
-    private func originalEvent(_ source: CalendarItem) throws -> EKEvent {
+    private func occurrenceCandidates(_ source: CalendarItem) throws -> [EKEvent] {
         guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { throw CalendarFailure.noAccess }
         guard let target = eventStore.calendar(withIdentifier: source.calendarIdentifier) else { throw CalendarFailure.changed }
         let predicate = eventStore.predicateForEvents(withStart: source.start.addingTimeInterval(-1), end: source.end.addingTimeInterval(1), calendars: [target])
-        let candidates = eventStore.events(matching: predicate).filter { event in
-            event.eventIdentifier == source.eventIdentifier && abs(event.startDate.timeIntervalSince(source.start)) < 1
-                && abs(event.endDate.timeIntervalSince(source.end)) < 1
-                && (source.occurrenceAnchor == nil || event.occurrenceDate == source.occurrenceAnchor)
+        return eventStore.events(matching: predicate).filter { event in
+            CalendarSnapshotMatch.identity(source, Self.item(event)) && CalendarSnapshotMatch.instant(event.startDate, source.start)
+                && CalendarSnapshotMatch.instant(event.endDate, source.end)
+                && (source.occurrenceAnchor == nil || CoachPlanner.modificationDateMatches(source.occurrenceAnchor, event.occurrenceDate))
         }
+    }
+    private func singleIdentityEvent(_ source: CalendarItem) throws -> EKEvent? {
+        guard source.recurring == false else { return nil }
+        if let direct = eventStore.event(withIdentifier: source.eventIdentifier) {
+            guard CalendarSnapshotMatch.identity(source, Self.item(direct)) else { throw CalendarFailure.changed }
+            return direct
+        }
+        guard let external = source.externalIdentifier else { return nil }
+        let matches = eventStore.calendarItems(withExternalIdentifier: external).compactMap { $0 as? EKEvent }.filter {
+            CalendarSnapshotMatch.identity(source, Self.item($0))
+        }
+        guard matches.count <= 1 else { throw CalendarFailure.changed }
+        return matches.first
+    }
+    private func originalEvent(_ source: CalendarItem, requireModificationDate: Bool = true) throws -> EKEvent {
+        let candidates = try occurrenceCandidates(source)
         guard candidates.count == 1, let event = candidates.first else { throw CalendarFailure.changed }
-        var current = Self.item(event); current.id = source.id
-        guard current == source else { throw CalendarFailure.changed }
+        guard CalendarSnapshotMatch.revision(source, Self.item(event), requireModificationDate: requireModificationDate) else { throw CalendarFailure.changed }
         return event
     }
     private func backup(_ event: EKEvent, logicalID: String) throws -> CalendarEventBackup {
-        // Invitees/organizers and geofences cannot be reconstructed faithfully
+        // Invitees/external organizers and geofences cannot be reconstructed faithfully
         // by this first undo format. Refuse the whole selected batch, not a
         // partially restorable deletion or an attendee cancellation email.
         guard event.calendar.allowsContentModifications, !event.isAllDay,
-              event.attendees?.isEmpty != false, event.organizer == nil, event.structuredLocation == nil,
+              event.attendees?.isEmpty != false, (event.organizer?.isCurrentUser ?? true), event.structuredLocation == nil,
               (event.alarms ?? []).allSatisfy({ $0.structuredLocation == nil && $0.proximity == .none }) else { throw CalendarFailure.unsupportedMetadata }
         var snapshot = Self.item(event); snapshot.id = logicalID
         let alarms = (event.alarms ?? []).map { alarm in
@@ -355,7 +371,7 @@ private actor CalendarWorker {
             let entries = try actions.map { action -> ArchivedCalendarMutation in
                 guard var fresh = items.first(where: { $0.eventIdentifier == action.source.eventIdentifier }) else { throw CalendarFailure.changed }
                 fresh.id = action.source.id
-                guard fresh == action.source else { throw CalendarFailure.changed }
+                guard CalendarSnapshotMatch.revision(action.source, fresh) else { throw CalendarFailure.changed }
                 return .init(batchID: batchID, actionID: action.id, kind: action.kind, original: fixtureBackup(fresh), after: action.after, preparedAt: Date())
             }
             return .init(entries: entries, conflicts: fixtureConflicts(entries))
@@ -380,7 +396,7 @@ private actor CalendarWorker {
             for entry in entries {
                 guard var current = items.first(where: { $0.eventIdentifier == entry.original.snapshot.eventIdentifier }) else { throw CalendarFailure.changed }
                 current.id = entry.original.snapshot.id
-                guard fixtureBackup(current) == entry.original else { throw CalendarFailure.changed }
+                guard CalendarSnapshotMatch.backup(entry.original, fixtureBackup(current)) else { throw CalendarFailure.changed }
             }
             try Task.checkCancellation()
             var result = entries
@@ -396,7 +412,7 @@ private actor CalendarWorker {
         var targets: [EKEvent] = []
         for entry in entries {
             let event = try originalEvent(entry.original.snapshot)
-            guard enabled(event.calendar, settings: settings), try backup(event, logicalID: entry.original.snapshot.id) == entry.original else { throw CalendarFailure.changed }
+            guard enabled(event.calendar, settings: settings), try CalendarSnapshotMatch.backup(entry.original, backup(event, logicalID: entry.original.snapshot.id)) else { throw CalendarFailure.changed }
             targets.append(event)
         }
         guard try mutationConflicts(entries, settings: settings) == review.conflicts else { throw CalendarFailure.changed }
@@ -435,11 +451,12 @@ private actor CalendarWorker {
     }
     private func payloadMatches(_ event: EKEvent, original: CalendarEventBackup, expected: CalendarItem, marker: URL? = nil) -> Bool {
         guard let current = try? backup(event, logicalID: expected.id) else { return false }
-        return current.snapshot.title == expected.title && current.snapshot.start == expected.start && current.snapshot.end == expected.end
+        return current.snapshot.title == expected.title && CalendarSnapshotMatch.instant(current.snapshot.start, expected.start) && CalendarSnapshotMatch.instant(current.snapshot.end, expected.end)
             && current.snapshot.location == expected.location && current.snapshot.notes == CalendarNoteText.plain(expected.notes)
             && current.originalNotes == (expected.notes == original.snapshot.notes ? original.originalNotes : expected.notes)
             && current.timeZoneIdentifier == original.timeZoneIdentifier && current.availabilityRawValue == original.availabilityRawValue
-            && current.alarms == original.alarms && (current.url == original.url || (original.url == nil && current.url == marker?.absoluteString))
+            && current.alarms.count == original.alarms.count && zip(current.alarms, original.alarms).allSatisfy({ CalendarSnapshotMatch.alarm($0.0, $0.1) })
+            && (current.url == original.url || (original.url == nil && current.url == marker?.absoluteString))
     }
     func restoreMutation(_ entry: ArchivedCalendarMutation, settings: Settings) throws -> CalendarRestoreResult {
         #if DEBUG && targetEnvironment(simulator)
@@ -447,16 +464,16 @@ private actor CalendarWorker {
             var items = mutationFixtureItems()
             if entry.kind == .update {
                 guard let after = entry.after, let index = items.firstIndex(where: { $0.eventIdentifier == after.eventIdentifier }) else { throw CalendarFailure.changed }
-                if items[index] == entry.original.snapshot { return .init(item: items[index], originalPresent: false) }
-                guard items[index] == after else { throw CalendarFailure.changed }
+                if CalendarSnapshotMatch.revision(entry.original.snapshot, items[index]) { return .init(item: items[index], originalPresent: false) }
+                guard let afterBackup = entry.afterBackup, CalendarSnapshotMatch.backup(afterBackup, fixtureBackup(items[index]), requireModificationDate: false) else { throw CalendarFailure.changed }
                 items[index] = entry.original.snapshot; saveMutationFixture(items)
                 return .init(item: items[index], originalPresent: false)
             }
             if let existing = items.first(where: { $0.eventIdentifier == entry.original.snapshot.eventIdentifier }) {
-                guard existing == entry.original.snapshot else { throw CalendarFailure.changed }
+                guard CalendarSnapshotMatch.revision(entry.original.snapshot, existing) else { throw CalendarFailure.changed }
                 return .init(item: existing, originalPresent: true)
             }
-            if let existing = items.first(where: { $0.title == entry.original.snapshot.title && $0.start == entry.original.snapshot.start && $0.notes == entry.original.snapshot.notes }) {
+            if let existing = items.first(where: { $0.title == entry.original.snapshot.title && CalendarSnapshotMatch.instant($0.start, entry.original.snapshot.start) && $0.notes == entry.original.snapshot.notes }) {
                 return .init(item: existing, originalPresent: false)
             }
             var restored = entry.original.snapshot
@@ -473,22 +490,24 @@ private actor CalendarWorker {
             guard let after = entry.after, let afterBackup = entry.afterBackup else { throw CalendarFailure.changed }
             // Retry after an interrupted undo must not overwrite another app's
             // edit. If our original values are already back, adopt that result.
-            if let current = eventStore.event(withIdentifier: after.eventIdentifier), source.recurring == false,
-               current.calendar.calendarIdentifier == target.calendarIdentifier,
-               payloadMatches(current, original: original, expected: source) {
+            let originals = try occurrenceCandidates(source).filter { payloadMatches($0, original: original, expected: source) }
+            guard originals.count <= 1 else { throw CalendarFailure.changed }
+            if let current = originals.first {
                 var item = Self.item(current); item.id = source.id
                 return .init(item: item, originalPresent: false)
             }
-            let event = try originalEvent(after)
-            guard try backup(event, logicalID: source.id) == afterBackup else { throw CalendarFailure.changed }
+            // A server can advance only its synchronization timestamp. An undo
+            // still requires every restorable payload field to equal our saved
+            // after-image; a timestamp alone is not permission to overwrite it.
+            let event = try originalEvent(after, requireModificationDate: false)
+            guard try CalendarSnapshotMatch.backup(afterBackup, backup(event, logicalID: source.id), requireModificationDate: false) else { throw CalendarFailure.changed }
             try applyOriginal(original, to: event)
             try Task.checkCancellation(); try eventStore.save(event, span: .thisEvent, commit: true)
             var item = Self.item(event); item.id = source.id
             return .init(item: item, originalPresent: false)
         }
         let marker = URL(string: "pivot://restored/" + entry.id.uuidString)!
-        if source.recurring == false, let current = eventStore.event(withIdentifier: source.eventIdentifier),
-           current.calendar.calendarIdentifier == source.calendarIdentifier {
+        if let current = try singleIdentityEvent(source) {
             guard payloadMatches(current, original: original, expected: source) else { throw CalendarFailure.changed }
             return .init(item: Self.item(current), originalPresent: true)
         }
@@ -509,16 +528,16 @@ private actor CalendarWorker {
         #if DEBUG && targetEnvironment(simulator)
         if mutationFixtureKey != nil {
             let current = mutationFixtureItems().first { $0.eventIdentifier == entry.original.snapshot.eventIdentifier }
-            if current == entry.original.snapshot { return (false, nil) }
+            if let current, CalendarSnapshotMatch.backup(entry.original, fixtureBackup(current)) { return (false, nil) }
             if entry.kind == .delete, current == nil { return (true, nil) }
-            if let after = entry.after, current == after { return (true, fixtureBackup(after)) }
+            if let after = entry.after, let current, CalendarSnapshotMatch.revision(after, current) { return (true, fixtureBackup(current)) }
             throw CalendarFailure.uncertainOccurrence
         }
         #endif
         guard entry.isValid, [.prepared, .uncertain].contains(entry.status),
               EKEventStore.authorizationStatus(for: .event) == .fullAccess else { throw CalendarFailure.noAccess }
         let source = entry.original.snapshot
-        if let original = try? originalEvent(source), try backup(original, logicalID: source.id) == entry.original { return (false, nil) }
+        if let original = try? originalEvent(source), try CalendarSnapshotMatch.backup(entry.original, backup(original, logicalID: source.id)) { return (false, nil) }
         if entry.kind == .update, let after = entry.after,
            let event = eventStore.event(withIdentifier: after.eventIdentifier), event.calendar.calendarIdentifier == source.calendarIdentifier,
            payloadMatches(event, original: entry.original, expected: after) {
@@ -527,7 +546,7 @@ private actor CalendarWorker {
         // A missing occurrence from a series cannot prove whether a remote
         // writer moved it. Do not recreate or change that series speculatively.
         if entry.kind == .delete, source.recurring == false,
-           eventStore.event(withIdentifier: source.eventIdentifier) == nil { return (true, nil) }
+           try singleIdentityEvent(source) == nil { return (true, nil) }
         throw CalendarFailure.uncertainOccurrence
     }
     func incomeHistory(year: Int, calendarIDs: Set<String>, settings: Settings) throws -> [CalendarItem] {
