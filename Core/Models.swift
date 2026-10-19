@@ -22,6 +22,9 @@ enum EventKind: String, Codable, CaseIterable {
     static func classify(title: String, calendar: String) -> EventKind {
         let t = title.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
         let c = calendar.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        // Some calendar providers discard URL metadata during synchronization.
+        // A plain journey must not become a lesson or workout just by its calendar.
+        if t.trimmingCharacters(in: .whitespacesAndNewlines) == "spostamento" { return .other }
         let calendarWords = c.components(separatedBy: CharacterSet.alphanumerics.inverted)
         // A dedicated calendar is authoritative; never infer a partner from "destinazione".
         if calendarWords.contains("amici") { return .friends }

@@ -112,4 +112,17 @@ final class CalendarCreationOptionsTests: XCTestCase {
         var invalid = mappedOptions; invalid.travel?.minutes = -1
         XCTAssertFalse(invalid.isValid)
     }
+    func testLostProviderURLCannotTurnTravelIntoIncomeOrWorkout() {
+        XCTAssertEqual(EventKind.classify(title: "Spostamento", calendar: "Lavoro"), .other)
+        XCTAssertEqual(EventKind.classify(title: "Spostamento", calendar: "Palestra"), .other)
+    }
+    func testOriginSuggestionRejectsAmbiguousLocationsAndOnlineCalls() {
+        var first = item(options.parts(draft: draft, creationID: UUID())[0])
+        first.end = draft.start!.addingTimeInterval(-600); first.location = "Origine A QA"
+        XCTAssertEqual(CalendarCreationBundle.suggestedOrigin(before: draft.start!, events: [first]), first.location)
+        var second = first; second.id = "B QA"; second.location = "Origine B QA"
+        XCTAssertEqual(CalendarCreationBundle.suggestedOrigin(before: draft.start!, events: [first, second]), "")
+        first.location = "https://call.example.test/qa"
+        XCTAssertEqual(CalendarCreationBundle.suggestedOrigin(before: draft.start!, events: [first]), "")
+    }
 }

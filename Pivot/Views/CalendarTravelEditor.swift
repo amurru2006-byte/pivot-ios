@@ -33,8 +33,12 @@ struct CalendarTravelEditor: View {
                         NavigationLink {
                             TravelCalculatorView(origin: origin, destination: options.location, date: start, timing: .arriveBy) { value in
                                 guard let valueMinutes = value.minutes else { return }
+                                guard value.request.timing == .arriveBy, value.request.date == start else {
+                                    problem = "Scegli «Arriva entro» all’orario di inizio dell’attività, poi ricalcola."; return
+                                }
                                 options.location = value.request.destination.address
                                 origin = value.request.origin.address; minutes = valueMinutes; estimate = value
+                                problem = nil
                             }
                         } label: { Label("Calcola con Apple Maps", systemImage: "map") }
                             .accessibilityIdentifier("creation-travel-maps")
@@ -48,7 +52,7 @@ struct CalendarTravelEditor: View {
                     }
                 }
                 Section {
-                    ForEach([0, 5, 15, 30, 60, 90, 120], id: \.self) { value in
+                    ForEach(Array(Set([0, 5, 15, 30, 60, 90, 120, minutes])).sorted(), id: \.self) { value in
                         Button {
                             editingOrigin = false; minutes = value; estimate = nil
                         } label: {
@@ -64,7 +68,7 @@ struct CalendarTravelEditor: View {
                         minutes = max(0, ($0 ?? 0) / 60); estimate = nil
                     }), maxHours: 24)
                 } footer: {
-                    Text("Il viaggio sarà un evento separato «Spostamento», nello stesso calendario. Non cambia la durata dell’attività e non conta come lezione o allenamento.")
+                    Text("«Spostamento» sarà un evento separato nello stesso calendario. Partenza e destinazione saranno visibili a chi può leggerlo.")
                 }
                 if let problem { Section { Text(problem).foregroundStyle(PivotTheme.amber) } }
             }.navigationTitle("Tempo di percorrenza").navigationBarTitleDisplayMode(.inline)
@@ -103,7 +107,9 @@ struct CalendarCreationPreview: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let start = draft.start, let travel = options.travel {
-                Label("Spostamento · \(PivotDate.time(travel.estimate?.departure ?? start.addingTimeInterval(-Double(travel.minutes) * 60))) – \(PivotDate.time(start))",
+                let departure = travel.estimate?.departure ?? start.addingTimeInterval(-Double(travel.minutes) * 60)
+                let day = PivotDate.calendar.isDate(departure, inSameDayAs: start) ? "" : PivotDate.shortDate(departure) + " "
+                Label("Spostamento · \(day)\(PivotDate.time(departure)) – \(PivotDate.time(start))",
                       systemImage: "figure.walk")
                     .font(.subheadline).accessibilityIdentifier("creation-travel-preview")
                 Divider()
