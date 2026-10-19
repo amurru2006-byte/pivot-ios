@@ -16,9 +16,6 @@ struct CoachView: View {
     @EnvironmentObject private var coachModel: LocalCoachService
     @EnvironmentObject private var agenda: AgendaService
     @State private var input = ""
-    @State private var memoryInput = ""
-    @State private var memoryTemporary = false
-    @State private var memoryUntil = Date().addingTimeInterval(7 * 86400)
     @State private var historyDay = Date()
     @State private var deleteHistory = false
     @State private var message: String?
@@ -62,6 +59,9 @@ struct CoachView: View {
             NavigationLink { PersonalForecastView() } label: {
                 Label("Previsioni personali", systemImage: "sparkles").frame(maxWidth: .infinity)
             }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("coach-predictions")
+            NavigationLink { CoachMemoriesView() } label: {
+                Label("Preferenze di Pivot", systemImage: "brain.head.profile").frame(maxWidth: .infinity)
+            }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("coach-memories")
             NavigationLink { CalendarMutationHistoryView() } label: {
                 Label("Storico modifiche al Calendario", systemImage: "clock.arrow.circlepath").frame(maxWidth: .infinity)
             }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("coach-calendar-history")
@@ -175,6 +175,13 @@ struct CoachView: View {
             }
 
             PivotCard {
+                if let id = state.focusedCalendarDraftID,
+                   let focused = state.calendarDrafts?.first(where: { $0.id == id && $0.createdEventID == nil && $0.dayKey == PivotDate.key(Date()) }) {
+                    Label("Stai continuando: " + (focused.draft.title.isEmpty ? "Nuovo impegno" : focused.draft.title), systemImage: "text.bubble")
+                        .font(.subheadline).accessibilityIdentifier("coach-focused-draft")
+                    Button("Nuovo argomento") { clearDraftFocus() }.frame(minHeight: 44)
+                        .disabled(isPlanning).accessibilityIdentifier("coach-clear-draft-focus")
+                }
                 TextField(dictation.isListening ? "Ti ascolto…" : "Scrivi o detta cosa è cambiato…", text: $input, axis: .vertical)
                     .focused($composerFocused)
                     .accessibilityIdentifier("coach-message-input")
@@ -213,36 +220,6 @@ struct CoachView: View {
                     }
                 }
             }
-            PivotCard {
-                DisclosureGroup("Cose che vuoi far ricordare al Coach") {
-                    Text("Solo informazioni aggiunte da te. Puoi rimuoverle quando vuoi; sono incluse nel backup.").font(.caption).foregroundStyle(PivotTheme.muted)
-                    ForEach(state.memories) { memory in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(memory.text).font(.subheadline)
-                                if let until = memory.expiresAt {
-                                    Text(memory.isActive(at: Date()) ? "Fino al \(DisplayDate.label(until, format: "d MMM HH:mm"))" : "Scaduta · non usata dal modello locale")
-                                        .font(.caption).foregroundStyle(PivotTheme.muted)
-                                }
-                            }
-                            Spacer()
-                            Button(role: .destructive) {
-                                store.change { data in var coach = data.coachState; coach.memories.removeAll { $0.id == memory.id }; data.coachState = coach }
-                            } label: { Image(systemName: "minus.circle") }
-                        }.padding(.vertical, 5)
-                    }
-                    TextField("Una preferenza o un’informazione utile", text: $memoryInput, axis: .vertical)
-                    Toggle("Informazione temporanea", isOn: $memoryTemporary)
-                    if memoryTemporary { DatePicker("Ricorda fino a", selection: $memoryUntil, in: Date()...) }
-                    Button("Ricorda questa informazione") {
-                        let text = String(memoryInput.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1500))
-                        guard !text.isEmpty else { return }
-                        let memory = CoachMemory(text: text, expiresAt: memoryTemporary ? memoryUntil : nil)
-                        guard memory.isValid else { message = "La scadenza deve essere successiva a questo momento."; return }
-                        if store.change({ data in var coach = data.coachState; coach.memories.append(memory); data.coachState = coach }) { memoryInput = ""; memoryTemporary = false }
-                    }.disabled(store.locked || memoryInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
             if let message { Label(message, systemImage: "info.circle.fill").font(.subheadline).foregroundStyle(PivotTheme.amber) }
             DisclosureGroup("Modello locale e sicurezza") {
                 modelCard
@@ -258,6 +235,9 @@ struct CoachView: View {
             if phase == .background { cancelTurn() }
         }
         .onAppear { onlineCoach.reload() }
+        .onChange(of: state.memories) { _, _ in
+            store.onlineConversationPermission.revoke(); cancelTurn(); lastAuthorizedRequest = nil
+        }
         .onReceive(NotificationCenter.default.publisher(for: OnlineCoachService.settingsChanged)) { _ in
             store.onlineConversationPermission.revoke(); cancelTurn(); onlineCoach.reload()
         }
@@ -312,7 +292,13 @@ struct CoachView: View {
         .confirmationDialog("Eliminare questa conversazione? Anche il resoconto non la includerà più.", isPresented: $deleteHistory, titleVisibility: .visible) {
             Button("Elimina", role: .destructive) {
                 let key = PivotDate.key(historyDay)
-                store.change { data in var coach = data.coachState; coach.messages.removeAll { $0.dayKey == key }; coach.calendarDrafts?.removeAll { $0.dayKey == key }; coach.calendarBatches?.removeAll { $0.dayKey == key }; data.coachState = coach }
+                store.change { data in
+                    var coach = data.coachState
+                    if coach.calendarDrafts?.contains(where: { $0.id == coach.focusedCalendarDraftID && $0.dayKey == key }) == true {
+                        coach.focusedCalendarDraftID = nil; coach.omitPreviousDraft = true
+                    }
+                    coach.messages.removeAll { $0.dayKey == key }; coach.calendarDrafts?.removeAll { $0.dayKey == key }; coach.calendarBatches?.removeAll { $0.dayKey == key }; data.coachState = coach
+                }
                 if key == PivotDate.key(Date()) { store.onlineConversationPermission.revoke() }
             }
         }
@@ -468,6 +454,17 @@ struct CoachView: View {
         }
         if let saved = state.calendarDrafts?.first(where: { $0.messageID == item.id }) {
             CoachDraftCard(saved: saved) { calendarDraft = saved }
+            if CoachConversationFocus.eligible(saved, state: state, dayKey: PivotDate.key(Date())) {
+                Button("Continua questa bozza in chat") {
+                    if store.change({ $0.coachState.focusedCalendarDraftID = saved.id; $0.coachState.omitPreviousDraft = false; $0.coachState.contextStartedAt = nil }) { composerFocused = true }
+                }.frame(minHeight: 44).disabled(isPlanning || store.locked)
+                    .accessibilityIdentifier("coach-continue-draft-" + saved.id.uuidString)
+            }
+        }
+        if let recovery = item.recoveryRequest {
+            NavigationLink { RecoveryForecastView(initialRequest: recovery) } label: {
+                Label("Organizza il recupero", systemImage: "calendar.badge.clock")
+            }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("coach-recovery-request-" + item.id.uuidString)
         }
         if let batch = state.calendarBatches?.first(where: { $0.messageID == item.id }) {
             NavigationLink { CoachCalendarBatchView(batchID: batch.id) } label: {
@@ -499,6 +496,12 @@ struct CoachView: View {
             await sendInBackground(text, targetID: targetID)
             guard generation == turnGeneration else { return }
             isPlanning = false; turnTask = nil
+        }
+    }
+    private func clearDraftFocus() {
+        store.change {
+            $0.coachState.focusedCalendarDraftID = nil; $0.coachState.omitPreviousDraft = true
+            $0.coachState.contextStartedAt = Date()
         }
     }
     private func finishDictation() {
@@ -552,6 +555,22 @@ struct CoachView: View {
         guard !clean.isEmpty, !store.locked, !coachModel.isGenerating, !Task.isCancelled else { return }
         let now = Date()
         historyDay = now
+        if targetID == nil, contextEventID == nil, let recovery = CoachRecoveryRequest.parse(clean, now: now) {
+            await calendar.refresh(settings: store.data.settings)
+            guard !Task.isCancelled, !store.locked, !store.isRestoring else { return }
+            let request = recovery.resolving(text: clean, events: calendar.events, data: store.data, now: now)
+            let reply = CoachMessage(dayKey: PivotDate.key(now), role: .coach,
+                text: "Apri il recupero: confermiamo attività, giorno, durata e tragitti, poi confronto gli spazi fino a 7 giorni. Nessun evento è stato spostato e questa ricerca non usa l’AI online.",
+                recoveryRequest: request)
+            if store.change({ data in
+                data.coachState.messages.append(.init(dayKey: PivotDate.key(now), role: .user, text: clean))
+                data.coachState.messages.append(reply)
+            }) {
+                input = ""
+                if !(await store.flushPendingWrites()) { message = "Richiesta in memoria, ma il salvataggio su disco non è ancora riuscito." }
+            } else { message = "Non riesco a salvare la richiesta. Il testo resta qui." }
+            return
+        }
         if let start = WorkoutContext.statedStart(clean, now: now) {
             let candidates = agenda.effective.filter { $0.kind == .workout && CardioKind.suggested($0.title) == nil && $0.occurs(on: start) }
             if candidates.count == 1, let event = candidates.first, store.data.actualWorkoutDraft == nil {
@@ -684,7 +703,18 @@ struct CoachView: View {
                     draft.notes = draft.notes.replacingOccurrences(of: alias, with: client.name)
                     draft.calendarHint = draft.calendarHint?.replacingOccurrences(of: alias, with: client.name)
                 }
+                draft = CoachConversationFocus.continuing(draft, parent: snapshot.focusedDraft)
                 savedDraft = CoachSavedCalendarDraft(messageID: replyMessage.id, userMessageID: userMessage.id, dayKey: replyMessage.dayKey, draft: draft)
+                // Keep a single, stable draft when explicitly continuing it.
+                // A distinct title, pending write or new activity keeps a new ID.
+                if let parent = snapshot.focusedDraft,
+                   EventCoalescer.normalized(draft.title) == EventCoalescer.normalized(parent.draft.title) {
+                    savedDraft?.id = parent.id
+                    savedDraft?.createdAt = parent.createdAt
+                    if draft.calendarHint == parent.draft.calendarHint { savedDraft?.calendarID = parent.calendarID }
+                    // Keep local options only while their activity times match.
+                    if draft.start == parent.draft.start && draft.end == parent.draft.end { savedDraft?.creationOptions = parent.creationOptions }
+                }
             }
             let savedBatch: CoachCalendarBatch?
             if response.mode == .actions {
@@ -697,7 +727,11 @@ struct CoachView: View {
                 // Plan validation may mention a private local event title. Only
                 // provider conversation/clarification prose is safe for history.
                 coach.messages.append(replyMessage)
-                if let savedDraft { var drafts = coach.calendarDrafts ?? []; drafts.append(savedDraft); coach.calendarDrafts = drafts }
+                if let savedDraft {
+                    var drafts = coach.calendarDrafts ?? []
+                    drafts.removeAll { $0.id == savedDraft.id }; drafts.append(savedDraft); coach.calendarDrafts = drafts
+                    coach.focusedCalendarDraftID = savedDraft.id; coach.omitPreviousDraft = false
+                }
                 if let savedBatch { var batches = coach.calendarBatches ?? []; batches.append(savedBatch); coach.calendarBatches = batches }
                 coach.options = result.options
                 data.coachState = coach

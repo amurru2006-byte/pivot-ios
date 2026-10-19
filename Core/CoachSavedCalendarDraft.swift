@@ -60,6 +60,7 @@ enum CoachDraftStore {
         coach.calendarDrafts?[index].creationNeedsVerification = false
         coach.calendarDrafts?[index].calendarID = calendarID
         coach.calendarDrafts?[index].updatedAt = Date()
+        if coach.focusedCalendarDraftID == id { coach.focusedCalendarDraftID = nil }
         guard valid(coach) else { return false }
         data.coachState = coach; return true
     }
