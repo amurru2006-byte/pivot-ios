@@ -21,7 +21,10 @@ jobs:
           python3 -m unittest discover -s Scripts -p 'test_*.py'
   premium-ui:
     needs: core
-    runs-on: macos-15
+    # Standard free Intel image also supplies iOS 26+ simulators. Use it for
+    # this focused reproduction while the hosted ARM pool reports capacity
+    # failures; keep the same native test and simulator minimum unchanged.
+    runs-on: macos-15-intel
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
