@@ -28,6 +28,7 @@ enum TutoringLedger {
     // Repeated saves of the same calendar occurrence never generate a second lesson/payment.
     @discardableResult static func register(event: CalendarItem, record: inout EventRecord, client: Client, amountCents: Int, collectedCents: Int, paymentDate: Date, data: inout AppData, timing: PaymentTiming? = nil, promisedDate: Date? = nil) -> UUID? {
         guard [.tutoring, .work].contains(event.kind), amountCents >= 0, collectedCents >= 0, collectedCents <= amountCents else { return nil }
+        guard !CalendarArchive.requiresIdentityReview(event, data: data) else { record.tutoringAnswered = false; return nil }
         if let existing = data.income.first(where: { $0.id == record.incomeID || $0.calendarEventID == event.id }) {
             record.incomeID = existing.id; record.tutoringAnswered = true
             return existing.id

@@ -77,6 +77,7 @@ enum HistoricalIncome {
         guard isEligible(event, year: year, now: now) else { throw HistoricalIncomeError.ineligible }
         guard !(data.calendarActionArchive ?? []).contains(where: { $0.status == .restorationPrepared }) else { throw HistoricalIncomeError.calendarRecoveryRequired }
         guard existingEntry(for: event, data: data) == nil else { throw HistoricalIncomeError.alreadyRecorded }
+        guard !CalendarArchive.requiresIdentityReview(event, data: data) else { throw HistoricalIncomeError.reviewRequired }
         guard let client = data.clients.first(where: { $0.id == clientID }),
               client.activityKind == .lesson, client.billingMode == .hourly else { throw HistoricalIncomeError.missingClient }
         if year < PivotDate.calendar.component(.year, from: now), confirmedRateCents == nil {

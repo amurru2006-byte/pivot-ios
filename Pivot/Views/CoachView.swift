@@ -664,8 +664,11 @@ struct CoachView: View {
                 }
                 savedDraft = CoachSavedCalendarDraft(messageID: replyMessage.id, userMessageID: userMessage.id, dayKey: replyMessage.dayKey, draft: draft)
             }
-            let savedBatch = response.mode == .actions ? try CoachCalendarBatch.make(response.actions ?? [], sources: snapshot.sources,
-                messageID: replyMessage.id, now: currentTime, data: currentData) : nil
+            let savedBatch: CoachCalendarBatch?
+            if response.mode == .actions {
+                savedBatch = try CoachCalendarBatch.make(response.actions ?? [], sources: snapshot.sources,
+                    messageID: replyMessage.id, now: currentTime, data: currentData)
+            } else { savedBatch = nil }
             guard store.change({ data in
                 var coach = data.coachState
                 coach.messages.append(userMessage)

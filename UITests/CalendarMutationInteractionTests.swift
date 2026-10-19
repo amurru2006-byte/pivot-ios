@@ -83,6 +83,8 @@ final class CalendarMutationInteractionTests: XCTestCase {
         tap(batch(app), app); tap(app.buttons["coach-mutations-review"], app)
         let alert = app.alerts["Confermare le modifiche selezionate?"]
         XCTAssertTrue(alert.waitForExistence(timeout: 8)); alert.buttons.matching(identifier: "coach-mutations-confirm").firstMatch.tap()
+        let storageAlert = app.alerts["Pivot"]
+        if storageAlert.waitForExistence(timeout: 5) { storageAlert.buttons["OK"].tap() }
         let error = app.staticTexts["coach-mutations-error"]
         XCTAssertTrue(error.waitForExistence(timeout: 15)); XCTAssertTrue(error.label.contains("non è salvata su disco"), error.label)
         tap(app.navigationBars["Modifiche proposte"].buttons["Chiudi"], app)

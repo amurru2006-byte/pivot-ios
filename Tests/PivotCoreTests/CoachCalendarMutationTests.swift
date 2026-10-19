@@ -90,6 +90,32 @@ final class CoachCalendarMutationTests: XCTestCase {
         XCTAssertThrowsError(try HistoricalIncome.quote(source, clientID: data.clients[0].id, year: 2026, now: now, data: data))
         XCTAssertTrue(data.income.isEmpty); XCTAssertTrue(data.payments.isEmpty)
     }
+    func testCapturedExternalUIDKeepsRestoreIdentityAfterNativeIdentifierChanges() {
+        let original = item(); var restored = original
+        restored.id = "restored-logical"; restored.eventIdentifier = "restored-native"; restored.externalIdentifier = "restored-captured-uid"
+        var entry = archive(original); entry.status = .restored; entry.committedAt = now; entry.restoredAt = now; entry.restoredEvent = restored
+        var data = AppData(); data.calendarActionArchive = [entry]
+        data.calendarRestorations = [.init(archiveID: entry.id, original: original, restored: restored)]
+        var synchronized = restored; synchronized.id = "new-sync-logical"; synchronized.eventIdentifier = "new-sync-native"
+        XCTAssertEqual(CalendarArchive.logicalEvent(synchronized, data: data).id, original.id)
+        synchronized.calendarIdentifier = "unrelated-calendar"
+        XCTAssertEqual(CalendarArchive.logicalEvent(synchronized, data: data).id, synchronized.id)
+    }
+    func testUnknownChangedIdentityRequiresReviewInsteadOfDuplicatingMoney() throws {
+        var original = item(); original.kind = .tutoring
+        var restored = original; restored.id = "restored-logical"; restored.eventIdentifier = "restored-native"
+        var entry = archive(original); entry.status = .restored; entry.committedAt = now; entry.restoredAt = now; entry.restoredEvent = restored
+        var data = AppData(); data.calendarActionArchive = [entry]
+        data.calendarRestorations = [.init(archiveID: entry.id, original: original, restored: restored)]
+        let client = Client(name: "Contatto Test", rateCents: 1000); data.clients = [client]
+        var synchronized = restored; synchronized.id = "unresolved-logical"; synchronized.eventIdentifier = "unresolved-native"
+        XCTAssertEqual(CalendarArchive.logicalEvent(synchronized, data: data).id, synchronized.id)
+        XCTAssertTrue(CalendarArchive.requiresIdentityReview(synchronized, data: data))
+        XCTAssertThrowsError(try HistoricalIncome.quote(synchronized, clientID: client.id, year: 2026, now: now, data: data))
+        var record = EventRecord(id: synchronized.id, snapshot: synchronized)
+        XCTAssertNil(TutoringLedger.register(event: synchronized, record: &record, client: client, amountCents: 1000, collectedCents: 1000, paymentDate: now, data: &data))
+        XCTAssertTrue(data.income.isEmpty); XCTAssertTrue(data.payments.isEmpty)
+    }
     func testBatchBackupRequiresConversationProvenanceAndDoesNotTouchFinance() throws {
         var data = AppData(); let message = CoachMessage(dayKey: PivotDate.key(now), role: .coach, text: "Proposta")
         let batch = try CoachCalendarBatch.make([edit()], sources: ["e0": item()], messageID: message.id, now: now, data: data)
