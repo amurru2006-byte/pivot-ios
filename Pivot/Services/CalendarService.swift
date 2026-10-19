@@ -68,11 +68,17 @@ final class CalendarService: ObservableObject {
         isRefreshing = false
     }
     func apply(_ move: PlanMove, data: AppData) async throws { try await worker.apply(move, data: data) }
-    func reviewCreation(_ draft: CoachCalendarDraft, calendarID: String, settings: Settings) async throws -> [CalendarItem] {
-        try await worker.reviewCreation(draft, calendarID: calendarID, settings: settings)
+    func reviewCreation(_ draft: CoachCalendarDraft, calendarID: String, settings: Settings,
+                        options: CalendarCreationOptions = .init(), creationID: UUID? = nil) async throws -> [CalendarItem] {
+        try await worker.reviewCreation(draft, calendarID: calendarID, settings: settings, options: options,
+            creationID: creationID ?? draft.id, mapsConsent: AppleMapsService.shared.consentGranted)
     }
-    func create(_ draft: CoachCalendarDraft, calendarID: String, expectedConflicts: [CalendarItem], settings: Settings) async throws -> (item: CalendarItem, existing: Bool) {
-        let result = try await worker.create(draft, calendarID: calendarID, expectedConflicts: expectedConflicts, settings: settings)
+    func create(_ draft: CoachCalendarDraft, calendarID: String, expectedConflicts: [CalendarItem], settings: Settings,
+                options: CalendarCreationOptions = .init(), creationID: UUID? = nil, verifyOnly: Bool = false) async throws -> (item: CalendarItem, existing: Bool) {
+        guard !mutationInProgress else { throw CalendarFailure.changed }
+        mutationInProgress = true; defer { mutationInProgress = false }
+        let result = try await worker.create(draft, calendarID: calendarID, expectedConflicts: expectedConflicts, settings: settings,
+            options: options, creationID: creationID ?? draft.id, mapsConsent: AppleMapsService.shared.consentGranted, verifyOnly: verifyOnly)
         invalidateSnapshot(); await refresh(settings: settings, force: true)
         return result
     }
@@ -265,62 +271,100 @@ private actor CalendarWorker {
         }.sorted { $0.id < $1.id }
     }
     #endif
-    func reviewCreation(_ draft: CoachCalendarDraft, calendarID: String, settings: Settings) throws -> [CalendarItem] {
+    func reviewCreation(_ draft: CoachCalendarDraft, calendarID: String, settings: Settings,
+                        options: CalendarCreationOptions, creationID: UUID, mapsConsent: Bool) throws -> [CalendarItem] {
+        guard draft.problem(now: Date(), calendarID: calendarID) == nil else { throw CalendarFailure.notWritable }
+        if let message = options.problem(draft: draft, now: Date(), mapsConsent: mapsConsent) { throw CalendarFailure.invalidCreationOptions(message) }
+        let parts = options.parts(draft: draft, creationID: creationID)
+        guard let start = parts.first?.start, let end = parts.last?.end else { throw CalendarFailure.notWritable }
         #if DEBUG && targetEnvironment(simulator)
         if creationFixture {
-            guard calendarID == "create-fixture", draft.problem(now: Date(), calendarID: calendarID) == nil else { throw CalendarFailure.notWritable }
-            return createdFixtureItems.filter { $0.start < draft.end! && $0.end > draft.start! }.sorted { $0.id < $1.id }
+            guard calendarID == "create-fixture" else { throw CalendarFailure.notWritable }
+            return CalendarCreationBundle.conflicts(parts: parts, events: createdFixtureItems)
         }
         #endif
         guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { throw CalendarFailure.noAccess }
         guard draft.problem(now: Date(), calendarID: calendarID) == nil,
               let calendar = eventStore.calendar(withIdentifier: calendarID), calendar.allowsContentModifications,
-              let start = draft.start, let end = draft.end else { throw CalendarFailure.notWritable }
+              !parts.isEmpty else { throw CalendarFailure.notWritable }
         let calendars = eventStore.calendars(for: .event).filter {
             !settings.excludedCalendarIDs.contains($0.calendarIdentifier) && !settings.excludedCalendarTitles.contains($0.title)
                 && !(settings.excludeHolidays && Self.isHoliday($0.title))
         }
         guard !calendars.isEmpty else { return [] }
         let predicate = eventStore.predicateForEvents(withStart: start, end: end, calendars: calendars)
-        return eventStore.events(matching: predicate).filter { $0.startDate < end && $0.endDate > start }
+        return eventStore.events(matching: predicate).filter { $0.startDate < end && $0.endDate > start && $0.availability != .free && $0.status != .canceled }
             .map(Self.item).sorted { $0.id < $1.id }
     }
-    func create(_ draft: CoachCalendarDraft, calendarID: String, expectedConflicts: [CalendarItem], settings: Settings) throws -> (item: CalendarItem, existing: Bool) {
-        let fresh = try reviewCreation(draft, calendarID: calendarID, settings: settings)
+    func create(_ draft: CoachCalendarDraft, calendarID: String, expectedConflicts: [CalendarItem], settings: Settings,
+                options: CalendarCreationOptions, creationID: UUID, mapsConsent: Bool, verifyOnly: Bool) throws -> (item: CalendarItem, existing: Bool) {
+        guard options.isValid, draft.problem(now: Date(), calendarID: calendarID) == nil else { throw CalendarFailure.notWritable }
+        // Reconciliation is a read, not a new use of an expired route or permission.
+        let fresh: [CalendarItem]
+        if verifyOnly { fresh = [] }
+        else { fresh = try reviewCreation(draft, calendarID: calendarID, settings: settings, options: options, creationID: creationID, mapsConsent: mapsConsent) }
+        let parts = options.parts(draft: draft, creationID: creationID)
+        guard let main = parts.last else { throw CalendarFailure.notWritable }
         #if DEBUG && targetEnvironment(simulator)
         if creationFixture {
-            if let existing = createdFixtureItems.first(where: { $0.title == draft.title && $0.start == draft.start && $0.end == draft.end }) {
-                try draft.checkExistingNotes(existing.notes); return (existing, true)
+            let matches = parts.compactMap { part in createdFixtureItems.first { $0.eventIdentifier == part.marker } }
+            if !matches.isEmpty {
+                guard CalendarCreationBundle.existing(parts: parts, items: matches), let existing = matches.last else { throw CalendarFailure.uncertainOccurrence }
+                return (existing, true)
             }
+            guard !verifyOnly else { throw CalendarFailure.uncertainOccurrence }
             guard fresh == expectedConflicts else { throw CalendarFailure.changed }
-            let item = CalendarItem(id: draft.id.uuidString, eventIdentifier: draft.id.uuidString, calendarIdentifier: calendarID,
-                                    calendarTitle: "Personale test", title: draft.title, start: draft.start!, end: draft.end!,
-                                    location: "", notes: draft.notes, colorHex: "7EE6CD", isAllDay: false, writable: true, kind: .other)
-            createdFixtureItems.append(item); return (item, false)
+            let added = parts.map { part in CalendarItem(id: part.marker, eventIdentifier: part.marker, calendarIdentifier: calendarID,
+                calendarTitle: "Personale test", title: part.title, start: part.start, end: part.end,
+                location: part.location, notes: part.notes, colorHex: "7EE6CD", isAllDay: false, writable: true, kind: .other) }
+            createdFixtureItems.append(contentsOf: added); return (added.last!, false)
         }
         #endif
         guard let target = eventStore.calendar(withIdentifier: calendarID), target.allowsContentModifications,
-              let start = draft.start, let end = draft.end else { throw CalendarFailure.notWritable }
-        let marker = URL(string: "pivot://created/" + draft.id.uuidString)!
-        let predicate = eventStore.predicateForEvents(withStart: start, end: end, calendars: [target])
+              let start = parts.first?.start else { throw CalendarFailure.notWritable }
+        let predicate = eventStore.predicateForEvents(withStart: start, end: main.end, calendars: [target])
+        let candidates = eventStore.events(matching: predicate)
         // A retry after save succeeded must not create another copy, even if the
         // previous UI acknowledgement or local conversation write failed.
-        if let existing = eventStore.events(matching: predicate).first(where: {
-            $0.url == marker || ($0.startDate == start && $0.endDate == end &&
-                EventCoalescer.normalized($0.title ?? "") == EventCoalescer.normalized(draft.title))
-        }) {
-            let item = Self.item(existing)
-            try draft.checkExistingNotes(item.notes)
-            return (item, true)
+        let matches = parts.map { part in candidates.filter { $0.url?.absoluteString == part.marker } }
+        if matches.contains(where: { !$0.isEmpty }) {
+            guard matches.allSatisfy({ $0.count == 1 }) else { throw CalendarFailure.uncertainOccurrence }
+            let existing = matches.compactMap(\.first)
+            guard CalendarCreationBundle.existing(parts: parts, items: existing.map(Self.item)),
+                  zip(parts, existing).allSatisfy({ part, event in
+                      event.availability.rawValue == part.availability && !event.isAllDay
+                          && (event.alarms ?? []).count == (part.alertMinutes == nil ? 0 : 1)
+                          && (part.alertMinutes.map { minutes in event.alarms?.first?.relativeOffset == -Double(minutes) * 60 } ?? true)
+                  }) else { throw CalendarFailure.uncertainOccurrence }
+            return (Self.item(existing.last!), true)
         }
+        if let duplicate = candidates.first(where: { $0.startDate == main.start && $0.endDate == main.end &&
+            EventCoalescer.normalized($0.title ?? "") == EventCoalescer.normalized(main.title) }) {
+            guard parts.count == 1, (duplicate.location ?? "") == main.location else { throw CalendarFailure.uncertainOccurrence }
+            try draft.checkExistingNotes(Self.item(duplicate).notes)
+            return (Self.item(duplicate), true)
+        }
+        guard !verifyOnly else { throw CalendarFailure.uncertainOccurrence }
         guard fresh == expectedConflicts else { throw CalendarFailure.changed }
         try Task.checkCancellation()
-        let event = EKEvent(eventStore: eventStore)
-        event.calendar = target; event.title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        event.startDate = start; event.endDate = end; event.timeZone = PivotDate.calendar.timeZone
-        event.notes = draft.notes; event.url = marker
-        try eventStore.save(event, span: .thisEvent, commit: true)
-        return (Self.item(event), false)
+        var staged: [EKEvent] = []
+        do {
+            for part in parts {
+                let event = EKEvent(eventStore: eventStore)
+                event.calendar = target; event.title = part.title; event.startDate = part.start; event.endDate = part.end
+                event.timeZone = PivotDate.calendar.timeZone; event.location = part.location; event.notes = part.notes
+                event.url = URL(string: part.marker); event.availability = EKEventAvailability(rawValue: part.availability) ?? .busy
+                if let minutes = part.alertMinutes { event.addAlarm(EKAlarm(relativeOffset: -Double(minutes) * 60)) }
+                try eventStore.save(event, span: .thisEvent, commit: false); staged.append(event)
+            }
+            // Stage both before the one commit. A failure is not evidence that
+            // nothing reached the calendar: markers detect partial/unknown retries.
+            try eventStore.commit()
+            return (Self.item(staged.last!), false)
+        } catch {
+            eventStore.reset()
+            throw CalendarFailure.creationOptions("Salvataggio non confermato. Controlla attività e spostamento nel Calendario prima di riprovare: non aggiungere copie manualmente.")
+        }
     }
     func requestAccess() async throws -> Bool { try await eventStore.requestFullAccessToEvents() }
     private func enabled(_ calendar: EKCalendar, settings: Settings) -> Bool {
@@ -761,10 +805,15 @@ private actor CalendarWorker {
             title: event.title ?? "Evento", start: event.startDate, end: event.endDate,
             location: event.location ?? "", notes: CalendarNoteText.plain(event.notes ?? ""),
             colorHex: Self.hex(event.calendar.cgColor), isAllDay: event.isAllDay,
-            writable: event.calendar.allowsContentModifications, kind: .classify(title: event.title ?? "", calendar: event.calendar.title),
+            writable: event.calendar.allowsContentModifications,
+            kind: Self.isTravelMarker(event.url) ? .other : .classify(title: event.title ?? "", calendar: event.calendar.title),
             sourceIdentifier: event.calendar.source.sourceIdentifier, sourceTitle: event.calendar.source.title,
             calendarModifiedAt: event.lastModifiedDate, recurring: recurring, occurrenceAnchor: anchor,
             calendarRGB: Self.rgb(event.calendar.cgColor), calendarCreatedAt: event.creationDate)
+    }
+    private static func isTravelMarker(_ url: URL?) -> Bool {
+        guard let url, url.scheme == "pivot", url.host == "travel" else { return false }
+        return UUID(uuidString: String(url.path.dropFirst())) != nil
     }
     static func hex(_ color: CGColor) -> String {
         let rgb = rgb(color)
@@ -780,9 +829,10 @@ private actor CalendarWorker {
 }
 enum CalendarFailure: LocalizedError {
     case noAccess, changed, notWritable, unsupportedMetadata, archiveNotSaved, acknowledgementNotSaved, uncertainOccurrence
+    case creationOptions(String), invalidCreationOptions(String)
     var stoppedBeforeCalendarWrite: Bool {
         switch self {
-        case .noAccess, .changed, .notWritable, .unsupportedMetadata: true
+        case .noAccess, .changed, .notWritable, .unsupportedMetadata, .invalidCreationOptions: true
         default: false
         }
     }
@@ -795,6 +845,7 @@ enum CalendarFailure: LocalizedError {
         case .archiveNotSaved: return "La copia di recupero non è salvata su disco. Non avvio altre modifiche al Calendario: completa il salvataggio nelle Impostazioni."
         case .acknowledgementNotSaved: return "Il Calendario potrebbe essere già cambiato, ma la conferma locale non è ancora salvata. Non ripetere l’operazione: verifica l’esito nello storico modifiche."
         case .uncertainOccurrence: return "L’evento è diverso dall’originale e dall’esito previsto. Non lo sovrascrivo e non creo copie: verifica questa occorrenza nel Calendario."
+        case .creationOptions(let message), .invalidCreationOptions(let message): return message
         }
     }
 }
