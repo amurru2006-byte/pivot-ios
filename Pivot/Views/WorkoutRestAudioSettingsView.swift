@@ -17,8 +17,13 @@ struct WorkoutRestAudioSettingsView: View {
                 Text("L’interruzione della musica è gestita da iOS insieme all’allarme, non da un secondo timer. Non cambio il volume generale del telefono e non riproduco un bip separato nelle cuffie. Uscita audio e comportamento del lettore musicale vanno verificati sul dispositivo.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
                 if settings.enabled {
-                    Label("Attivo", systemImage: "checkmark.circle.fill").foregroundStyle(PivotTheme.accent)
+                    Label(audio.authorized ? "Attivo" : "Da autorizzare in iOS", systemImage: audio.authorized ? "checkmark.circle.fill" : "exclamationmark.triangle")
+                        .foregroundStyle(audio.authorized ? PivotTheme.accent : PivotTheme.amber)
                         .accessibilityIdentifier("rest-audio-enabled")
+                    if !audio.authorized {
+                        Button("Autorizza gli allarmi") { Task { await audio.enable(store: store) } }
+                            .buttonStyle(PivotPrimaryButton())
+                    }
                     Button("Disattiva allarme recupero") { Task { await audio.disable(store: store) } }
                         .buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("rest-audio-disable")
                 } else {
