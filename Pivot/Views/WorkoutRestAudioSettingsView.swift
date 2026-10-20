@@ -62,7 +62,7 @@ struct WorkoutRestAudioSettingsView: View {
                 NavigationLink { WorkoutAlarmProbeView() } label: { Label("Prova con cuffie e schermo spento", systemImage: "testtube.2") }
             }
         }.navigationTitle("Audio recupero")
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Fine") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Fine") { dismiss() }.accessibilityIdentifier("rest-audio-close") } }
             .onAppear { volumeStep = Double(settings.volumeStep) }
     }
     private func saveVolume() {

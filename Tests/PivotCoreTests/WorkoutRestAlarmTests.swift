@@ -14,6 +14,11 @@ final class WorkoutRestAlarmTests: XCTestCase {
         let legacy = try BackupCodec.decode(BackupCodec.encode(data))
         XCTAssertNil(legacy.settings.workoutRestAudio)
         XCTAssertEqual(WorkoutRestAlarm.decision(session: session(), settings: .init(), now: now), .cancel)
+        let restored = enabled.requiringDeviceActivation
+        XCTAssertFalse(restored.enabled)
+        XCTAssertEqual(restored.volumeStep, enabled.volumeStep)
+        XCTAssertEqual(WorkoutRestAlarm.decision(session: session(), settings: restored, now: now), .cancel,
+                       "An imported workout autosave cannot activate an audible alarm")
     }
     func testOnlyFutureRestIsScheduledAtItsActualDeadline() {
         let session = session()
