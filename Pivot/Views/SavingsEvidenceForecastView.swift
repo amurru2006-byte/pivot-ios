@@ -95,10 +95,14 @@ struct SavingsEvidenceForecastView: View {
                 Text(explanation(limitation)).font(.subheadline).accessibilityIdentifier("evidence-limit-" + limitation.rawValue)
             }
             if !value.weeks.isEmpty {
-                Text("\(Money.display(average(value.weeks.prefix(4).map(\.savingCents)))) a settimana")
+                Text("\(Money.display(max(0, average(value.weeks.prefix(4).map(\.savingCents))))) a settimana")
                     .font(.title2.bold()).accessibilityIdentifier("evidence-saving-weekly")
                 Text("Quota \(value.reservePercent)% degli incassi ordinari previsti, dopo le spese previste. Non tutti i guadagni sono già incassati.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
+                if value.weeks.prefix(4).contains(where: { $0.savingCents < 0 }) {
+                    Text("Alcune settimane prevedono spese superiori agli incassi: quel disavanzo riduce il margine successivo.")
+                        .font(.caption).foregroundStyle(PivotTheme.amber)
+                }
                 Text("Mancano \(Money.display(value.remainingCents))").font(.headline)
                 if let date = value.completionDate {
                     Text(value.remainingCents == 0 ? "Obiettivo già coperto con questa ipotesi." : "Stima centrale: " + DisplayDate.label(date, format: "d MMM yyyy"))
