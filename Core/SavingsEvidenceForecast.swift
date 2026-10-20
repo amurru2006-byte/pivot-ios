@@ -53,7 +53,9 @@ struct SavingsEvidenceForecast: Equatable {
         func portion(_ received: Int, _ spent: Int) -> Int {
             // Valid series are capped at 10^12 cents. Multiplication by <=100
             // remains safe on all supported iPhone architectures.
-            max(0, received - spent) * reservePercent / 100
+            // Keep negative margins: clamping each week to zero would erase
+            // expensive weeks and make a later contribution appear affordable.
+            (received - spent) * reservePercent / 100
         }
         if let cash, let spending {
             // Element zero is a NOWCAST for the current, partly elapsed week.
@@ -82,7 +84,7 @@ struct SavingsEvidenceForecast: Equatable {
         }
         let beforeDeadline: Int? = goal.deadline.flatMap { deadline in
             guard !weeks.isEmpty else { return nil }
-            return weeks.filter { close($0.start) <= deadline }.reduce(0) { $0 + $1.savingCents }
+            return max(0, weeks.filter { close($0.start) <= deadline }.reduce(0) { $0 + $1.savingCents })
         }
         return .init(income: income, cash: cash, spending: spending, limitations: limitations, weeks: weeks,
                      remainingCents: scenario.remainingCents, completionDate: reaching { $0.savingCents },

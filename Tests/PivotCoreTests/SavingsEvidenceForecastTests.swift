@@ -63,7 +63,8 @@ final class SavingsEvidenceForecastTests: XCTestCase {
     }
     func testNoInventedDatesForNegativeNetSmallSampleOrOutOfHorizon() throws {
         let (data, input, id) = fixture(cash: 1000, expenses: 2000)
-        XCTAssertTrue(try make(data, input, id).weeks.allSatisfy { $0.savingCents == 0 })
+        XCTAssertTrue(try make(data, input, id).weeks.allSatisfy { $0.savingCents == -1000 },
+            "An expensive week must not be erased from the cumulative margin")
         XCTAssertNil(try make(data, input, id).completionDate)
         let (_, small, _) = fixture(count: 8)
         let provisional = try make(data, small, id)
