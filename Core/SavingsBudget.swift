@@ -8,6 +8,7 @@ struct SavingsGoal: Codable, Identifiable, Equatable {
     var category: Category = .other
     var deadline: Date? = nil
     var archived: Bool = false
+    var weeklyPlan: SavingsWeeklyPlan? = nil
     // The editor asks for a day, not a time. A hidden time retained by the
     // DatePicker must not change whether that day's contribution is included.
     var deadlineEndExclusive: Date? {
@@ -98,7 +99,8 @@ enum SavingsAccounting {
               Set(budget.goals.map(\.id)).count == budget.goals.count,
               Set(budget.expenses.map(\.id)).count == budget.expenses.count,
               Set(budget.allocations.map(\.id)).count == budget.allocations.count,
-              budget.goals.allSatisfy({ !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (1...maximumMovementCents).contains($0.targetCents) }),
+              budget.goals.allSatisfy({ !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (1...maximumMovementCents).contains($0.targetCents)
+                  && ($0.weeklyPlan?.isValid ?? true) }),
               budget.expenses.allSatisfy({ (1...maximumMovementCents).contains($0.amountCents)
                   && ($0.revisions ?? []).allSatisfy { (1...maximumMovementCents).contains($0.amountCents) } }) else { throw SavingsBudgetError.invalidData }
         var reserved: [UUID: Int] = [:]
