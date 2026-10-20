@@ -387,6 +387,7 @@ struct AppData: Codable {
     var strengthProfile: StrengthProfile? = nil
     var incomeEdits: [IncomeEdit]? = nil
     var savingsBudget: SavingsBudget? = nil
+    var incomeObservationCoverage: IncomeObservationCoverage? = nil
     var calendarActionArchive: [ArchivedCalendarMutation]? = nil
     var calendarRestorations: [CalendarRestorationLink]? = nil
 }
