@@ -116,6 +116,7 @@ struct OrdinaryIncomeProjection: Equatable {
     var observations: Int
     var backtestCount: Int
     var meanAbsoluteErrorCents: Int?
+    var rootMeanSquaredErrorCents: Int?
     var provisional: Bool
     var weeks: [Week]
 
@@ -144,7 +145,9 @@ struct OrdinaryIncomeProjection: Equatable {
         if cuts.count < 4 { model = .recentMedian }
         else {
             model = Model.allCases.min { a, b in
-                let x = mean(errors[a] ?? []), y = mean(errors[b] ?? [])
+                // Cumulative earning capacity needs an expected amount. MAE
+                // alone can prefer zero on intermittent but recurring work.
+                let x = rootMeanSquare(errors[a] ?? []), y = rootMeanSquare(errors[b] ?? [])
                 if x == y { return Model.allCases.firstIndex(of: a)! < Model.allCases.firstIndex(of: b)! }
                 return x < y
             } ?? .recentMedian
@@ -162,6 +165,7 @@ struct OrdinaryIncomeProjection: Equatable {
         }
         return .init(model: model, observations: values.count, backtestCount: selected.count,
                      meanAbsoluteErrorCents: hasBacktest ? cents(mean(selected)) : nil,
+                     rootMeanSquaredErrorCents: hasBacktest ? cents(rootMeanSquare(selected)) : nil,
                      provisional: !hasBacktest, weeks: projected)
     }
 
@@ -180,6 +184,7 @@ struct OrdinaryIncomeProjection: Equatable {
         }
     }
     private static func mean(_ values: [Double]) -> Double { values.isEmpty ? 0 : values.reduce(0, +) / Double(values.count) }
+    private static func rootMeanSquare(_ values: [Double]) -> Double { sqrt(mean(values.map { $0 * $0 })) }
     private static func quantile(_ values: [Double], fraction: Double) -> Double {
         let sorted = values.sorted()
         guard !sorted.isEmpty else { return 0 }
