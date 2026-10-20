@@ -1,0 +1,42 @@
+name: Verifica previsioni locali e Salvadanaio V8
+on:
+  push:
+    branches: ['codex/pivot-v8-income-evidence']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pivot-income-evidence-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Core e gateway senza servizi reali
+        run: |
+          swift test
+          node --test Backend/coach-gateway/worker.test.mjs
+          python3 -m unittest discover -s Scripts -p 'test_*.py'
+  native:
+    needs: core
+    runs-on: macos-15-intel
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash Scripts/prepare-ios-ci.sh
+      - name: Dati completi o mancanti senza creare movimenti
+        env:
+          PIVOT_UI_ONLY_TESTING: PivotUITests/SavingsEvidenceInteractionTests
+        run: bash Scripts/preview-ui.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Pivot-income-evidence-preflight
+          path: |
+            build/qr-preflight-build.log
+            build/qr-preflight-tests.log
+            build/Previews/QRPreflight/
+          retention-days: 3
+          if-no-files-found: ignore

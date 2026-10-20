@@ -1,4 +1,4 @@
-name: Verifica contatti e diagnosi salvataggio V8
+name: Diagnosi presentazione e persistenza V8
 on:
   push:
     branches: ['codex/pivot-v8-086-contact-activity']
@@ -28,7 +28,7 @@ jobs:
       - run: bash Scripts/prepare-ios-ci.sh
       - name: Contatti, creazione e archivio senza servizi reali
         env:
-          PIVOT_UI_ONLY_TESTING: v8-086-contact-save-regression
+          PIVOT_UI_ONLY_TESTING: v8-086-presentation-regression
         run: bash Scripts/preview-ui.sh
       - uses: actions/upload-artifact@v4
         if: always()

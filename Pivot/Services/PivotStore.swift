@@ -145,6 +145,24 @@ final class PivotStore: ObservableObject {
                data.savingsBudget == nil, data.clients.isEmpty, data.payments.isEmpty, data.ledger?.openingCents.isEmpty != false {
                 change { $0.ledger = .init(openingCents: [String(PivotDate.calendar.component(.year, from: Date())): 35_000]) }
             }
+            if !locked, ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--savings-evidence-test"),
+               UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_SAVINGS_ID"] ?? "") != nil, data.clients.isEmpty {
+                change { data in
+                    let client = Client(name: "Cliente ricorrente QA", rateCents: 10_000)
+                    data.clients = [client]
+                    var budget = SavingsBudget(openingFundsCents: 35_000)
+                    let monday = StudentPayments.week(containing: Date()).start
+                    for offset in -16 ... -1 {
+                        let date = PivotDate.calendar.date(byAdding: .weekOfYear, value: offset, to: monday)!.addingTimeInterval(3600)
+                        let entry = IncomeEntry(clientID: client.id, clientName: client.name, date: date,
+                            minutes: 60, amountCents: 10_000, paidCents: 10_000)
+                        data.income.append(entry)
+                        data.payments.append(.init(incomeID: entry.id, clientName: client.name, date: date, amountCents: 10_000))
+                        budget.expenses.append(.init(amountCents: 2000, date: date, description: "Spese aggregate QA"))
+                    }
+                    data.savingsBudget = budget
+                }
+            }
             if !locked, ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--financial-corrections-test"),
                UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_FINANCE_ID"] ?? "") != nil, data.clients.isEmpty {
                 let client = Client(id: UUID(uuidString: "55555555-5555-4555-8555-555555555551")!, name: "Marta Test", rateCents: 1500)
