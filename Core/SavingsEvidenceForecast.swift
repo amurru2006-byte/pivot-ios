@@ -82,9 +82,9 @@ struct SavingsEvidenceForecast: Equatable {
             }
             return nil // No invented extrapolated date outside this horizon.
         }
-        let beforeDeadline: Int? = goal.deadline.flatMap { deadline in
+        let beforeDeadline: Int? = goal.deadlineEndExclusive.flatMap { deadline in
             guard !weeks.isEmpty else { return nil }
-            return max(0, weeks.filter { close($0.start) <= deadline }.reduce(0) { $0 + $1.savingCents })
+            return max(0, weeks.filter { close($0.start) < deadline }.reduce(0) { $0 + $1.savingCents })
         }
         return .init(income: income, cash: cash, spending: spending, limitations: limitations, weeks: weeks,
                      remainingCents: scenario.remainingCents, completionDate: reaching { $0.savingCents },

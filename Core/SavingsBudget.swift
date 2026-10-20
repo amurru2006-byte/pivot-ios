@@ -8,6 +8,13 @@ struct SavingsGoal: Codable, Identifiable, Equatable {
     var category: Category = .other
     var deadline: Date? = nil
     var archived: Bool = false
+    // The editor asks for a day, not a time. A hidden time retained by the
+    // DatePicker must not change whether that day's contribution is included.
+    var deadlineEndExclusive: Date? {
+        guard let deadline, deadline.timeIntervalSinceReferenceDate.isFinite else { return nil }
+        return PivotDate.calendar.date(byAdding: .day, value: 1,
+            to: PivotDate.calendar.startOfDay(for: deadline))
+    }
 }
 
 struct BudgetExpense: Codable, Identifiable, Equatable {

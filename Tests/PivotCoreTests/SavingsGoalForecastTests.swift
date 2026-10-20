@@ -47,7 +47,30 @@ final class SavingsGoalForecastTests: XCTestCase {
         data.savingsBudget?.goals[0].deadline = now.addingTimeInterval(3 * 86400)
         XCTAssertEqual(make(data)?.contributionsBeforeDeadline, 0); XCTAssertNil(make(data)?.requiredWeeklyCents)
         data.savingsBudget?.goals[0].deadline = now.addingTimeInterval(-1)
+        XCTAssertEqual(make(data)?.deadlineMissed, false, "The selected day has not ended")
+        data.savingsBudget?.goals[0].deadline = PivotDate.calendar.date(byAdding: .day, value: -1, to: now)
         XCTAssertEqual(make(data)?.deadlineMissed, true)
+    }
+    func testDateOnlyDeadlineIncludesTheWholeChosenDayWithoutCountingNextMidnight() throws {
+        var data = data()
+        let contribution = PivotDate.calendar.date(byAdding: .weekOfYear, value: 1, to: now)!
+        let day = PivotDate.calendar.startOfDay(for: contribution)
+        data.savingsBudget?.goals[0].deadline = day
+        XCTAssertEqual(make(data)?.contributionsBeforeDeadline, 1)
+        data.savingsBudget?.goals[0].deadline = day.addingTimeInterval(20 * 3600)
+        XCTAssertEqual(make(data)?.contributionsBeforeDeadline, 1)
+        let midnight = PivotDate.calendar.startOfDay(for: now)
+        let nextWeek = PivotDate.calendar.date(byAdding: .weekOfYear, value: 1, to: midnight)!
+        data.savingsBudget?.goals[0].deadline = PivotDate.calendar.date(byAdding: .day, value: -1, to: nextWeek)
+        let value = SavingsGoalForecast.make(goalID: data.savingsBudget!.goals[0].id, data: data,
+            upfrontCents: 0, weeklyCents: 1000, now: midnight)
+        XCTAssertEqual(value?.contributionsBeforeDeadline, 0)
+        for (month, day, hours) in [(3, 29, 23), (10, 25, 25)] {
+            let date = PivotDate.calendar.date(from: DateComponents(year: 2026, month: month, day: day))!
+            let goal = SavingsGoal(name: "Scadenza DST QA", targetCents: 1000, deadline: date)
+            XCTAssertEqual(goal.deadlineEndExclusive?.timeIntervalSince(date), Double(hours * 3600),
+                "Use calendar days, not a fixed 24-hour deadline")
+        }
     }
     func testArchivedGoalAndUnbalancedFundsDoNotProduceAForecast() {
         var data = data()
