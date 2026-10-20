@@ -144,6 +144,13 @@ final class PivotStore: ObservableObject {
                 change { data in
                     data.clients = [client, duplicate]; data.income = [entry]
                     data.payments = [Payment(id: UUID(uuidString: "55555555-5555-4555-8555-555555555554")!, incomeID: entry.id, clientName: entry.clientName, date: entry.date, amountCents: 1500)]
+                    if ProcessInfo.processInfo.arguments.contains("--contact-activity-test") {
+                        let date = PivotDate.calendar.date(byAdding: .day, value: -90, to: Date())!
+                        data.clients[0].name = "Contatto Attivo QA"
+                        data.clients[1].name = "Contatto Inattivo QA"
+                        data.income[0].clientName = data.clients[1].name; data.income[0].date = date
+                        data.payments[0].clientName = data.clients[1].name; data.payments[0].date = date
+                    }
                     if ProcessInfo.processInfo.arguments.contains("--receipts-list-test") {
                         for offset in 1...6 {
                             let other = IncomeEntry(clientID: client.id, clientName: client.name, date: Date().addingTimeInterval(Double(-offset * 60)), minutes: 0, amountCents: 100, paidCents: 100)

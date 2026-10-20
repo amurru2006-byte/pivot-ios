@@ -213,6 +213,7 @@ struct Client: Codable, Identifiable, Equatable {
     var billing: IncomeBilling? = nil
     // Optional for backwards-compatible backups; never changes past receipts.
     var defaults: ClientDefaults? = nil
+    var activityState: ClientActivityState? = nil
     var activityKind: IncomeActivityKind { activity ?? .lesson }
     var billingMode: IncomeBilling { activityKind == .gift ? .fixed : billing ?? .hourly }
 }

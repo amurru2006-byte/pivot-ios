@@ -21,6 +21,11 @@ final class CalendarService: ObservableObject {
     @Published var error: String?
     @Published private(set) var lastRefresh: Date?
     @Published private(set) var mutationInProgress = false
+    @Published private(set) var contactActivity: ClientCalendarActivity?
+    @Published private(set) var contactActivityProblem: String?
+    @Published private(set) var checkingContactActivity = false
+    private var contactFilter: CalendarFilter?
+    private var contactRevision: UInt64 = 0
     private let worker = CalendarWorker()
     private var inFlight: Task<CalendarSnapshot, Never>?
     private var lastFilter: CalendarFilter?
@@ -87,6 +92,39 @@ final class CalendarService: ObservableObject {
         let items = try await worker.incomeHistory(year: year, calendarIDs: calendarIDs, settings: settings)
         try Task.checkCancellation()
         return items
+    }
+    /// Contact visibility has its own bounded history/future scan. Never extend
+    /// the home agenda, start cloud requests or write Calendar events for this.
+    @discardableResult func refreshContactActivity(store: PivotStore, force: Bool = false) async -> Bool {
+        guard !store.isLoading, !store.isRestoring, !store.locked, !checkingContactActivity else { return false }
+        #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--interaction-test"),
+           !ProcessInfo.processInfo.arguments.contains("--contact-activity-test") { return false }
+        #endif
+        let filter = CalendarFilter(store.data.settings)
+        let cached = !force && contactFilter == filter && contactRevision == invalidation
+            && contactActivity.map { Date().timeIntervalSince($0.observedAt) < 300 } == true
+        checkingContactActivity = true
+        defer { checkingContactActivity = false }
+        do {
+            let scan: ClientCalendarActivity
+            if cached, let contactActivity { scan = contactActivity }
+            else { scan = try await worker.contactActivity(settings: store.data.settings) }
+            try Task.checkCancellation()
+            guard !store.isRestoring, !store.locked, filter == CalendarFilter(store.data.settings) else { return false }
+            let data = store.data, version = data.updatedAt
+            let now = Date()
+            let clients = await Task.detached(priority: .utility) { ClientActivity.refreshed(data: data, scan: scan, now: now) }.value
+            guard !store.isRestoring, !store.locked, version == store.data.updatedAt else { return false }
+            contactActivity = scan; contactFilter = filter; contactRevision = invalidation
+            contactActivityProblem = scan.complete ? nil : "Lettura del calendario incompleta: nessuna disattivazione automatica."
+            if clients != store.data.clients { guard store.change({ $0.clients = clients }) else { return false } }
+            return scan.complete
+        } catch {
+            contactActivity = nil
+            contactActivityProblem = "Non riesco a verificare gli appuntamenti futuri. Il contatto resta invariato."
+            return false
+        }
     }
     func reviewMutations(batchID: UUID, actions: [CoachCalendarMutation], settings: Settings) async throws -> CalendarMutationReview {
         try await worker.reviewMutations(batchID: batchID, actions: actions, settings: settings)
@@ -657,6 +695,56 @@ private actor CalendarWorker {
         let predicate = eventStore.predicateForEvents(withStart: start, end: min(now, yearEnd), calendars: selected)
         return eventStore.events(matching: predicate).map(Self.item).filter { HistoricalIncome.isEligible($0, year: year, now: now) }
             .sorted { $0.start == $1.start ? $0.id < $1.id : $0.start < $1.start }
+    }
+    func contactActivity(settings: Settings) throws -> ClientCalendarActivity {
+        assert(!Thread.isMainThread, "Contact history must not block touch handling")
+        let now = Date(), calendar = PivotDate.calendar
+        guard let from = calendar.date(byAdding: .day, value: -91, to: now),
+              let through = calendar.date(byAdding: .year, value: 4, to: calendar.startOfDay(for: now)),
+              let limit = calendar.date(byAdding: .day, value: 2, to: through) else { throw CalendarFailure.changed }
+        #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--contact-activity-test") {
+            var items = interactionSnapshot().events
+            let date = calendar.date(byAdding: .day, value: 7, to: now)!
+            let id = "contact-activity-future-qa"
+            items.append(CalendarItem(id: id, eventIdentifier: id, calendarIdentifier: "interaction", calendarTitle: "Lavoro",
+                title: "Lezione Contatto Attivo QA", start: date, end: date.addingTimeInterval(3600), location: "", notes: "",
+                colorHex: "7EE6CD", isAllDay: false, writable: true, kind: .tutoring))
+            return .init(observedAt: Date(), from: from, through: limit, complete: true, items: items)
+        }
+        #endif
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { throw CalendarFailure.noAccess }
+        let selected = contactCalendars(settings: settings)
+        guard !selected.isEmpty else { throw CalendarFailure.changed }
+        let selectedIDs = Set(selected.map(\.calendarIdentifier))
+        var items: [String: CalendarItem] = [:], cursor = from
+        // EventKit predicates have a finite range. Year-sized chunks avoid
+        // silent truncation of this four-year future + 90-day history scan.
+        while cursor < limit {
+            try Task.checkCancellation()
+            let end = min(calendar.date(byAdding: .year, value: 1, to: cursor)!, limit)
+            let predicate = eventStore.predicateForEvents(withStart: cursor, end: end, calendars: selected)
+            let found = eventStore.events(matching: predicate)
+            guard found.count <= 20_000, items.count + found.count <= 100_000 else {
+                return .init(observedAt: Date(), from: from, through: cursor, complete: false, items: Array(items.values))
+            }
+            for event in found { let item = Self.item(event); items[item.id] = item }
+            cursor = end
+        }
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess,
+              Set(contactCalendars(settings: settings).map(\.calendarIdentifier)) == selectedIDs
+        else { throw CalendarFailure.changed }
+        return .init(observedAt: Date(), from: from, through: limit, complete: true,
+                     items: items.values.sorted { $0.start == $1.start ? $0.id < $1.id : $0.start < $1.start })
+    }
+    private func contactCalendars(settings: Settings) -> [EKCalendar] {
+        // A read-only shared lesson still prevents deactivation. Mutation
+        // eligibility (`enabled`) is deliberately NOT the read filter here.
+        eventStore.calendars(for: .event).filter {
+            !settings.excludedCalendarIDs.contains($0.calendarIdentifier)
+                && !settings.excludedCalendarTitles.contains($0.title)
+                && !(settings.excludeHolidays && Self.isHoliday($0.title))
+        }
     }
     func snapshot(settings: Settings) -> CalendarSnapshot {
         assert(!Thread.isMainThread, "Calendar reads must not block touch handling")

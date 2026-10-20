@@ -61,6 +61,18 @@ enum ClientRegistry {
         let sourceDefaults = source.defaults == ClientDefaults() ? nil : source.defaults
         let targetDefaults = target.defaults == ClientDefaults() ? nil : target.defaults
         guard sourceDefaults == nil || targetDefaults == nil || sourceDefaults == targetDefaults else { throw Failure.ambiguous }
+        // Merging identities must not silently discard an explicit activation
+        // choice. Ask the user to align conflicting choices before merging.
+        if let a = source.activityState, let b = target.activityState,
+           a.manuallyInactive != b.manuallyInactive { throw Failure.ambiguous }
+        var mergedActivity = target.activityState ?? source.activityState
+        if let a = source.activityState, let b = target.activityState {
+            mergedActivity?.firstObservedAt = min(a.firstObservedAt, b.firstObservedAt)
+            mergedActivity?.activatedAt = [a.activatedAt, b.activatedAt].compactMap { $0 }.max()
+            mergedActivity?.lastCalendarActivityAt = [a.lastCalendarActivityAt, b.lastCalendarActivityAt].compactMap { $0 }.max()
+            mergedActivity?.inactive = a.inactive && b.inactive
+        }
+        data.clients[targetIndex].activityState = mergedActivity
         data.clients[targetIndex].defaults = targetDefaults ?? sourceDefaults
         data.clients[targetIndex].calendarAliases = cleanAliases(
             (target.calendarAliases ?? []) + [source.name] + (source.calendarAliases ?? []), name: target.name)

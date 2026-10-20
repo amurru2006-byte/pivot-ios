@@ -55,7 +55,10 @@ final class OnlineCoachInteractionTests: XCTestCase {
         scrollControlIntoView(review, in: app); review.tap()
         XCTAssertTrue(create.waitForExistence(timeout: 12)); create.tap()
         let saved = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Impegno creato nel Calendario: Impegno di prova")).firstMatch
-        XCTAssertTrue(saved.waitForExistence(timeout: 12))
+        // The failed full-run screenshot/hierarchy show the exact success
+        // message after the old 12s deadline. Wait for the durable-write UI
+        // transition, still bounded, without retrying creation or skipping it.
+        XCTAssertTrue(saved.waitForExistence(timeout: 45))
         XCTAssertFalse(app.navigationBars["Nuovo impegno"].exists)
     }
 

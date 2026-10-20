@@ -61,7 +61,9 @@ final class CalendarCreationInteractionTests: XCTestCase {
         reopened(app); app.buttons["creation-top-save"].tap()
         let confirm = alert.buttons.matching(identifier: "coach-create-confirm").firstMatch
         XCTAssertTrue(confirm.waitForExistence(timeout: 10)); confirm.tap()
-        XCTAssertTrue(app.navigationBars["Nuovo impegno"].waitForNonExistence(timeout: 12))
+        // Full-run failure artifacts show the completed creation immediately
+        // after the old deadline. Keep the two-event/one-trip/no-money checks.
+        XCTAssertTrue(app.navigationBars["Nuovo impegno"].waitForNonExistence(timeout: 45))
         tap(audit, app); XCTAssertEqual(audit.label, "2 eventi · 1 spostamenti · 0 incassi")
     }
     func testMapsEstimateRequiresConsentCanBeUsedThenRemovedWithoutWriting() {

@@ -56,6 +56,7 @@ struct StudentBalancePaymentView: View {
         PivotCard(tint: PivotTheme.accent) {
             Text("Un pagamento per più lezioni").font(.headline)
             Text("Saldo totale di \(clientName): \(Money.display(balance))").font(.subheadline)
+                .accessibilityIdentifier("student-balance-total")
             DatePicker("Ricevuto il", selection: $date)
             TextField("Quanto hai ricevuto davvero, in euro?", text: $amount).keyboardType(.decimalPad).accessibilityIdentifier("student-balance-amount")
             Text("L’importo verrà distribuito sulle lezioni non pagate, dalla più vecchia. Un pagamento parziale lascia il resto da incassare.").font(.caption).foregroundStyle(PivotTheme.muted)

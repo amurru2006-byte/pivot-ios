@@ -26,6 +26,7 @@ private struct IncomeChartPoint: Identifiable {
 struct IncomeView: View {
     @EnvironmentObject var store: PivotStore
     @EnvironmentObject var agenda: AgendaService
+    @EnvironmentObject var calendar: CalendarService
     @State private var addingClient = false
     @State private var addingLesson = false
     @State private var importingHistory = false
@@ -39,6 +40,8 @@ struct IncomeView: View {
     @State private var chartStyle: IncomeChartStyle = .bars
     @State private var selectedBar: String?
     @State private var showAllReceipts = false
+    @State private var showInactiveContacts = false
+    private var orderedContacts: [Client] { ClientActivity.sorted(store.data.clients, data: store.data, now: Date()) }
     private var visibleReceipts: [Payment] { showAllReceipts ? monthPayments : Array(monthPayments.prefix(5)) }
     var currentYear: Int { PivotDate.calendar.component(.year, from: Date()) }
     var year: Int { selectedYear ?? currentYear }
@@ -138,19 +141,18 @@ struct IncomeView: View {
                 }
                 VStack(alignment: .leading, spacing: 14) {
                     SectionHeading(title: "I tuoi contatti", detail: "\(store.data.clients.count)")
-                    ForEach(store.data.clients) { client in
-                        NavigationLink { ClientDetailView(client: client) } label: {
-                            PivotCard {
-                                HStack(spacing: 12) {
-                                    avatar(client.name)
-                                    VStack(alignment: .leading, spacing: 5) {
-                                        Text(client.name).font(.headline).foregroundStyle(PivotTheme.text)
-                                        Text(client.activityKind == .gift ? client.activityKind.label : "\(client.activityKind.label) · \(Money.display(client.rateCents))\(client.billingMode == .hourly ? "/h" : "")").font(.caption).foregroundStyle(PivotTheme.muted)
-                                    }
-                                    Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(PivotTheme.muted)
-                                }
-                            }
-                        }.buttonStyle(.plain).accessibilityIdentifier("client-detail-" + client.id.uuidString)
+                    let contacts = orderedContacts
+                    ForEach(contacts.filter { $0.activityState?.inactive != true }) { contactCard($0) }
+                    let inactive = contacts.filter { $0.activityState?.inactive == true }
+                    if !inactive.isEmpty {
+                        Button { showInactiveContacts.toggle() } label: {
+                            HStack {
+                                Text("Inattivi (\(inactive.count))").font(.headline)
+                                Spacer(); Image(systemName: showInactiveContacts ? "chevron.up" : "chevron.down")
+                            }.frame(minHeight: 44).contentShape(Rectangle())
+                        }.buttonStyle(.plain).accessibilityValue(showInactiveContacts ? "Espanso" : "Chiuso")
+                            .accessibilityIdentifier("income-inactive-contacts")
+                        if showInactiveContacts { ForEach(inactive) { contactCard($0) } }
                     }
                     if !store.data.clients.isEmpty { Button { addingClient = true } label: { Label("Aggiungi contatto", systemImage: "person.badge.plus") }.buttonStyle(PivotSecondaryButton()).disabled(store.locked) }
                 }
@@ -163,7 +165,22 @@ struct IncomeView: View {
                 .onChange(of: chartRange) { _, _ in selectedBar = nil }
                 .onChange(of: year) { _, _ in selectedBar = nil }
                 .onChange(of: chartStyle) { _, _ in selectedBar = nil }
+                .task(id: store.data.updatedAt) { await calendar.refreshContactActivity(store: store) }
         }
+    }
+    private func contactCard(_ client: Client) -> some View {
+        NavigationLink { ClientDetailView(client: client) } label: {
+            PivotCard {
+                HStack(spacing: 12) {
+                    avatar(client.name)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(client.name).font(.headline).foregroundStyle(PivotTheme.text)
+                        Text(client.activityKind == .gift ? client.activityKind.label : "\(client.activityKind.label) · \(Money.display(client.rateCents))\(client.billingMode == .hourly ? "/h" : "")").font(.caption).foregroundStyle(PivotTheme.muted)
+                    }
+                    Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(PivotTheme.muted)
+                }
+            }
+        }.buttonStyle(.plain).accessibilityIdentifier("client-detail-" + client.id.uuidString)
     }
     private var balanceCarousel: some View {
         VStack(spacing: 10) {
@@ -620,15 +637,38 @@ struct IncomeDetailView: View {
 struct ClientDetailView: View {
     @EnvironmentObject var store: PivotStore
     @EnvironmentObject var agenda: AgendaService
+    @EnvironmentObject var calendar: CalendarService
     let client: Client
     @State private var editingClient = false
     @State private var mergingClient = false
     @State private var addingActivity = false
+    @State private var activityAlert: String?
+    @State private var changingActivity = false
     private var current: Client { store.data.clients.first { $0.id == client.id } ?? client }
     var entries: [IncomeEntry] { store.data.income.filter { $0.clientID == client.id }.sorted { $0.date > $1.date } }
     var body: some View {
         PivotScreen {
             PivotHeader(title: current.name, subtitle: current.activityKind == .lesson ? "\(Money.display(current.rateCents)) all'ora · \(entries.count) lezioni registrate" : "\(current.activityKind.label) · \(entries.count) attività registrate")
+            PivotCard {
+                HStack {
+                    Text("Contatto attivo").font(.headline)
+                    Spacer()
+                    Toggle("Contatto attivo", isOn: Binding(get: { current.activityState?.inactive != true }, set: changeActivity))
+                        .labelsHidden().fixedSize().frame(minWidth: 44, minHeight: 44)
+                        .accessibilityIdentifier("client-active-toggle")
+                        .disabled(store.locked || changingActivity)
+                }
+                if changingActivity { ProgressView("Verifico gli appuntamenti…") }
+                if let next = ClientActivity.nextAppointment(clientID: client.id, data: store.data, scan: calendar.contactActivity, now: Date()) {
+                    Text("Prossimo: \(DisplayDate.label(next.start, format: "d MMM yyyy · HH:mm"))")
+                        .font(.caption).foregroundStyle(PivotTheme.muted)
+                }
+                DisclosureGroup("Attivazione automatica") {
+                    Text("Dopo 90 giorni senza attività, il contatto passa tra gli inattivi se non ha appuntamenti nei calendari inclusi nei prossimi 4 anni. Una nuova lezione lo riattiva. Lo storico e i pagamenti non cambiano.")
+                        .font(.caption).foregroundStyle(PivotTheme.muted)
+                    if let issue = calendar.contactActivityProblem { Text(issue).font(.caption).foregroundStyle(PivotTheme.amber) }
+                }
+            }
             Button("Modifica contatto e predefiniti") { editingClient = true }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("client-edit").disabled(store.locked)
             if store.data.clients.count > 1 { Button("Unisci profili dello stesso contatto") { mergingClient = true }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("client-merge").disabled(store.locked) }
             ClientIncomeOverview(clientID: client.id)
@@ -666,6 +706,31 @@ struct ClientDetailView: View {
         .sheet(isPresented: $editingClient) { ClientForm(editingClient: current) }
         .sheet(isPresented: $mergingClient) { ClientMergeForm(targetID: client.id) }
         .sheet(isPresented: $addingActivity) { LessonForm(clients: store.data.clients, selectedClientID: client.id) }
+        .alert("Contatto ancora attivo", isPresented: Binding(get: { activityAlert != nil }, set: { if !$0 { activityAlert = nil } })) {
+            Button("Va bene", role: .cancel) { activityAlert = nil }
+        } message: { Text(activityAlert ?? "") }
+    }
+    private func changeActivity(_ active: Bool) {
+        guard !changingActivity, !store.locked else { return }
+        changingActivity = true
+        Task {
+            defer { changingActivity = false }
+            if !active {
+                guard await calendar.refreshContactActivity(store: store, force: true) else {
+                    activityAlert = calendar.contactActivityProblem ?? "Attendi la verifica del calendario e riprova. Non ho disattivato il contatto."
+                    return
+                }
+                if let next = ClientActivity.nextAppointment(clientID: client.id, data: store.data, scan: calendar.contactActivity, now: Date()) {
+                    activityAlert = "Hai già \(next.title) il \(DisplayDate.label(next.start, format: "d MMM yyyy 'alle' HH:mm")). Il contatto resta attivo. Se la lezione non si terrà, modifica prima l’appuntamento."
+                    return
+                }
+            }
+            var next = store.data
+            do {
+                try ClientActivity.setActive(active, clientID: client.id, data: &next, scan: calendar.contactActivity, now: Date())
+                _ = store.change { $0.clients = next.clients }
+            } catch { activityAlert = "Gli appuntamenti sono cambiati o non sono verificabili. Non ho modificato il contatto." }
+        }
     }
 }
 
