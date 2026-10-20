@@ -2,11 +2,16 @@ import Foundation
 
 /// Completeness is an explicit input, not inferred from the first/last receipt
 /// or from a selective historical import. This is not a bank-balance snapshot.
-struct IncomeObservationCoverage: Equatable {
+struct IncomeObservationCoverage: Codable, Equatable {
     var from: Date
     var through: Date
     var activitiesConfirmed: Bool
     var expensesConfirmed = false
+    var receiptsConfirmed = false
+
+    var isValid: Bool {
+        from.timeIntervalSinceReferenceDate.isFinite && through.timeIntervalSinceReferenceDate.isFinite && from < through
+    }
 }
 
 struct OrdinaryIncomeWeek: Equatable {
@@ -21,6 +26,7 @@ struct OrdinaryIncomeObservations: Equatable {
     var activeOrdinaryClients: Int
     var expensesComplete: Bool
     var unknownPaymentDates: Int
+    var receiptsComplete = false
 }
 
 enum IncomeProjectionError: Error, Equatable { case coverageRequired, insufficientWeeks, staleCoverage, invalidData }
@@ -68,6 +74,19 @@ enum OrdinaryIncomePreparation {
             }
         }
         var unknownDates = 0
+        let paymentsByEntry = Dictionary(grouping: data.payments, by: \.incomeID)
+        for entry in entries.values where entry.date >= start && entry.date < end {
+            guard (0...entry.amountCents).contains(entry.paidCents) else { throw IncomeProjectionError.invalidData }
+            var recorded = 0
+            for payment in paymentsByEntry[entry.id] ?? [] {
+                guard (1...100_000_000).contains(payment.amountCents) else { throw IncomeProjectionError.invalidData }
+                recorded = try add(recorded, payment.amountCents)
+            }
+            // A legacy paid total without matching receipt rows proves neither
+            // the collection date nor a zero-cash week. Keep earned work usable,
+            // but withhold a cash/savings date until those receipts are reviewed.
+            if recorded != entry.paidCents { unknownDates += 1 }
+        }
         for payment in data.payments {
             guard let entry = entries[payment.incomeID] else { continue }
             guard (1...100_000_000).contains(payment.amountCents) else { throw IncomeProjectionError.invalidData }
@@ -91,7 +110,8 @@ enum OrdinaryIncomePreparation {
             }
         }
         return .init(weeks: weeks, activeOrdinaryClients: clients.count,
-                     expensesComplete: coverage.expensesConfirmed, unknownPaymentDates: unknownDates)
+                     expensesComplete: coverage.expensesConfirmed, unknownPaymentDates: unknownDates,
+                     receiptsComplete: coverage.receiptsConfirmed)
     }
 
     private static func add(_ a: Int, _ b: Int) throws -> Int {

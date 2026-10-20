@@ -10,6 +10,7 @@
     "OnlineCoachInteractionTests/testRewriteIsSeparateFromSendingAndOriginalCanBeRestored",
     "OnlineCoachInteractionTests/testSwitchingToLocalCancelsPreflightWithoutSendingOrLosingComposer",
     "SavingsInteractionTests",
+    "SavingsEvidenceInteractionTests",
     "PivotInteractionTests/testIncomeSummarySwipesToChart"
   ],
   "workout": [

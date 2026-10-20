@@ -37,6 +37,7 @@ enum BackupCodec {
         try data.training?.validate()
         try data.strengthProfile?.validate()
         if let budget = data.savingsBudget { _ = try SavingsAccounting.balance(budget, payments: data.payments) }
+        guard data.incomeObservationCoverage?.isValid ?? true else { throw BackupError.invalidData }
         guard (data.settings.ratingTargets ?? [:]).values.allSatisfy({ (-1...10).contains($0) }),
               data.records.values.allSatisfy({ [$0.energy, $0.fatigue, $0.hungerBefore, $0.hungerAfter].allSatisfy { $0.map { (0...10).contains($0) } ?? true } }),
               data.checkIns.values.allSatisfy({ [$0.energyMorning, $0.energyEvening, $0.fatigueMorning, $0.fatigueEvening, $0.moodMorning, $0.moodEvening].allSatisfy { $0.map { (0...10).contains($0) } ?? true } }) else { throw BackupError.invalidData }
