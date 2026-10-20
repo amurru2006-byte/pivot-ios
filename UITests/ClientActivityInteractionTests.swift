@@ -24,13 +24,21 @@ final class ClientActivityInteractionTests: XCTestCase {
         let inactive = app.buttons["client-detail-55555555-5555-4555-8555-555555555552"]
         scrollControlIntoView(inactive, in: app); inactive.tap()
         XCTAssertTrue(app.staticTexts["student-balance-total"].waitForExistence(timeout: 8))
-        XCTAssertEqual(app.staticTexts["student-balance-total"].label, "Saldo totale di Contatto Inattivo QA: 5,00 €")
+        assertOutstandingBalance(app)
         scrollControlIntoView(toggle, in: app); XCTAssertEqual(toggle.value as? String, "0"); toggle.tap()
         XCTAssertEqual(toggle.value as? String, "1")
         app.terminate(); app.launch()
         XCTAssertTrue(app.tabBars.buttons["Entrate"].waitForExistence(timeout: 15)); app.tabBars.buttons["Entrate"].tap()
         scrollControlIntoView(inactive, in: app); inactive.tap()
         XCTAssertEqual(toggle.value as? String, "1")
-        XCTAssertEqual(app.staticTexts["student-balance-total"].label, "Saldo totale di Contatto Inattivo QA: 5,00 €")
+        assertOutstandingBalance(app)
+    }
+    private func assertOutstandingBalance(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        // Currency formatting correctly uses a nonbreaking space on iOS.
+        // Normalize that separator only, retaining the exact contact/amount.
+        let label = app.staticTexts["student-balance-total"].label
+            .replacingOccurrences(of: "\u{00A0}", with: " ")
+            .replacingOccurrences(of: "\u{202F}", with: " ")
+        XCTAssertEqual(label, "Saldo totale di Contatto Inattivo QA: 5,00 €", file: file, line: line)
     }
 }
