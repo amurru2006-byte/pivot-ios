@@ -73,16 +73,18 @@ enum WorkoutRuntime {
     static func finishRest(_ session: inout TrainingSession) {
         TrainingCompletion.finishRest(in: &session)
     }
-    static func scheduleRest(_ session: TrainingSession) async {
-        guard let latest = store.data.training?.sessions.first(where: { $0.id == session.id }), latest.updatedAt <= session.updatedAt else { return }
+    static func scheduleRest(_ session: TrainingSession, forceAlarm: Bool = false) async {
+        guard !store.isRestoring, !store.isLoading,
+              let latest = store.data.training?.sessions.first(where: { $0.id == session.id }), latest.updatedAt <= session.updatedAt else { return }
         let generation = (restGeneration[session.id] ?? 0) + 1; restGeneration[session.id] = generation
         let center = UNUserNotificationCenter.current(), key = "workout-rest-" + session.id.uuidString
         center.removePendingNotificationRequests(withIdentifiers: [key])
         if session.end != nil || session.rest == nil { center.removeDeliveredNotifications(withIdentifiers: [key]) }
+        await WorkoutRestAlarmService.shared.synchronize(session: session, settings: store.data.settings.workoutRestAudio ?? .init(), force: forceAlarm)
         guard session.end == nil, let rest = session.rest, let deadline = rest.deadline, deadline > Date() else { return }
         var settings = await center.notificationSettings()
         if settings.authorizationStatus == .notDetermined, UIApplication.shared.applicationState == .active {
-            _ = try? await center.requestAuthorization(options: [.alert, .sound])
+            _ = try? await center.requestAuthorization(options: [.alert])
             settings = await center.notificationSettings()
         }
         guard restGeneration[session.id] == generation else { return }
@@ -90,7 +92,9 @@ enum WorkoutRuntime {
         let content = UNMutableNotificationContent()
         content.title = "Recupero terminato"
         content.body = "Riprendi quando sei pronto · " + session.dayName
-        content.sound = .default
+        // Visual deep-link only. AlarmKit owns the only audible cue and the
+        // system media interruption: no duplicate notification in headphones.
+        content.sound = nil
         content.userInfo = ["destination": "workout", "sessionID": session.id.uuidString]
         try? await center.add(.init(identifier: key, content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: max(1, deadline.timeIntervalSinceNow), repeats: false)))
     }
@@ -123,6 +127,7 @@ enum WorkoutRuntime {
         } else { for activity in activities { await activity.update(content) } }
     }
     static func stop(sessionID: UUID) async {
+        await WorkoutRestAlarmService.shared.stop(sessionID: sessionID)
         focusedSet[sessionID] = nil
         restGeneration[sessionID] = (restGeneration[sessionID] ?? 0) + 1
         let key = "workout-rest-" + sessionID.uuidString

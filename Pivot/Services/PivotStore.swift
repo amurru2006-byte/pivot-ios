@@ -83,6 +83,8 @@ final class PivotStore: ObservableObject {
         if ProcessInfo.processInfo.arguments.contains("--report-test") { storageName = "PivotTrainingReportTests" }
         if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--financial-corrections-test"),
            let value = ProcessInfo.processInfo.environment["PIVOT_QA_FINANCE_ID"], let id = UUID(uuidString: value) { storageName = "PivotFinanceQA-" + id.uuidString }
+        if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--rest-alarm-test"),
+           let id = UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_REST_ID"] ?? "") { storageName = "PivotRestAlarmQA-" + id.uuidString }
         #endif
         directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(storageName, isDirectory: true)
         file = directory.appendingPathComponent("pivot-data.json")
@@ -108,6 +110,14 @@ final class PivotStore: ObservableObject {
             diagnostics.record("Caricamento storico", seconds: ProcessInfo.processInfo.systemUptime - started)
             if !locked { applyInitialSettings() }
             #if DEBUG && targetEnvironment(simulator)
+            if !locked, ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--rest-alarm-test"),
+               UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_REST_ID"] ?? "") != nil, data.training == nil {
+                let exercise = TrainingExercise(id: "rest-alarm-qa", name: "Esercizio audio QA", sets: 1, reps: "6", restSeconds: 900, coachNotes: "")
+                let plan = TrainingPlan(payload: .init(formatVersion: 1, name: "Audio QA", days: [.init(id: "audio-qa", name: "Audio QA", exercises: [exercise])]))
+                var session = TrainingLibrary().makeSession(plan: plan, day: plan.payload.days[0], eventID: nil)
+                session.rest = .init(exerciseID: exercise.id, setID: session.exercises[0].sets[0].id, seconds: 900)
+                change { $0.training = TrainingLibrary(plans: [plan], activePlanID: plan.id, sessions: [session]) }
+            }
             if !locked, ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--recovery-forecast-test"),
                UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_RECOVERY_ID"] ?? "") != nil, data.rules["recovery-qa"] == nil {
                 change { $0.rules["recovery-qa"] = .init(flexibility: .movable, minimumMinutes: 60, travelConfirmed: true) }
@@ -418,6 +428,7 @@ final class PivotStore: ObservableObject {
             if var library = restored.training, TrainingIsometry.migrate(&library) {
                 try library.validate(); restored.training = library
             }
+            try await WorkoutRestAlarmService.shared.cancelAll()
             try await persistence.save(restored, restoring: true)
             data = restored
             deletedTrainingIDs.removeAll()

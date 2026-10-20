@@ -10,6 +10,13 @@ struct SettingsView: View {
     @EnvironmentObject var agenda: AgendaService
     @Environment(\.scenePhase) private var scenePhase
     @State private var settings = Settings()
+    private var mergedSettings: Settings {
+        var value = settings
+        // This nested screen owns its opt-in; an older settings form must not
+        // silently restore the previous audio choice when it disappears.
+        value.workoutRestAudio = store.data.settings.workoutRestAudio
+        return value
+    }
     @State private var folderPicker = false
     @State private var importing = false
     @State private var pendingRestore: URL?
@@ -29,6 +36,7 @@ struct SettingsView: View {
                     settingsLink("Calendari", subtitle: "Colori e sincronizzazione", icon: "calendar") { calendarSettings }
                     settingsLink("Salute e Apple Watch", subtitle: "Sonno e allenamenti", icon: "heart.text.square.fill") { healthSettings }
                     settingsLink("Notifiche", subtitle: "Quando e come avvisarti", icon: "bell.fill") { notificationSettings }
+                        .accessibilityIdentifier("settings-notifications")
                     settingsLink("Backup e privacy", subtitle: "Proteggi il tuo storico", icon: "externaldrive.fill") { backupSettings }
                         .accessibilityIdentifier("settings-backup")
                     settingsLink("AI online e privacy", subtitle: "Collegamento protetto e limiti", icon: "lock.shield") { OnlineCoachSettingsView() }
@@ -59,16 +67,16 @@ struct SettingsView: View {
                 }
                 .onChange(of: settings) { _, _ in
                     saveTask?.cancel()
-                    guard !store.isLoading, settings != store.data.settings else { return }
+                    guard !store.isLoading, mergedSettings != store.data.settings else { return }
                     saveTask = Task {
                         do { try await Task.sleep(nanoseconds: 350_000_000) } catch { return }
-                        guard !Task.isCancelled, settings != store.data.settings else { return }
-                        store.change { $0.settings = settings }
+                        guard !Task.isCancelled, mergedSettings != store.data.settings else { return }
+                        store.change { $0.settings = mergedSettings }
                     }
                 }
                 .onDisappear {
                     saveTask?.cancel()
-                    if !store.isLoading, settings != store.data.settings { store.change { $0.settings = settings } }
+                    if !store.isLoading, mergedSettings != store.data.settings { store.change { $0.settings = mergedSettings } }
                 }
                 .sheet(isPresented: $folderPicker) { FolderPicker { store.selectBackupFolder($0) } }
                 .sheet(isPresented: $backupPasswordSetup) { BackupPasswordView() }
@@ -196,6 +204,9 @@ struct SettingsView: View {
     private var notificationSettings: some View {
     PivotCard {
         Label("Promemoria", systemImage: "bell.badge.fill").font(.headline).foregroundStyle(PivotTheme.amber)
+        NavigationLink { WorkoutRestAudioSettingsView() } label: {
+            Label("Avviso recupero", systemImage: "speaker.wave.2.fill").frame(minHeight: 44)
+        }.accessibilityIdentifier("open-rest-audio")
         Text(notifications.status).font(.subheadline).foregroundStyle(PivotTheme.muted)
         Button("Consenti notifiche") { Task { await notifications.requestAccess(); await notifications.schedule(events: agenda.planned, data: store.data) } }.buttonStyle(PivotSecondaryButton())
         Button("Apri impostazioni notifiche di iOS") {
@@ -242,7 +253,7 @@ struct SettingsView: View {
     }
     private func saveSettings() async {
         saveTask?.cancel()
-        guard store.change({ $0.settings = settings }) else { return }
+        guard store.change({ $0.settings = mergedSettings }) else { return }
         if await store.flushPendingWrites() { message = "Impostazioni salvate." }
     }
 }

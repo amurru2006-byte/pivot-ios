@@ -11,7 +11,7 @@ struct WorkoutAlarmProbeView: View {
             PivotCard(tint: PivotTheme.amber) {
                 Label("Prova tecnica, non recupero", systemImage: "testtube.2").font(.headline)
                 Text("Serve a verificare dove suona un allarme di sistema con cuffie Bluetooth collegate e schermo bloccato. Non attiva questa modalità per gli allenamenti.")
-                Text("Il file contiene tre bip in due secondi, ma iOS potrebbe ripeterlo finché non premi Ferma. La fine automatica dopo due secondi resta un requisito da verificare, non una funzione già garantita.")
+                Text("Il file contiene tre bip in due secondi; iOS può ripeterlo finché non premi Ferma. Questo è un allarme con stop manuale: verifica che la musica nelle cuffie venga interrotta o attenuata insieme al bip e cosa succede quando lo fermi.")
                     .font(.subheadline).foregroundStyle(PivotTheme.amber)
                 Text("Il test può suonare anche in modalità silenziosa o Full immersion. Il volume dipende anche da iOS: prima abbassalo a un livello confortevole e fai la prova in un posto adatto.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)

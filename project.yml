@@ -48,7 +48,7 @@ targets:
         NSHealthShareUsageDescription: Pivot legge sonno e allenamenti per collegarli ai tuoi eventi. Su tua richiesta legge anche data di nascita, peso e altezza per il profilo forza. I dati restano sul dispositivo e sono esclusi dalle esportazioni salvo tua scelta.
         NSMicrophoneUsageDescription: Pivot usa il microfono solo quando premi Dettatura, per scrivere il messaggio che potrai controllare prima di inviare.
         NSSpeechRecognitionUsageDescription: Pivot trascrive in italiano sul dispositivo quando disponibile. L’audio non viene salvato né inviato dal Coach.
-        NSAlarmKitUsageDescription: Pivot programma un allarme soltanto quando avvii il test audio a schermo spento. Non attiva allarmi automaticamente per i recuperi.
+        NSAlarmKitUsageDescription: Se attivi Avviso recupero, Pivot programma un allarme di sistema alla fine dei recuperi degli allenamenti. Lo fermi manualmente. Puoi anche avviare una prova esplicita a schermo spento.
         LSSupportsOpeningDocumentsInPlace: YES
         UIFileSharingEnabled: YES
         ITSAppUsesNonExemptEncryption: NO
