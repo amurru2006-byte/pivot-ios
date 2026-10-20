@@ -1,4 +1,4 @@
-name: Verifica previsioni locali e Salvadanaio V8
+name: Diagnosi Salvadanaio e Maps V8
 on:
   push:
     branches: ['codex/pivot-v8-income-evidence']
@@ -26,9 +26,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: bash Scripts/prepare-ios-ci.sh
-      - name: Dati completi o mancanti senza creare movimenti
+      - name: Maps e stime locali senza scritture esterne o nuovi movimenti
         env:
-          PIVOT_UI_ONLY_TESTING: PivotUITests/SavingsEvidenceInteractionTests
+          PIVOT_UI_ONLY_TESTING: v8-086-evidence-and-maps-regression
         run: bash Scripts/preview-ui.sh
       - uses: actions/upload-artifact@v4
         if: always()
