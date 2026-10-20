@@ -214,7 +214,13 @@ struct Client: Codable, Identifiable, Equatable {
     // Optional for backwards-compatible backups; never changes past receipts.
     var defaults: ClientDefaults? = nil
     var activityState: ClientActivityState? = nil
+    var ordinaryForecastEnabled: Bool? = nil
     var activityKind: IncomeActivityKind { activity ?? .lesson }
+    // Lessons default to ordinary work. Other work needs explicit opt-in;
+    // a one-off job must not become a recurring salary. Gifts never qualify.
+    var participatesInOrdinaryForecast: Bool {
+        [.lesson, .work].contains(activityKind) && (ordinaryForecastEnabled ?? (activityKind == .lesson))
+    }
     var billingMode: IncomeBilling { activityKind == .gift ? .fixed : billing ?? .hourly }
 }
 
@@ -387,6 +393,7 @@ struct AppData: Codable {
     var strengthProfile: StrengthProfile? = nil
     var incomeEdits: [IncomeEdit]? = nil
     var savingsBudget: SavingsBudget? = nil
+    var incomeObservationCoverage: IncomeObservationCoverage? = nil
     var calendarActionArchive: [ArchivedCalendarMutation]? = nil
     var calendarRestorations: [CalendarRestorationLink]? = nil
 }

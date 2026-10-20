@@ -318,7 +318,7 @@ final class PivotInteractionTests: XCTestCase {
         scrollControlIntoView(fixture, in: app); fixture.tap()
         XCTAssertTrue(app.staticTexts["Serie 7 pronta"].waitForExistence(timeout: 5))
         let day = app.buttons["workout-day-s7-day"]
-        for _ in 0..<15 { if day.isHittable { break }; app.swipeDown() }
+        scrollControlIntoView(day, in: app)
         day.tap(); XCTAssertTrue(app.navigationBars["Allenamento"].waitForExistence(timeout: 5))
         let url = URL(string: "pivot://workout/11111111-1111-4111-8111-111111111111?set=22222222-2222-4222-8222-222222222222")!
         app.open(url); app.open(url)

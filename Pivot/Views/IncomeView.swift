@@ -692,6 +692,14 @@ struct ClientDetailView: View {
                 })) {
                     ForEach(PaymentCadence.allCases, id: \.self) { Text($0 == .everyLesson && current.activityKind != .lesson ? "A ogni attività" : $0.label).tag($0) }
                 }.accessibilityIdentifier("student-payment-cadence")
+                if [.lesson, .work].contains(current.activityKind) {
+                    Toggle("Entrate ricorrenti nelle stime", isOn: Binding(get: { current.participatesInOrdinaryForecast }, set: { value in
+                        store.change { data in
+                            if let index = data.clients.firstIndex(where: { $0.id == client.id }) { data.clients[index].ordinaryForecastEnabled = value }
+                        }
+                    })).accessibilityIdentifier("client-ordinary-forecast").disabled(store.locked || store.isRestoring)
+                    Text("Disattiva per un’attività una tantum. Lo storico non cambia.").font(.caption).foregroundStyle(PivotTheme.muted)
+                }
             } }
             if StudentPayments.balance(clientID: client.id, data: store.data) > 0 {
                 StudentBalancePaymentView(clientID: client.id, clientName: client.name)

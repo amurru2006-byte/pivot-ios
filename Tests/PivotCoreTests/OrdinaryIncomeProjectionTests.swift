@@ -152,11 +152,46 @@ final class OrdinaryIncomeProjectionTests: XCTestCase {
         input.weeks[0].earnedCents = -1
         XCTAssertThrowsError(try OrdinaryIncomeProjection.make(input, now: now))
     }
+    func testObservedSeasonalityUsesCompleteYearsAndCurrentLevelRatherThanOldAnnualCash() throws {
+        let amounts = (0..<156).map { index -> Int in
+            let date = PivotDate.calendar.date(byAdding: .day, value: 3, to: week(index - 156))!
+            let month = PivotDate.calendar.component(.month, from: date)
+            let year = PivotDate.calendar.component(.year, from: date)
+            return (month.isMultiple(of: 2) ? 3000 : 1000) * (year >= 2025 ? 2 : 1)
+        }
+        let input = try prepared(fixture(amounts), count: 156)
+        let forecast = try OrdinaryIncomeProjection.make(input, now: now, horizon: 13)
+        XCTAssertEqual(forecast.model, .seasonalRecentMean)
+        let november = try XCTUnwrap(forecast.weeks.first { PivotDate.calendar.component(.month, from: $0.start.addingTimeInterval(3 * 86400)) == 11 })
+        let december = try XCTUnwrap(forecast.weeks.first { PivotDate.calendar.component(.month, from: $0.start.addingTimeInterval(3 * 86400)) == 12 })
+        XCTAssertTrue((1700...2300).contains(november.earnedCents))
+        XCTAssertTrue((5500...6500).contains(december.earnedCents))
+    }
+    func testPartialYearsCannotInventARecurringSeasonalPattern() throws {
+        let amounts = (0..<80).map { $0.isMultiple(of: 4) ? 6000 : 1000 }
+        let forecast = try OrdinaryIncomeProjection.make(prepared(fixture(amounts), count: 80), now: now)
+        XCTAssertNotEqual(forecast.model, .seasonalRecentMean)
+    }
     func testReadOnlyModelNeverCreatesPaymentsExpensesOrSavingsReservations() throws {
         let data = fixture(Array(repeating: 1500, count: 16))
         let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
         let before = try encoder.encode(data)
         _ = try OrdinaryIncomeProjection.make(prepared(data), now: now)
         XCTAssertEqual(try encoder.encode(data), before)
+    }
+    func testOneOffWorkNeedsExplicitRecurringChoiceAndLessonsCanOptOutWithoutChangingHistory() throws {
+        var data = fixture(Array(repeating: 2000, count: 16))
+        var work = Client(name: "Progetto una tantum QA", rateCents: 90_000, activity: .work)
+        data.clients.append(work)
+        data.income.append(.init(clientID: work.id, clientName: work.name, date: week(-1), minutes: 60,
+            amountCents: 90_000, activity: .work))
+        XCTAssertEqual(try prepared(data).weeks.last?.earnedCents, 2000)
+        data.clients[1].ordinaryForecastEnabled = true
+        XCTAssertEqual(try prepared(data).weeks.last?.earnedCents, 92_000)
+        data.clients[0].ordinaryForecastEnabled = false
+        XCTAssertEqual(try prepared(data).weeks.last?.earnedCents, 90_000)
+        work.activity = .gift; work.ordinaryForecastEnabled = true
+        XCTAssertFalse(work.participatesInOrdinaryForecast)
+        XCTAssertEqual(data.income.count, 17)
     }
 }

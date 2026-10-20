@@ -16,6 +16,9 @@ struct SavingsForecastView: View {
         NavigationStack {
             PivotScreen {
                 PivotHeader(title: "Quando arrivo all’obiettivo?", subtitle: goal?.name ?? "Obiettivo non disponibile")
+                NavigationLink { SavingsEvidenceForecastView(goalID: goalID) } label: {
+                    Label("Stima dai miei guadagni", systemImage: "sparkles").frame(maxWidth: .infinity)
+                }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("forecast-evidence-open")
                 PivotCard {
                     Text("Simulazione, senza spostare denaro").font(.headline)
                     TextField("Da destinare ora (€)", text: $upfront).keyboardType(.decimalPad).accessibilityIdentifier("forecast-upfront")
