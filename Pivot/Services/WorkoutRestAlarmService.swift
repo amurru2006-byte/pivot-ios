@@ -80,7 +80,7 @@ final class WorkoutRestAlarmService: ObservableObject {
     func synchronize(session: TrainingSession, settings: WorkoutRestAudioSettings, force: Bool = false) async {
         guard !suspended else { return }
         let live = (WorkoutRuntime.store.data.training?.sessions ?? []).filter { $0.end == nil }
-        guard WorkoutRestAlarm.uniqueIDs(live) else {
+        guard WorkoutRestAlarm.uniqueIDs(live), !WorkoutRestAlarm.hasOtherOwner(sessionID: session.id, activeSessions: live) else {
             message = "Identità degli allenamenti ambigue: nessun allarme è stato modificato."
             return
         }
@@ -97,6 +97,11 @@ final class WorkoutRestAlarmService: ObservableObject {
     }
 
     func stop(sessionID: UUID) async {
+        let live = (WorkoutRuntime.store.data.training?.sessions ?? []).filter { $0.end == nil }
+        guard !WorkoutRestAlarm.hasOtherOwner(sessionID: sessionID, activeSessions: live) else {
+            message = "Identità degli allenamenti ambigue: non fermo l’allarme di un’altra sessione."
+            return
+        }
         // Keep the receipt: editing a load cannot rearm a manually dismissed
         // alarm with this same deadline. A reset/new rest has a new deadline.
         generations[sessionID, default: 0] += 1
