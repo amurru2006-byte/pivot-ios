@@ -197,7 +197,8 @@ private struct SavingsGoalForm: View {
         submitting = true; defer { submitting = false }
         guard let cents = Money.cents(from: target) else { message = "Inserisci l’importo dell’obiettivo."; return }
         let goal = SavingsGoal(id: existing?.id ?? newID, name: name, targetCents: cents, category: category,
-                               deadline: hasDeadline ? deadline : nil, archived: existing?.archived ?? false)
+                               deadline: hasDeadline ? deadline : nil, archived: existing?.archived ?? false,
+                               weeklyPlan: existing?.weeklyPlan)
         do {
             var next = store.data
             if let existing { try SavingsAccounting.editGoal(existing, replacement: goal, data: &next) }
