@@ -15,7 +15,7 @@
   ],
   "workout": [
     "WorkoutRestAudioInteractionTests",
-    "CalendarCreationInteractionTests",
+    "CalendarCreationInteractionTests/testNativeEditorManualJourneySurvivesRelaunchAndCreatesExactlyTwoAfterConfirmation",
     "PremiumCoachInteractionTests",
     "PivotInteractionTests/testDayHistoryCorrectsCompletedWorkoutWithoutStartingRecoveryAndPersists",
     "PivotInteractionTests/testDayHistoryConfirmsDeletionOfRealAndEmptyWorkoutsAndPersists",
@@ -31,6 +31,7 @@
     "PivotInteractionTests/testAlarmProbeIsExplicitAndDoesNotStartOnOpening"
   ],
   "profile": [
+    "CalendarCreationInteractionTests/testMapsEstimateRequiresConsentCanBeUsedThenRemovedWithoutWriting",
     "PivotInteractionTests/testSerie7RankPopupUsesTheReceivedSecondCrestAndDoesNotRepeat",
     "PivotInteractionTests/testSerie7SevenRankSlotsAndManualProfilePersistWithoutInventedBirthDate",
     "PivotInteractionTests/testSerie7PRCelebrationCanBeClosedAndDoesNotRepeatOnReopen",
