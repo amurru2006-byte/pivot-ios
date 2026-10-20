@@ -194,4 +194,17 @@ final class OrdinaryIncomeProjectionTests: XCTestCase {
         XCTAssertFalse(work.participatesInOrdinaryForecast)
         XCTAssertEqual(data.income.count, 17)
     }
+    @MainActor func testCancelledCalculationStopsBeforePreparingOrForecasting() async throws {
+        let data = fixture(Array(repeating: 2000, count: 16)), input = try prepared(data)
+        // Both tasks inherit this actor, so cancellation is set before they can
+        // run. This tests the pure engine, not cancellation of a mock delay.
+        let preparation = Task { try self.prepared(data) }
+        preparation.cancel()
+        do { _ = try await preparation.value; XCTFail("Cancelled preparation continued") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        let projection = Task { try OrdinaryIncomeProjection.make(input, now: self.now, horizon: 104) }
+        projection.cancel()
+        do { _ = try await projection.value; XCTFail("Cancelled forecast continued") }
+        catch { XCTAssertTrue(error is CancellationError) }
+    }
 }

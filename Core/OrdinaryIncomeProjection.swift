@@ -38,6 +38,7 @@ enum OrdinaryIncomePreparation {
     static let maximumWeeklyCents = 1_000_000_000_000
 
     static func make(data: AppData, coverage: IncomeObservationCoverage?, now: Date) throws -> OrdinaryIncomeObservations {
+        try Task.checkCancellation()
         guard let coverage, coverage.activitiesConfirmed else { throw IncomeProjectionError.coverageRequired }
         guard [now, coverage.from, coverage.through].allSatisfy({ $0.timeIntervalSinceReferenceDate.isFinite }),
               coverage.from < coverage.through, coverage.through <= now,
@@ -65,6 +66,7 @@ enum OrdinaryIncomePreparation {
         let clientsByID = Dictionary(uniqueKeysWithValues: clients.map { ($0.id, $0) })
         var entries: [UUID: IncomeEntry] = [:]
         for entry in data.income where clientsByID[entry.clientID] != nil && [.lesson, .work].contains(entry.activityKind) {
+            try Task.checkCancellation()
             guard entry.date.timeIntervalSinceReferenceDate.isFinite, (1...100_000_000).contains(entry.amountCents) else {
                 throw IncomeProjectionError.invalidData
             }
@@ -88,6 +90,7 @@ enum OrdinaryIncomePreparation {
             if recorded != entry.paidCents { unknownDates += 1 }
         }
         for payment in data.payments {
+            try Task.checkCancellation()
             guard let entry = entries[payment.incomeID] else { continue }
             guard (1...100_000_000).contains(payment.amountCents) else { throw IncomeProjectionError.invalidData }
             guard let date = payment.date, entry.historicalSource?.paymentDateAssumed != true else {
@@ -141,6 +144,7 @@ struct OrdinaryIncomeProjection: Equatable {
     var weeks: [Week]
 
     static func make(_ input: OrdinaryIncomeObservations, now: Date, horizon: Int = 13) throws -> Self {
+        try Task.checkCancellation()
         guard now.timeIntervalSinceReferenceDate.isFinite, (1...104).contains(horizon), input.weeks.count <= 156,
               input.weeks.allSatisfy({ [ $0.earnedCents, $0.knownCashCents, $0.knownSpentCents ].allSatisfy {
                   (0...OrdinaryIncomePreparation.maximumWeeklyCents).contains($0)
@@ -159,6 +163,7 @@ struct OrdinaryIncomeProjection: Equatable {
         let cuts = Array(max(8, values.count - 12)..<values.count)
         var errors: [Model: [Double]] = [:]
         for model in Model.allCases {
+            try Task.checkCancellation()
             guard prediction(input.weeks, model: model, step: 1) != nil else { continue }
             let forecasts = cuts.compactMap { cut -> Double? in
                 prediction(Array(input.weeks.prefix(cut)), model: model, step: 1).map { abs(values[cut] - $0) }
@@ -182,7 +187,8 @@ struct OrdinaryIncomeProjection: Equatable {
         let hasBacktest = selected.count >= 4
         let dispersion = hasBacktest ? quantile(selected, fraction: 0.8) : nil
         let last = input.weeks.last!.start
-        let projected = (1...horizon).map { step -> Week in
+        let projected = try (1...horizon).map { step -> Week in
+            try Task.checkCancellation()
             let center = prediction(input.weeks, model: model, step: step)!
             let spread = dispersion.map { $0 * sqrt(Double(step)) }
             return .init(start: PivotDate.calendar.date(byAdding: .weekOfYear, value: step, to: last)!,

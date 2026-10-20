@@ -139,13 +139,14 @@ struct SavingsEvidenceForecastView: View {
         guard !key.locked, !key.restoring else { return }
         guard let initial = Money.cents(from: upfront) else { problem = "Controlla i fondi iniziali dell’ipotesi."; return }
         calculating = true
-        let result = await Task.detached(priority: .userInitiated) { () -> Result<SavingsEvidenceForecast, Error> in
+        let work = Task.detached(priority: .userInitiated) { () -> Result<SavingsEvidenceForecast, Error> in
             Result {
                 let input = try OrdinaryIncomePreparation.make(data: data, coverage: data.incomeObservationCoverage, now: now)
                 return try SavingsEvidenceForecast.make(goalID: selectedGoal, data: data, observations: input,
                     upfrontCents: initial, reservePercent: key.percent, now: now)
             }
-        }.value
+        }
+        let result = await withTaskCancellationHandler(operation: { await work.value }, onCancel: { work.cancel() })
         guard !Task.isCancelled, calculation == key else { return }
         calculating = false
         switch result {
