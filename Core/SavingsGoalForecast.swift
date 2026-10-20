@@ -22,23 +22,27 @@ struct SavingsGoalForecast: Equatable {
               let reserved = try? SavingsAccounting.reserved(for: goal.id, in: budget),
               (0...SavingsAccounting.maximumMovementCents).contains(weeklyCents),
               upfrontCents >= 0 && upfrontCents <= min(balance.freeCents, goal.targetCents - reserved),
-              goal.deadline.map({ $0.timeIntervalSinceReferenceDate.isFinite }) ?? true else { return nil }
+              goal.deadline == nil || goal.deadlineEndExclusive != nil else { return nil }
         let remaining = max(0, goal.targetCents - reserved - upfrontCents)
         let weeks: Int? = remaining == 0 ? 0 : (weeklyCents > 0 ? quotientUp(remaining, by: weeklyCents) : nil)
         // Avoid an overflow or misleading date millions of years into the future.
         let completion = weeks.flatMap { value in
             value <= 5200 ? PivotDate.calendar.date(byAdding: .weekOfYear, value: value, to: now) : nil
         }
-        let periods: Int? = goal.deadline.flatMap { deadline in
+        let periods: Int? = goal.deadlineEndExclusive.flatMap { deadline in
             guard deadline > now else { return 0 }
             guard deadline.timeIntervalSince(now) <= 366 * 100 * 86400 else { return nil }
-            return max(0, PivotDate.calendar.dateComponents([.weekOfYear], from: now, to: deadline).weekOfYear ?? 0)
+            var count = max(0, PivotDate.calendar.dateComponents([.weekOfYear], from: now, to: deadline).weekOfYear ?? 0)
+            // The next day's midnight is outside the selected deadline day.
+            if count > 0, let contribution = PivotDate.calendar.date(byAdding: .weekOfYear, value: count, to: now),
+               contribution >= deadline { count -= 1 }
+            return count
         }
         let required = periods.flatMap { $0 > 0 ? quotientUp(remaining, by: $0) : nil }
         return .init(reservedCents: reserved, freeCents: balance.freeCents, hypotheticalUpfrontCents: upfrontCents,
                      remainingCents: remaining, weeklyCents: weeklyCents, weeksNeeded: weeks, completionDate: completion,
                      contributionsBeforeDeadline: periods, requiredWeeklyCents: required,
-                     deadlineMissed: goal.deadline.map { $0 < now && remaining > 0 } ?? false)
+                     deadlineMissed: goal.deadlineEndExclusive.map { $0 <= now && remaining > 0 } ?? false)
     }
     private static func quotientUp(_ value: Int, by divisor: Int) -> Int {
         value / divisor + (value % divisor == 0 ? 0 : 1)

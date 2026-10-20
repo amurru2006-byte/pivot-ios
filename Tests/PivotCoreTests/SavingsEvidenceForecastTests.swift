@@ -118,6 +118,19 @@ final class SavingsEvidenceForecastTests: XCTestCase {
         data.savingsBudget?.allocations.append(.init(goalID: other.id, cents: 10_000, date: now))
         XCTAssertThrowsError(try make(data, input, id, upfront: 1))
     }
+    func testSundayDeadlineIncludesTheWeeklyContributionRegardlessOfHiddenTime() throws {
+        var (data, input, id) = fixture()
+        let monday = StudentPayments.week(containing: now).start
+        let sunday = PivotDate.calendar.date(byAdding: .day, value: 13, to: monday)!
+        data.savingsBudget?.goals[0].deadline = sunday
+        let morning = try make(data, input, id)
+        data.savingsBudget?.goals[0].deadline = sunday.addingTimeInterval(20 * 3600)
+        let evening = try make(data, input, id)
+        XCTAssertEqual(morning.projectedBeforeDeadlineCents, 8000)
+        XCTAssertEqual(evening.projectedBeforeDeadlineCents, morning.projectedBeforeDeadlineCents)
+        data.savingsBudget?.goals[0].deadline = PivotDate.calendar.date(byAdding: .day, value: -1, to: sunday)
+        XCTAssertEqual(try make(data, input, id).projectedBeforeDeadlineCents, 0)
+    }
     func testAlreadyFundedGoalNeedsNoFutureReceiptAndCoverageIsExplicitlyCodable() throws {
         var (data, input, id) = fixture()
         data.savingsBudget?.goals[0].targetCents = 10_000
