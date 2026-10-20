@@ -69,12 +69,21 @@ final class OrdinaryIncomeProjectionTests: XCTestCase {
         let unknown = try prepared(data)
         XCTAssertEqual(unknown.unknownPaymentDates, 1)
     }
-    func testBudgetExcludedBackfillDoesNotCreateCurrentAvailableCash() throws {
+    func testVerifiedHistoricalCashCanTrainCollectionPaceWithoutIncreasingAvailableFunds() throws {
         var data = fixture(Array(repeating: 1500, count: 16))
         data.payments[0].excludedFromBudget = true
+        data.savingsBudget = .init(openingFundsCents: 22_000)
+        let balance = try SavingsAccounting.balance(data.savingsBudget!, payments: data.payments)
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+        let original = try encoder.encode(data)
         let input = try prepared(data)
         XCTAssertEqual(input.weeks[0].earnedCents, 1500)
-        XCTAssertEqual(input.weeks[0].knownCashCents, 0)
+        XCTAssertEqual(input.weeks[0].knownCashCents, 1500,
+            "A verified past payment is an observation, not a fresh receipt")
+        XCTAssertEqual(try encoder.encode(data), original)
+        XCTAssertEqual(try SavingsAccounting.balance(data.savingsBudget!, payments: data.payments), balance)
+        XCTAssertEqual(balance.receivedCents, 44_500,
+            "The excluded 1,500 cents must not be added to today's 22,000 + 15 receipts")
         data.ledger = .init(openingCents: ["2026": 90_000])
         XCTAssertEqual(try prepared(data), input, "The aggregate opening amount cannot train a weekly earning rate")
     }

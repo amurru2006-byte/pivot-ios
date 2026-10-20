@@ -98,8 +98,11 @@ enum OrdinaryIncomePreparation {
                 continue
             }
             guard date.timeIntervalSinceReferenceDate.isFinite else { throw IncomeProjectionError.invalidData }
-            // A backfill excluded from today's budget is never new cash.
-            if payment.excludedFromBudget != true, let i = indices[StudentPayments.week(containing: date).start] {
+            // A verified historical receipt can describe past collection pace
+            // without becoming money available today. Budget exclusion belongs
+            // to SavingsAccounting, not to this read-only observation series.
+            // Assumed or missing payment dates were rejected above.
+            if let i = indices[StudentPayments.week(containing: date).start] {
                 weeks[i].knownCashCents = try add(weeks[i].knownCashCents, payment.amountCents)
             }
         }
