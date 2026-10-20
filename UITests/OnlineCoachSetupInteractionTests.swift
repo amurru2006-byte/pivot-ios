@@ -69,10 +69,16 @@ final class OnlineCoachSetupInteractionTests: XCTestCase {
         XCTAssertEqual(namespace.label, "Contenitore QA: " + app.launchEnvironment["PIVOT_QA_KEYCHAIN_ID"]!)
         let consent = app.switches["online-coach-consent"]
         XCTAssertTrue(consent.waitForExistence(timeout: 10))
-        for _ in 0..<8 { if consent.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(consent.isHittable); consent.tap()
+        scrollControlIntoView(consent, in: app)
+        XCTAssertTrue(consent.isHittable)
+        XCTAssertEqual(consent.value as? String, "0")
+        // SwiftUI exposes a long label and the trailing native switch as one
+        // row. Tap the visible knob, not the centre of the multiline label.
+        consent.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
+        let consentChanged = expectation(for: NSPredicate(format: "value == %@", "1"), evaluatedWith: consent)
+        wait(for: [consentChanged], timeout: 5)
         let save = app.buttons["online-coach-save"]
-        for _ in 0..<5 { if save.isHittable { break }; app.swipeUp() }
+        scrollControlIntoView(save, in: app)
         XCTAssertTrue(save.isEnabled); save.tap()
         // An underlying button can still exist while the QR sheet covers it.
         // Require a successful save/dismissal before attempting navigation.

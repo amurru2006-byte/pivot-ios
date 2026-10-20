@@ -59,7 +59,7 @@ final class OnlineCoachInteractionTests: XCTestCase {
         // message after the old 12s deadline. Wait for the durable-write UI
         // transition, still bounded, without retrying creation or skipping it.
         XCTAssertTrue(saved.waitForExistence(timeout: 45))
-        XCTAssertFalse(app.navigationBars["Nuovo impegno"].exists)
+        XCTAssertTrue(app.navigationBars["Nuovo impegno"].waitForNonExistence(timeout: 10))
     }
 
     private func preparePersistentDraft(in app: XCUIApplication) {
