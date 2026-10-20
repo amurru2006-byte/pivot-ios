@@ -20,7 +20,7 @@ enum ActivityTiming {
     }
 }
 
-struct SleepRecord: Codable {
+struct SleepRecord: Codable, Equatable {
     var bedtime: Date?
     var durationSeconds: Int?
     var score: Int?

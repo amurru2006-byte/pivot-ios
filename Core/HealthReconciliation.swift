@@ -29,9 +29,15 @@ enum HealthReconciliation {
         for (key, summary) in sleeps {
             var check = next.checkIns[key] ?? DayCheckIn(id: key)
             guard check.sleep == nil || check.sleep?.importedFromHealth == true else { continue }
-            if check.sleep?.durationSeconds != summary.durationSeconds || check.healthWakeTime != summary.end {
-                check.sleep = SleepRecord(bedtime: summary.start, durationSeconds: summary.durationSeconds,
-                    awakenings: summary.awakenings, interruptionSeconds: summary.interruptionSeconds, importedFromHealth: true)
+            // Health can revise bedtime/interruptions without changing total
+            // duration or wake time. Preserve subjective ratings and quality;
+            // update only the measurements actually supplied by HealthKit.
+            var observedSleep = check.sleep ?? SleepRecord()
+            observedSleep.bedtime = summary.start; observedSleep.durationSeconds = summary.durationSeconds
+            observedSleep.awakenings = summary.awakenings; observedSleep.interruptionSeconds = summary.interruptionSeconds
+            observedSleep.importedFromHealth = true
+            if check.sleep != observedSleep || check.healthWakeTime != summary.end {
+                check.sleep = observedSleep
                 if check.wakeTime == nil || check.wakeTime == check.healthWakeTime { check.wakeTime = summary.end }
                 check.healthWakeTime = summary.end; next.checkIns[key] = check; modified = true
             }

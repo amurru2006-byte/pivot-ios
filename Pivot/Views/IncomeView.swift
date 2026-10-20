@@ -41,7 +41,11 @@ struct IncomeView: View {
     @State private var selectedBar: String?
     @State private var showAllReceipts = false
     @State private var showInactiveContacts = false
-    private var orderedContacts: [Client] { ClientActivity.sorted(store.data.clients, data: store.data, now: Date()) }
+    @State private var orderedContactIDs: [UUID] = []
+    private var orderedContacts: [Client] {
+        let ranks = Dictionary(orderedContactIDs.enumerated().map { ($0.element, $0.offset) }, uniquingKeysWith: { first, _ in first })
+        return store.data.clients.sorted { ranks[$0.id, default: Int.max] < ranks[$1.id, default: Int.max] }
+    }
     private var visibleReceipts: [Payment] { showAllReceipts ? monthPayments : Array(monthPayments.prefix(5)) }
     var currentYear: Int { PivotDate.calendar.component(.year, from: Date()) }
     var year: Int { selectedYear ?? currentYear }
@@ -165,7 +169,15 @@ struct IncomeView: View {
                 .onChange(of: chartRange) { _, _ in selectedBar = nil }
                 .onChange(of: year) { _, _ in selectedBar = nil }
                 .onChange(of: chartStyle) { _, _ in selectedBar = nil }
-                .task(id: store.data.updatedAt) { await calendar.refreshContactActivity(store: store) }
+                .task(id: store.data.updatedAt) {
+                    let data = store.data
+                    let ids = await Task.detached(priority: .utility) {
+                        ClientActivity.sorted(data.clients, data: data, now: Date()).map(\.id)
+                    }.value
+                    guard !Task.isCancelled, data.updatedAt == store.data.updatedAt else { return }
+                    orderedContactIDs = ids
+                    await calendar.refreshContactActivity(store: store)
+                }
         }
     }
     private func contactCard(_ client: Client) -> some View {
@@ -659,7 +671,7 @@ struct ClientDetailView: View {
                         .disabled(store.locked || changingActivity)
                 }
                 if changingActivity { ProgressView("Verifico gli appuntamenti…") }
-                if let next = ClientActivity.nextAppointment(clientID: client.id, data: store.data, scan: calendar.contactActivity, now: Date()) {
+                if let next = calendar.nextContactAppointment(client.id) {
                     Text("Prossimo: \(DisplayDate.label(next.start, format: "d MMM yyyy · HH:mm"))")
                         .font(.caption).foregroundStyle(PivotTheme.muted)
                 }
@@ -720,15 +732,23 @@ struct ClientDetailView: View {
                     activityAlert = calendar.contactActivityProblem ?? "Attendi la verifica del calendario e riprova. Non ho disattivato il contatto."
                     return
                 }
-                if let next = ClientActivity.nextAppointment(clientID: client.id, data: store.data, scan: calendar.contactActivity, now: Date()) {
+                if let next = calendar.nextContactAppointment(client.id) {
                     activityAlert = "Hai già \(next.title) il \(DisplayDate.label(next.start, format: "d MMM yyyy 'alle' HH:mm")). Il contatto resta attivo. Se la lezione non si terrà, modifica prima l’appuntamento."
                     return
                 }
             }
-            var next = store.data
             do {
-                try ClientActivity.setActive(active, clientID: client.id, data: &next, scan: calendar.contactActivity, now: Date())
-                _ = store.change { $0.clients = next.clients }
+                let data = store.data, scan = calendar.contactActivity, id = client.id
+                let clients = try await Task.detached(priority: .userInitiated) {
+                    var next = data
+                    try ClientActivity.setActive(active, clientID: id, data: &next, scan: scan, now: Date())
+                    return next.clients
+                }.value
+                guard data.updatedAt == store.data.updatedAt else {
+                    activityAlert = "I dati sono cambiati durante la verifica. Riprova: il contatto non è stato modificato."
+                    return
+                }
+                _ = store.change { $0.clients = clients }
             } catch { activityAlert = "Gli appuntamenti sono cambiati o non sono verificabili. Non ho modificato il contatto." }
         }
     }

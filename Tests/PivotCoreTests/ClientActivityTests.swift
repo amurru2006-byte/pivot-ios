@@ -32,6 +32,18 @@ final class ClientActivityTests: XCTestCase {
         let data = data()
         XCTAssertEqual(ClientActivity.refreshed(data: data, scan: scan([event(data, start: day(900))]), now: now)[0].activityState?.inactive, false)
     }
+    func testFutureContactEventInOtherOrReadOnlyCalendarStillProtects() {
+        let data = data()
+        var item = event(data, start: day(7)); item.kind = .other; item.writable = false; item.calendarTitle = "Condiviso QA"
+        XCTAssertEqual(ClientActivity.refreshed(data: data, scan: scan([item]), now: now)[0].activityState?.inactive, false)
+    }
+    func testStaleFutureEvidenceCannotReactivateManualOff() throws {
+        var data = data()
+        try ClientActivity.setActive(false, clientID: data.clients[0].id, data: &data, scan: scan(), now: now)
+        var old = scan([event(data, start: day(2))]); old.observedAt = now.addingTimeInterval(-901)
+        XCTAssertNil(ClientActivity.nextAppointment(clientID: data.clients[0].id, data: data, scan: old, now: now))
+        XCTAssertEqual(ClientActivity.refreshed(data: data, scan: old, now: now)[0].activityState?.manuallyInactive, true)
+    }
     func testDeniedIncompleteStaleOrShortHomeWindowCannotDeactivate() {
         let data = data()
         var home = scan(); home.through = day(60)
