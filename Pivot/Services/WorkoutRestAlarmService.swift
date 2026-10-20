@@ -11,6 +11,7 @@ final class WorkoutRestAlarmService: ObservableObject {
     static let shared = WorkoutRestAlarmService()
     @Published private(set) var message = "Attiva l’allarme recupero per usarlo negli allenamenti."
     @Published private(set) var busy = false
+    @Published private(set) var authorized = false
     @Published private(set) var alerting: Set<UUID> = []
     @Published private(set) var syntheticAlarmCount = 0
     private var generations: [UUID: Int] = [:]
@@ -52,6 +53,7 @@ final class WorkoutRestAlarmService: ObservableObject {
                 guard state == .authorized else { message = "Allarmi non autorizzati. Nessun bip alternativo verrà inviato alle cuffie."; return }
             }
             var settings = store.data.settings.workoutRestAudio ?? .init(); settings.enabled = true
+            authorized = true
             guard settings.isValid, store.change({ $0.settings.workoutRestAudio = settings }), await store.flushPendingWrites() else { return }
             message = "Allarme attivo · premi Ferma per interromperlo."
             observeIfAuthorized()
@@ -140,9 +142,17 @@ final class WorkoutRestAlarmService: ObservableObject {
                 catch { center.removePendingNotificationRequests(withIdentifiers: [request.identifier]) }
             }
         }
+        if isInteractionTest { authorized = isFixture; return }
+        guard #available(iOS 26.0, *) else { authorized = false; return }
+        authorized = AlarmManager.shared.authorizationState == .authorized
+        guard authorized else {
+            observer?.cancel(); observer = nil; alerting = []
+            if store.data.settings.workoutRestAudio?.enabled == true {
+                message = "Allarmi non autorizzati in iOS. Il timer resta disponibile senza bip nelle cuffie."
+            }
+            return
+        }
         observeIfAuthorized()
-        if isInteractionTest { return }
-        guard #available(iOS 26.0, *), AlarmManager.shared.authorizationState == .authorized else { return }
         // Wait for in-flight scheduling before deciding whether an alarm is an
         // orphan. The latest store, not a pre-await snapshot, owns the decision.
         for job in Array(jobs.values) { await job.value }
