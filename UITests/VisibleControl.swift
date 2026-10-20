@@ -15,7 +15,6 @@ extension XCTestCase {
     func scrollControlIntoView(_ element: XCUIElement, in app: XCUIApplication,
                                maxSwipes: Int = 15,
                                file: StaticString = #filePath, line: UInt = #line) {
-        let screen = app.frame
         // A navigation bar is not itself an actionable control. iOS can
         // throw while computing its activation point during sheet changes.
         // Use the foremost visible bar's bounds; keep the target's real tap.
@@ -25,11 +24,16 @@ extension XCTestCase {
         guard let root = try? app.snapshot() else {
             XCTFail("Cannot capture the current viewport", file: file, line: line); return
         }
-        var nodes: [any XCUIElementSnapshot] = []
-        var pending: [any XCUIElementSnapshot] = [root]
-        while let node = pending.popLast() {
-            nodes.append(node); pending.append(contentsOf: node.children.reversed())
+        let screen = root.frame
+        func flattened(_ snapshot: any XCUIElementSnapshot) -> [any XCUIElementSnapshot] {
+            var result: [any XCUIElementSnapshot] = []
+            var pending: [any XCUIElementSnapshot] = [snapshot]
+            while let node = pending.popLast() {
+                result.append(node); pending.append(contentsOf: node.children.reversed())
+            }
+            return result
         }
+        var nodes = flattened(root)
         let navigationFrame = nodes.last { node in
             let bounds = node.frame
             guard node.elementType == .navigationBar else { return false }
@@ -43,16 +47,30 @@ extension XCTestCase {
         if let navigationFrame { top = max(top, navigationFrame.maxY) }
         // A presented sheet can leave the underlying tab bar in the AX
         // tree. It does not cover this sheet's controls.
-        if tabs.exists && tabs.isHittable { viewportBottom = min(viewportBottom, tabs.frame.minY) }
-        if recovery.exists && recovery.isHittable { viewportBottom = min(viewportBottom, recovery.frame.minY) }
+        // The already captured snapshot proves absence without another remote
+        // AX query. Keep live hittability checks for bars actually present:
+        // a sheet may cover the underlying tab bar.
+        if nodes.contains(where: { $0.elementType == .tabBar }), tabs.exists && tabs.isHittable {
+            viewportBottom = min(viewportBottom, tabs.frame.minY)
+        }
+        if nodes.contains(where: { $0.identifier == "workout-recovery-bar" }), recovery.exists && recovery.isHittable {
+            viewportBottom = min(viewportBottom, recovery.frame.minY)
+        }
         var owningScroll: XCUIElement?
         for attempt in 0...maxSwipes {
             // Navigation/scroll ownership does not change when swiping this
             // screen. Avoid rediscovering the entire AX tree on every swipe.
             // Keyboard geometry must remain live: a swipe can dismiss it.
-            let keyboard = app.keyboards.firstMatch
+            if attempt > 0 {
+                guard let refreshed = try? app.snapshot() else {
+                    XCTFail("Cannot refresh the viewport after scrolling", file: file, line: line); return
+                }
+                nodes = flattened(refreshed)
+            }
             var bottom = viewportBottom
-            if keyboard.exists && keyboard.frame.height > 0 { bottom = min(bottom, keyboard.frame.minY) }
+            if let keyboard = nodes.last(where: { $0.elementType == .keyboard && $0.frame.height > 0 }) {
+                bottom = min(bottom, keyboard.frame.minY)
+            }
             let frame = element.exists ? element.frame : .zero
             let finite = frame.minY.isFinite && frame.maxY.isFinite && frame.height > 0
             if finite && frame.minY >= top + 8 && frame.maxY <= bottom - 8 && element.isHittable {

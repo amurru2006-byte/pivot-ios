@@ -54,10 +54,16 @@ final class SavingsEvidenceInteractionTests: XCTestCase {
         XCTAssertTrue(saving.waitForExistence(timeout: 15)); XCTAssertTrue(saving.label.contains("80,00"))
         XCTAssertTrue(app.staticTexts["evidence-earned-weekly"].label.contains("100,00"))
         XCTAssertTrue(app.staticTexts["evidence-completion"].waitForExistence(timeout: 8))
+        scrollControlIntoView(app.staticTexts["evidence-completion"], in: app)
         let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "savings-evidence-local-no-money-moved"; screenshot.lifetime = .keepAlways; add(screenshot)
         app.navigationBars["Stima dai guadagni"].buttons.element(boundBy: 0).tap()
         app.navigationBars["Scenario Salvadanaio"].buttons["Chiudi"].tap()
-        XCTAssertTrue(app.staticTexts["savings-free-total"].label.contains("1.630,00"))
-        XCTAssertTrue(app.staticTexts["savings-reserved-total"].label.contains("0,00"))
+        // Italian currency formatting can omit grouping for a four-digit
+        // amount. Compare the exact value/label, not one optional separator.
+        func normalized(_ text: String) -> String {
+            text.filter { !$0.isWhitespace }.replacingOccurrences(of: ".", with: "")
+        }
+        XCTAssertEqual(normalized(app.staticTexts["savings-free-total"].label), "Liberi1630,00€")
+        XCTAssertEqual(normalized(app.staticTexts["savings-reserved-total"].label), "0,00€")
     }
 }
