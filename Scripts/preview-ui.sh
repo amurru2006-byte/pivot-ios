@@ -26,7 +26,7 @@ case "$PIVOT_UI_ONLY_TESTING" in
     PIVOT_UI_RESULT=build/online-privacy-tests.xcresult
     PIVOT_SIM_ENTITLEMENTS=build/online-privacy-simulator-entitlements.plist
     ;;
-  v8-086-contact-save-regression|PivotUITests/PremiumCoachInteractionTests|PivotUITests/PremiumCoachInteractionTests/testMemoryOptInPersistsAppearsInExactDisclosureAndCanBeRevoked)
+  v8-086-rest-audio-regression|v8-086-contact-save-regression|PivotUITests/PremiumCoachInteractionTests|PivotUITests/PremiumCoachInteractionTests/testMemoryOptInPersistsAppearsInExactDisclosureAndCanBeRevoked)
     PIVOT_PREVIEW_OUTPUT=build/Previews/OnlinePrivacy
     PIVOT_UI_BUILD_LOG=build/online-privacy-build.log
     PIVOT_UI_LOG=build/online-privacy-tests.log
@@ -116,6 +116,14 @@ if [ -n "$PIVOT_RELEASE_SHARD" ]; then
   while IFS= read -r PIVOT_TEST_FLAG; do
     PIVOT_UI_TEST_COMMAND+=("$PIVOT_TEST_FLAG")
   done <<< "$PIVOT_RELEASE_FLAGS"
+elif [ "$PIVOT_UI_ONLY_TESTING" = v8-086-rest-audio-regression ]; then
+  PIVOT_UI_TEST_COMMAND+=(
+    -only-testing:PivotUITests/WorkoutRestAudioInteractionTests
+    -only-testing:PivotUITests/PivotInteractionTests/testRecoveryStaysReachableAtEighthExerciseAndLastSet
+    -only-testing:PivotUITests/PivotInteractionTests/testLiveActivityLayoutKeepsLargeButtonsWithinSystemHeight
+    -only-testing:PivotUITests/PivotInteractionTests/testWorkoutIntentActionsPersistBothSidesAndRestState
+    -only-testing:PivotUITests/PivotInteractionTests/testAlarmProbeIsExplicitAndDoesNotStartOnOpening
+  )
 elif [ "$PIVOT_UI_ONLY_TESTING" = v8-086-contact-save-regression ]; then
   # Diagnostic preflight only, not a release gate substitute. Full release
   # still requires every native test exactly once on the final source SHA.

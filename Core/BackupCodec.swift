@@ -70,6 +70,7 @@ enum BackupCodec {
                   ledger.openingCents.allSatisfy({ pair in (Int(pair.key).map { (1900...9999).contains($0) } ?? false) && pair.value >= 0 }) else { throw BackupError.invalidData }
         }
         // Linear-time totals also reject integer overflow in an untrusted backup.
+        guard data.settings.workoutRestAudio?.isValid ?? true else { throw BackupError.invalidData }
         var receiptTotals: [UUID: Int] = [:]
         var annualTotals = data.ledger?.openingCents ?? [:]
         for payment in data.payments {

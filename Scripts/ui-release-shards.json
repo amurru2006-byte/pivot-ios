@@ -13,6 +13,7 @@
     "PivotInteractionTests/testIncomeSummarySwipesToChart"
   ],
   "workout": [
+    "WorkoutRestAudioInteractionTests",
     "CalendarCreationInteractionTests",
     "PremiumCoachInteractionTests",
     "PivotInteractionTests/testDayHistoryCorrectsCompletedWorkoutWithoutStartingRecoveryAndPersists",

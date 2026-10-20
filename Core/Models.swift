@@ -356,6 +356,7 @@ struct Settings: Codable, Equatable {
     // Confirmed locally; neither account IDs nor these associations go online.
     var calendarTopicRoutes: [String: String]? = nil
     var recoveryPlanningPreferences: RecoveryPlanningPreferences? = nil
+    var workoutRestAudio: WorkoutRestAudioSettings? = nil
 }
 
 struct AppData: Codable {

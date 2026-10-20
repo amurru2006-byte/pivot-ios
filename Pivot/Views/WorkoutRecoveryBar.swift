@@ -3,12 +3,14 @@ import SwiftUI
 /// Inserted into the safe area, not the scrolling list: even the final exercise
 /// has the same reachable controls, and the last rows remain unobscured.
 struct WorkoutRecoveryBar: View {
+    @ObservedObject private var audio = WorkoutRestAlarmService.shared
     let session: TrainingSession
     let next: TrainingWorkoutContext.Selection?
     let pause: () -> Void
     let reset: () -> Void
     let advance: () -> Void
     @State private var minimized = false
+    @State private var audioSettings = false
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if minimized {
@@ -22,6 +24,7 @@ struct WorkoutRecoveryBar: View {
                     Text(next?.exercise.name ?? (session.rest == nil ? "Serie registrate" : "Ultimo recupero"))
                         .font(.subheadline.weight(.semibold)).lineLimit(1)
                     Spacer(minLength: 0)
+                    audioControl
                     control("chevron.up", label: "Espandi controlli allenamento", id: "workout-rest-expand", action: { setMinimized(false) })
                 }.frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
             } else {
@@ -35,6 +38,7 @@ struct WorkoutRecoveryBar: View {
         .background(PivotTheme.surface)
         .overlay(alignment: .top) { Divider() }
         .accessibilityElement(children: .contain).accessibilityIdentifier("workout-recovery-bar")
+        .sheet(isPresented: $audioSettings) { NavigationStack { WorkoutRestAudioSettingsView() } }
         .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { value in
             guard abs(value.translation.height) > abs(value.translation.width) else { return }
             if value.translation.height > 24 { setMinimized(true) }
@@ -80,11 +84,21 @@ struct WorkoutRecoveryBar: View {
                 }
                 .buttonStyle(.plain).accessibilityIdentifier("workout-next-set")
                 .disabled(next == nil && session.rest == nil)
+                audioControl
                 if session.rest == nil {
                     control("chevron.down", label: "Riduci controlli allenamento", id: "workout-rest-collapse", action: { setMinimized(true) })
                 }
             }
         }
+    }
+    private var audioControl: some View {
+        let sounding = audio.alerting.contains(WorkoutRestAlarm.id(sessionID: session.id))
+        return control(sounding ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                       label: sounding ? "Ferma allarme recupero" : "Impostazioni audio recupero",
+                       id: "workout-rest-audio", action: {
+            if sounding { Task { await audio.stop(sessionID: session.id) } }
+            else { audioSettings = true }
+        })
     }
     private func setMinimized(_ value: Bool) { withAnimation(.easeInOut(duration: 0.18)) { minimized = value } }
     private func control(_ icon: String, label: String, id: String, action: @escaping () -> Void) -> some View {

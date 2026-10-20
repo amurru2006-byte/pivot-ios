@@ -51,6 +51,7 @@ struct RootView: View {
     @State private var previewReady = !PreviewMode.enabled
     @State private var refreshGate = RefreshGate()
     @State private var notificationGate = RefreshGate()
+    @State private var restAudioGate = RefreshGate()
     @State private var workoutLink: WorkoutDeepLink?
     @State private var coachSetup: CoachOnlineSetupLink?
     @State private var pendingCoachSetup: CoachOnlineSetupLink?
@@ -131,7 +132,7 @@ struct RootView: View {
         }
         .sheet(item: $coachSetup) { setup in NavigationStack { OnlineCoachSettingsView(setup: setup) } }
         .onChange(of: scene) { _, value in
-            if value == .active { requestRefresh(force: true); openPendingCoachSetup() }
+            if value == .active { requestRefresh(force: true); openPendingCoachSetup(); reconcileRestAudio() }
             else { coachModel.pauseAndUnload() }
             if value == .background { store.saveBeforeBackground() }
             if value == .background { coachSetup = nil; pendingCoachSetup = nil }
@@ -161,12 +162,13 @@ struct RootView: View {
                 requestRefresh(); rebuildAgenda()
                 openPendingWorkout()
                 openPendingCoachSetup()
+                reconcileRestAudio()
             }
         }
-        .onChange(of: store.isRestoring) { _, restoring in if !restoring { requestRefresh(); rebuildAgenda(); openPendingWorkout(); openPendingCoachSetup() } }
+        .onChange(of: store.isRestoring) { _, restoring in if !restoring { requestRefresh(); rebuildAgenda(); openPendingWorkout(); openPendingCoachSetup(); reconcileRestAudio() } }
         .onChange(of: store.locked) { _, locked in if !locked { openPendingWorkout(); openPendingCoachSetup() } else { coachSetup = nil } }
         .onChange(of: notifications.route?.id) { _, _ in openPendingCoachSetup() }
-        .onChange(of: store.data.updatedAt) { _, _ in rebuildAgenda(); openPendingWorkout() }
+        .onChange(of: store.data.updatedAt) { _, _ in rebuildAgenda(); openPendingWorkout(); reconcileRestAudio() }
         .onChange(of: store.data.settings) { old, new in
             if old.excludedCalendarIDs != new.excludedCalendarIDs || old.excludedCalendarTitles != new.excludedCalendarTitles || old.excludeHolidays != new.excludeHolidays { requestRefresh(force: true) }
             if old.healthEnabled != new.healthEnabled {
@@ -244,6 +246,10 @@ struct RootView: View {
     }
     private func rebuildAgenda() {
         agenda.rebuild(events: calendar.events, hasAccess: calendar.hasAccess, store: store, diagnostics: store.diagnostics)
+    }
+    private func reconcileRestAudio() {
+        guard !PreviewMode.enabled, !store.isLoading, !store.isRestoring else { return }
+        restAudioGate.request { await WorkoutRestAlarmService.shared.reconcile(store: store) }
     }
     private func requestRefresh(force: Bool = false) {
         guard !PreviewMode.enabled, !store.isLoading, !store.isRestoring else { return }
