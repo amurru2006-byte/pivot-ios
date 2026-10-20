@@ -54,7 +54,11 @@ final class WorkoutRestAlarmTests: XCTestCase {
         a.id = UUID(uuidString: "11111111-2222-4333-8444-555555555555")!
         b.id = UUID(uuidString: "66666666-2222-4333-8444-555555555555")!
         XCTAssertFalse(WorkoutRestAlarm.uniqueIDs([a, b]))
+        XCTAssertTrue(WorkoutRestAlarm.hasOtherOwner(sessionID: a.id, activeSessions: [b]),
+                      "Stopping an ended/deleted session must not cancel the colliding live session")
+        XCTAssertFalse(WorkoutRestAlarm.hasOtherOwner(sessionID: a.id, activeSessions: [a]))
         b.id = UUID(); XCTAssertTrue(WorkoutRestAlarm.uniqueIDs([a, b]))
+        XCTAssertFalse(WorkoutRestAlarm.hasOtherOwner(sessionID: a.id, activeSessions: [b]))
     }
     func testDismissalReceiptIsDeadlineSpecificAndHasNoMusicVolumeState() throws {
         let session = session()

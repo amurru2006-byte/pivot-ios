@@ -54,6 +54,9 @@ enum WorkoutRestAlarm {
         let ids = sessions.map { id(sessionID: $0.id) }
         return Set(ids).count == ids.count
     }
+    static func hasOtherOwner(sessionID: UUID, activeSessions: [TrainingSession]) -> Bool {
+        activeSessions.contains { $0.id != sessionID && id(sessionID: $0.id) == id(sessionID: sessionID) }
+    }
 }
 
 /// Device-local scheduling acknowledgement. Not part of a portable backup:

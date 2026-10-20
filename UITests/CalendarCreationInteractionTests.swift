@@ -87,7 +87,17 @@ final class CalendarCreationInteractionTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["creation-travel-preview"].waitForExistence(timeout: 5))
         tap(app.buttons["creation-travel-open"], app); tap(app.buttons["creation-travel-minutes-0"], app)
         app.buttons["creation-travel-done"].tap()
+        // Observe the completed sheet transition, not a snapshot of the old
+        // parent underneath its closing animation. Both the visible removal
+        // and its persisted draft must be verified; no Calendar write occurs.
+        XCTAssertTrue(app.navigationBars["Tempo di percorrenza"].waitForNonExistence(timeout: 12))
+        XCTAssertTrue(app.staticTexts["creation-travel-preview"].waitForNonExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["creation-travel-open"].label.contains("Nessuno"))
+        shot("calendar-native-travel-removed", app)
+        app.buttons["coach-create-close"].tap()
+        app.terminate(); app.launch(); openCoach(app); reopened(app)
         XCTAssertFalse(app.staticTexts["creation-travel-preview"].exists)
+        XCTAssertTrue(app.buttons["creation-travel-open"].label.contains("Nessuno"))
         app.buttons["coach-create-close"].tap()
         let audit = app.staticTexts["creation-events-audit"]; tap(audit, app)
         XCTAssertEqual(audit.label, "0 eventi · 0 spostamenti · 0 incassi")
