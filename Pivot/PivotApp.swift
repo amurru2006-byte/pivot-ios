@@ -253,6 +253,7 @@ struct RootView: View {
             await calendar.refresh(settings: store.data.settings, force: force)
             store.diagnostics.record("Calendario", seconds: ProcessInfo.processInfo.systemUptime - started)
             rebuildAgenda()
+            if !store.data.clients.isEmpty { await calendar.refreshContactActivity(store: store, force: force) }
             await health.refresh(store: store, events: calendar.events)
         }
     }
