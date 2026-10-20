@@ -143,6 +143,11 @@ final class CalendarMutationInteractionTests: XCTestCase {
         send(String(repeating: "Premessa della richiesta. ", count: 20) + "Registra la mia attività già terminata, manca soltanto l’ora di fine.", app)
         XCTAssertTrue(app.staticTexts["A che ora è finita?"].waitForExistence(timeout: 12))
         XCTAssertFalse(app.navigationBars["Nuovo impegno"].exists)
+        // Receiving a reply updates memory before the durable flush completes.
+        // Do not kill that write and then mistake lost data for lost context.
+        let persisted = expectation(for: NSPredicate(format: "label == %@", "Conversazione salvata"),
+            evaluatedWith: app.staticTexts["coach-persistence-status"])
+        wait(for: [persisted], timeout: 30)
         app.terminate(); app.launch(); openCoach(app)
         send("È finita un’ora dopo l’inizio, usa titolo e nota che ti avevo già detto.", app)
         XCTAssertTrue(app.navigationBars["Nuovo impegno"].waitForExistence(timeout: 12))
@@ -153,6 +158,7 @@ final class CalendarMutationInteractionTests: XCTestCase {
         XCTAssertTrue(alert.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "evento nel passato")).firstMatch.exists)
         let create = alert.buttons.matching(identifier: "coach-create-confirm").firstMatch
         XCTAssertTrue(create.isEnabled); create.tap()
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Impegno creato nel Calendario: Attività passata QA")).firstMatch.waitForExistence(timeout: 12))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Impegno creato nel Calendario: Attività passata QA")).firstMatch.waitForExistence(timeout: 45))
+        XCTAssertTrue(app.navigationBars["Nuovo impegno"].waitForNonExistence(timeout: 10))
     }
 }

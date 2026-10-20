@@ -29,6 +29,7 @@ struct CoachView: View {
     @StateObject private var onlineCoach = OnlineCoachService()
     @State private var useLocal = false
     @State private var onlineReview: OnlineCoachReview?
+    @State private var approvedReviewAwaitingDismissal: OnlineCoachReview?
     @State private var lastAuthorizedRequest: CoachV8Request?
     @State private var showOnlineData = false
     @State private var calendarDraft: CoachSavedCalendarDraft?
@@ -66,6 +67,10 @@ struct CoachView: View {
                 Label("Storico modifiche al Calendario", systemImage: "clock.arrow.circlepath").frame(maxWidth: .infinity)
             }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("coach-calendar-history")
             #if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--conversation-continuity-test") {
+                Text(isPlanning || store.isSaving ? "Salvataggio conversazione in corso" : "Conversazione salvata")
+                    .accessibilityIdentifier("coach-persistence-status")
+            }
             if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--calendar-mutations-test"),
                UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_COACH_ACTION_ID"] ?? "") != nil {
                 Button("Verifica dati QA") {
@@ -251,7 +256,7 @@ struct CoachView: View {
         }) { record in
             NavigationStack { EventDetailView(event: record.snapshot, initial: record, rule: store.rule(for: record.snapshot), onSaved: { returnHomeAfterResponse = true }) }.presentationDragIndicator(.visible)
         }
-        .sheet(item: $onlineReview) { review in
+        .sheet(item: $onlineReview, onDismiss: sendApprovedReviewAfterDismissal) { review in
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
@@ -290,6 +295,7 @@ struct CoachView: View {
                     data.coachState.messages.append(.init(dayKey: PivotDate.key(Date()), role: .coach, text: text, onlineHistoryEligible: false))
                 }
                 message = saved ? text : text + " Non riesco ancora a salvare il resoconto in Pivot."
+                calendarDraft = nil
             }
         }
         .confirmationDialog("Eliminare questa conversazione? Anche il resoconto non la includerà più.", isPresented: $deleteHistory, titleVisibility: .visible) {
@@ -537,11 +543,22 @@ struct CoachView: View {
         turnTask?.cancel(); turnTask = nil; isPlanning = false
         onlineCoach.cancel()
         onlineReview = nil
+        approvedReviewAwaitingDismissal = nil
     }
 
     private func sendReviewed(_ review: OnlineCoachReview) {
-        onlineReview = nil
         guard !isPlanning, !store.locked, !store.isRestoring, !useLocal, onlineCoach.isConfigured else { return }
+        // The provider (especially an on-device/test response) may finish before
+        // the consent sheet closes. Presenting its event editor during that
+        // transition can lose the presentation even though the draft is saved.
+        // Await the actual dismissal callback, not a guessed animation delay.
+        approvedReviewAwaitingDismissal = review
+        onlineReview = nil
+    }
+    private func sendApprovedReviewAfterDismissal() {
+        guard let review = approvedReviewAwaitingDismissal else { return }
+        approvedReviewAwaitingDismissal = nil
+        guard scenePhase == .active, !isPlanning, !store.locked, !store.isRestoring, !useLocal, onlineCoach.isConfigured else { return }
         store.onlineConversationPermission.authorize(dayKey: review.snapshot.request.dayKey)
         turnGeneration += 1
         let generation = turnGeneration

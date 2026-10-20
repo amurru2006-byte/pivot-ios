@@ -152,6 +152,26 @@ final class OrdinaryIncomeProjectionTests: XCTestCase {
         input.weeks[0].earnedCents = -1
         XCTAssertThrowsError(try OrdinaryIncomeProjection.make(input, now: now))
     }
+    func testObservedSeasonalityUsesCompleteYearsAndCurrentLevelRatherThanOldAnnualCash() throws {
+        let amounts = (0..<156).map { index -> Int in
+            let date = PivotDate.calendar.date(byAdding: .day, value: 3, to: week(index - 156))!
+            let month = PivotDate.calendar.component(.month, from: date)
+            let year = PivotDate.calendar.component(.year, from: date)
+            return (month.isMultiple(of: 2) ? 3000 : 1000) * (year >= 2025 ? 2 : 1)
+        }
+        let input = try prepared(fixture(amounts), count: 156)
+        let forecast = try OrdinaryIncomeProjection.make(input, now: now, horizon: 13)
+        XCTAssertEqual(forecast.model, .seasonalRecentMean)
+        let november = try XCTUnwrap(forecast.weeks.first { PivotDate.calendar.component(.month, from: $0.start.addingTimeInterval(3 * 86400)) == 11 })
+        let december = try XCTUnwrap(forecast.weeks.first { PivotDate.calendar.component(.month, from: $0.start.addingTimeInterval(3 * 86400)) == 12 })
+        XCTAssertTrue((1700...2300).contains(november.earnedCents))
+        XCTAssertTrue((5500...6500).contains(december.earnedCents))
+    }
+    func testPartialYearsCannotInventARecurringSeasonalPattern() throws {
+        let amounts = (0..<80).map { $0.isMultiple(of: 4) ? 6000 : 1000 }
+        let forecast = try OrdinaryIncomeProjection.make(prepared(fixture(amounts), count: 80), now: now)
+        XCTAssertNotEqual(forecast.model, .seasonalRecentMean)
+    }
     func testReadOnlyModelNeverCreatesPaymentsExpensesOrSavingsReservations() throws {
         let data = fixture(Array(repeating: 1500, count: 16))
         let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
