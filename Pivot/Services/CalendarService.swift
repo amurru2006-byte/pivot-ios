@@ -24,6 +24,7 @@ final class CalendarService: ObservableObject {
     @Published private(set) var contactActivity: ClientCalendarActivity?
     @Published private(set) var contactActivityProblem: String?
     @Published private(set) var checkingContactActivity = false
+    private var nextContactAppointments: [UUID: CalendarItem] = [:]
     private var contactFilter: CalendarFilter?
     private var contactRevision: UInt64 = 0
     private let worker = CalendarWorker()
@@ -102,6 +103,7 @@ final class CalendarService: ObservableObject {
            !ProcessInfo.processInfo.arguments.contains("--contact-activity-test") { return false }
         #endif
         let filter = CalendarFilter(store.data.settings)
+        let checkedRevision = invalidation
         let cached = !force && contactFilter == filter && contactRevision == invalidation
             && contactActivity.map { Date().timeIntervalSince($0.observedAt) < 300 } == true
         checkingContactActivity = true
@@ -111,20 +113,32 @@ final class CalendarService: ObservableObject {
             if cached, let contactActivity { scan = contactActivity }
             else { scan = try await worker.contactActivity(settings: store.data.settings) }
             try Task.checkCancellation()
-            guard !store.isRestoring, !store.locked, filter == CalendarFilter(store.data.settings) else { return false }
+            guard !store.isRestoring, !store.locked, checkedRevision == invalidation,
+                  filter == CalendarFilter(store.data.settings) else { return false }
             let data = store.data, version = data.updatedAt
             let now = Date()
-            let clients = await Task.detached(priority: .utility) { ClientActivity.refreshed(data: data, scan: scan, now: now) }.value
-            guard !store.isRestoring, !store.locked, version == store.data.updatedAt else { return false }
-            contactActivity = scan; contactFilter = filter; contactRevision = invalidation
+            let result = await Task.detached(priority: .utility) {
+                (ClientActivity.refreshed(data: data, scan: scan, now: now),
+                 ClientActivity.nextAppointments(data: data, scan: scan, now: now))
+            }.value
+            guard !store.isRestoring, !store.locked, checkedRevision == invalidation,
+                  version == store.data.updatedAt else { return false }
+            contactActivity = scan; contactFilter = filter; contactRevision = checkedRevision
+            nextContactAppointments = result.1
             contactActivityProblem = scan.complete ? nil : "Lettura del calendario incompleta: nessuna disattivazione automatica."
-            if clients != store.data.clients { guard store.change({ $0.clients = clients }) else { return false } }
+            if result.0 != store.data.clients { guard store.change({ $0.clients = result.0 }) else { return false } }
             return scan.complete
         } catch {
             contactActivity = nil
+            nextContactAppointments = [:]
             contactActivityProblem = "Non riesco a verificare gli appuntamenti futuri. Il contatto resta invariato."
             return false
         }
+    }
+    func nextContactAppointment(_ clientID: UUID) -> CalendarItem? {
+        guard contactActivity?.isCurrent(at: Date()) == true,
+              let item = nextContactAppointments[clientID], item.end > Date() else { return nil }
+        return item
     }
     func reviewMutations(batchID: UUID, actions: [CoachCalendarMutation], settings: Settings) async throws -> CalendarMutationReview {
         try await worker.reviewMutations(batchID: batchID, actions: actions, settings: settings)
@@ -728,7 +742,7 @@ private actor CalendarWorker {
             guard found.count <= 20_000, items.count + found.count <= 100_000 else {
                 return .init(observedAt: Date(), from: from, through: cursor, complete: false, items: Array(items.values))
             }
-            for event in found { let item = Self.item(event); items[item.id] = item }
+            for event in found where event.status != .canceled { let item = Self.item(event); items[item.id] = item }
             cursor = end
         }
         guard EKEventStore.authorizationStatus(for: .event) == .fullAccess,

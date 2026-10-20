@@ -24,10 +24,15 @@ struct ClientCalendarActivity: Equatable {
     var complete: Bool
     var items: [CalendarItem]
 
+    func isCurrent(at now: Date) -> Bool {
+        [now, observedAt, from, through].allSatisfy { $0.timeIntervalSinceReferenceDate.isFinite }
+            && from < through && observedAt <= now && now.timeIntervalSince(observedAt) <= 900
+    }
+
     func canDeactivate(at now: Date) -> Bool {
         guard let requiredFrom = PivotDate.calendar.date(byAdding: .day, value: -ClientActivity.inactivityDays, to: now),
               let requiredThrough = PivotDate.calendar.date(byAdding: .year, value: 4, to: now) else { return false }
-        return complete && observedAt <= now && now.timeIntervalSince(observedAt) <= 900
+        return complete && isCurrent(at: now)
             && from <= requiredFrom && through >= requiredThrough
     }
 }
@@ -38,7 +43,7 @@ enum ClientActivity {
 
     static func matching(_ scan: ClientCalendarActivity?, clients: [Client], data: AppData) -> [UUID: [CalendarItem]] {
         var result: [UUID: [CalendarItem]] = [:]
-        for item in scan?.items ?? [] where [.tutoring, .work].contains(item.kind) && item.end > item.start {
+        for item in scan?.items ?? [] where item.end > item.start {
             guard data.records[item.id]?.status != .skipped,
                   let client = StudentRecognition.recognize(title: item.title, clients: clients).client else { continue }
             result[client.id, default: []].append(item)
@@ -47,8 +52,16 @@ enum ClientActivity {
     }
 
     static func nextAppointment(clientID: UUID, data: AppData, scan: ClientCalendarActivity?, now: Date) -> CalendarItem? {
-        matching(scan, clients: data.clients, data: data)[clientID]?
+        guard scan?.isCurrent(at: now) == true else { return nil }
+        return matching(scan, clients: data.clients, data: data)[clientID]?
             .filter { $0.end > now }.min { $0.start == $1.start ? $0.id < $1.id : $0.start < $1.start }
+    }
+
+    static func nextAppointments(data: AppData, scan: ClientCalendarActivity?, now: Date) -> [UUID: CalendarItem] {
+        guard scan?.isCurrent(at: now) == true else { return [:] }
+        return matching(scan, clients: data.clients, data: data).compactMapValues { items in
+            items.filter { $0.end > now }.min { $0.start == $1.start ? $0.id < $1.id : $0.start < $1.start }
+        }
     }
 
     static func lastActivity(clientID: UUID, data: AppData, now: Date) -> Date? {
@@ -70,7 +83,7 @@ enum ClientActivity {
     }
 
     static func refreshed(data: AppData, scan: ClientCalendarActivity?, now: Date) -> [Client] {
-        let matches = matching(scan, clients: data.clients, data: data)
+        let matches = matching(scan?.isCurrent(at: now) == true ? scan : nil, clients: data.clients, data: data)
         let dates = activityDates(data: data, now: now)
         return data.clients.map { client in
             var client = client
