@@ -428,6 +428,10 @@ final class PivotStore: ObservableObject {
             if var library = restored.training, TrainingIsometry.migrate(&library) {
                 try library.validate(); restored.training = library
             }
+            // A backup can carry a future rest deadline and an old opt-in.
+            // Merely reopening/autosaving that workout must not arm a new
+            // device alarm. Its cue volume survives; activation does not.
+            restored.settings.workoutRestAudio = restored.settings.workoutRestAudio?.requiringDeviceActivation
             try await WorkoutRestAlarmService.shared.cancelAll()
             try await persistence.save(restored, restoring: true)
             data = restored

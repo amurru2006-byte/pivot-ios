@@ -10,23 +10,33 @@ final class WorkoutRestAudioInteractionTests: XCTestCase {
         app.launch()
         openAudio(app)
         let enable = app.buttons["rest-audio-enable"], count = app.staticTexts["rest-audio-test-count"]
-        XCTAssertTrue(enable.waitForExistence(timeout: 8)); XCTAssertEqual(count.label, "Allarmi sintetici: 0")
+        XCTAssertTrue(enable.waitForExistence(timeout: 8)); assertCount(0, count)
         scrollControlIntoView(enable, in: app); enable.tap()
         XCTAssertTrue(app.staticTexts["rest-audio-enabled"].waitForExistence(timeout: 10))
-        XCTAssertEqual(count.label, "Allarmi sintetici: 1")
+        assertCount(1, count)
+        app.buttons["rest-audio-close"].tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        openAudio(app)
+        XCTAssertTrue(app.staticTexts["rest-audio-enabled"].waitForExistence(timeout: 8))
+        assertCount(1, count)
         let stop = app.buttons.matching(identifier: "rest-audio-stop").firstMatch
         scrollControlIntoView(stop, in: app); stop.tap()
-        XCTAssertEqual(count.label, "Allarmi sintetici: 0")
+        assertCount(0, count)
         let rearm = app.buttons.matching(identifier: "rest-audio-rearm").firstMatch
         scrollControlIntoView(rearm, in: app); rearm.tap()
-        XCTAssertEqual(count.label, "Allarmi sintetici: 1")
+        assertCount(1, count)
         let disable = app.buttons["rest-audio-disable"]
         scrollControlIntoView(disable, in: app); disable.tap()
-        XCTAssertTrue(enable.waitForExistence(timeout: 8)); XCTAssertEqual(count.label, "Allarmi sintetici: 0")
+        XCTAssertTrue(enable.waitForExistence(timeout: 8)); assertCount(0, count)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: enable)], timeout: 10), .completed)
         app.terminate(); app.launch(); openAudio(app)
         XCTAssertTrue(enable.waitForExistence(timeout: 8)); XCTAssertFalse(app.staticTexts["rest-audio-enabled"].exists)
-        XCTAssertEqual(count.label, "Allarmi sintetici: 0")
+        assertCount(0, count)
         XCTAssertFalse(app.alerts.firstMatch.exists, "La navigazione non richiede permessi né produce allarmi reali")
+    }
+    private func assertCount(_ value: Int, _ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "Allarmi sintetici: \(value)"), object: element)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed, file: file, line: line)
     }
     private func openAudio(_ app: XCUIApplication) {
         XCTAssertTrue(app.tabBars.buttons["Impostazioni"].waitForExistence(timeout: 15)); app.tabBars.buttons["Impostazioni"].tap()

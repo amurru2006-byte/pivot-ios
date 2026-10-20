@@ -69,7 +69,11 @@ final class WorkoutRestAlarmService: ObservableObject {
         do {
             try await cancelAll()
             var settings = store.data.settings.workoutRestAudio ?? .init(); settings.enabled = false
-            if store.change({ $0.settings.workoutRestAudio = settings }) { message = "Allarme recupero disattivato. Il timer resta disponibile." }
+            guard store.change({ $0.settings.workoutRestAudio = settings }), await store.flushPendingWrites() else {
+                message = "Allarmi fermati, ma il salvataggio della preferenza non è confermato. Riprova prima di chiudere Pivot."
+                return
+            }
+            message = "Allarme recupero disattivato. Il timer resta disponibile."
         } catch { message = "Non riesco a fermare un allarme. Usa Ferma nell’allarme di iOS e riprova." }
     }
 

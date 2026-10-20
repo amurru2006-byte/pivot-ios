@@ -6,6 +6,13 @@ struct WorkoutRestAudioSettings: Codable, Equatable {
     var isValid: Bool { (1...20).contains(volumeStep) }
     var gain: Double { Double(volumeStep) / 20 }
     var soundName: String { "PivotRest-\(volumeStep).wav" }
+    /// An imported timer is not a new request to sound on this device. Retain
+    /// the chosen cue level, but require an explicit in-app activation again.
+    var requiringDeviceActivation: Self {
+        var copy = self
+        copy.enabled = false
+        return copy
+    }
 }
 
 /// One system alarm owns both the cue and the system's media interruption.
