@@ -43,6 +43,31 @@ final class SavingsEvidenceForecastTests: XCTestCase {
         XCTAssertNil(value.cash); XCTAssertNil(value.completionDate)
         XCTAssertTrue(value.limitations.contains(.unknownReceiptDates))
     }
+    func testVerifiedHistoricalReceiptsTrainFutureScenarioButRemainUnavailableToday() throws {
+        var (data, template, id) = fixture()
+        data.savingsBudget?.openingFundsCents = 0
+        data.savingsBudget?.allocations = []
+        let client = Client(name: "Storico verificato QA", rateCents: 1500)
+        data.clients = [client]
+        for week in template.weeks {
+            let entry = IncomeEntry(clientID: client.id, clientName: client.name, date: week.start,
+                minutes: 60, amountCents: 10_000, paidCents: 10_000)
+            data.income.append(entry)
+            data.payments.append(.init(incomeID: entry.id, clientName: client.name, date: week.start,
+                amountCents: 10_000, excludedFromBudget: true))
+        }
+        let coverage = IncomeObservationCoverage(from: template.weeks[0].start, through: now,
+            activitiesConfirmed: true, expensesConfirmed: true, receiptsConfirmed: true)
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+        let original = try encoder.encode(data)
+        let observations = try OrdinaryIncomePreparation.make(data: data, coverage: coverage, now: now)
+        let value = try make(data, observations, id)
+        XCTAssertEqual(value.weeks.first?.savingCents, 10_000)
+        XCTAssertNotNil(value.completionDate)
+        XCTAssertEqual(try SavingsAccounting.balance(data.savingsBudget!, payments: data.payments).freeCents, 0)
+        XCTAssertThrowsError(try make(data, observations, id, upfront: 1))
+        XCTAssertEqual(try encoder.encode(data), original)
+    }
     func testUnconfirmedExpensesAreNotAutomaticallyZero() throws {
         let (data, input, id) = fixture()
         var missing = input; missing.expensesComplete = false
