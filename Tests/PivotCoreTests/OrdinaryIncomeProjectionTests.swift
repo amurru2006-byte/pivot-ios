@@ -112,8 +112,16 @@ final class OrdinaryIncomeProjectionTests: XCTestCase {
     func testSmallSamplesCannotInventBacktestAccuracyOrScenarioBounds() throws {
         let value = try OrdinaryIncomeProjection.make(prepared(fixture(Array(repeating: 1500, count: 8)), count: 8), now: now)
         XCTAssertTrue(value.provisional); XCTAssertNil(value.meanAbsoluteErrorCents)
+        XCTAssertNil(value.rootMeanSquaredErrorCents)
         XCTAssertNil(value.weeks.first?.lowerScenarioCents); XCTAssertNil(value.weeks.first?.upperScenarioCents)
         XCTAssertThrowsError(try OrdinaryIncomeProjection.make(prepared(fixture([1500]), count: 7), now: now))
+    }
+    func testIntermittentRecurringWorkIsNotForecastAsZeroJustBecauseMostWeeksAreEmpty() throws {
+        let amounts = Array(repeating: [0, 0, 0, 6000], count: 8).flatMap { $0 }
+        let value = try OrdinaryIncomeProjection.make(prepared(fixture(amounts), count: 32), now: now)
+        XCTAssertEqual(value.model, .recentMean)
+        XCTAssertEqual(value.weeks.first?.earnedCents, 1500)
+        XCTAssertNotNil(value.rootMeanSquaredErrorCents)
     }
     func testMissingRecentCoverageCannotBecomeATodaysForecast() throws {
         var input = try prepared(fixture(Array(repeating: 1500, count: 16)))
