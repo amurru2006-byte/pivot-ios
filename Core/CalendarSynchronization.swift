@@ -23,6 +23,10 @@ enum CalendarSynchronization {
 
     static func actualTiming(for record: EventRecord, event: CalendarItem) -> ActualTiming? {
         guard !event.isAllDay,
+              // Opening/saving a Health-imported activity is not consent to
+              // copy its observations into another data store. Explicit clock
+              // edits go through the separate, confirmed proposal above.
+              record.health == nil, record.healthSleep == nil,
               record.timingFromCalendar != true,
               record.status != .pending,
               record.status != .running,
