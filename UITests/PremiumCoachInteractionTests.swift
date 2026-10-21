@@ -98,7 +98,10 @@ final class PremiumCoachInteractionTests: XCTestCase {
         XCTAssertFalse(app.buttons["coach-online-approve"].exists)
         XCTAssertEqual(app.descendants(matching: .any)["coach-message-input"].value as? String, text)
         capture("premium-busy-week-refuses-with-actionable-guidance", app)
-        tap(app.buttons["coach-calendar-scope"], app); tap(app.buttons["Oggi"], app)
+        tap(app.buttons["coach-calendar-scope"], app)
+        // The native menu and the bottom navigation both contain “Oggi”.
+        // Target the observed menu collection, not the unrelated navigation tab.
+        navTap(app.collectionViews.buttons["Oggi"])
         tap(app.buttons["coach-send"], app)
         XCTAssertTrue(app.navigationBars["Prima dell’invio"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["Impegni inclusi: 1"].waitForExistence(timeout: 5))
