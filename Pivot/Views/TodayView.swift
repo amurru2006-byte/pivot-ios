@@ -136,7 +136,7 @@ struct TodayView: View {
             }
             .navigationTitle("Pivot")
             .toolbar { Button { Task { await calendar.refresh(settings: store.data.settings) } } label: { Image(systemName: "arrow.clockwise") }.accessibilityLabel("Aggiorna calendari") }
-            .refreshable { await calendar.refresh(settings: store.data.settings); await health.refresh(store: store, events: calendar.events, force: true) }
+            .refreshable { await calendar.refresh(settings: store.data.settings); await health.refresh(store: store, events: calendar.events, force: true, recheckHeartRate: true) }
             .sheet(isPresented: $showDecisions) { DecisionInboxView() }
             .sheet(isPresented: $showHealth) { healthSheet }
             .sheet(item: $lessonToConfirm) { event in LessonLogisticsView(event: event) }
@@ -402,7 +402,7 @@ struct DayCheckInView: View {
         })
     }
     private func refreshHealth() async {
-        if store.data.settings.healthEnabled == true { await health.refresh(store: store, events: calendar.events, force: true) }
+        if store.data.settings.healthEnabled == true { await health.refresh(store: store, events: calendar.events, force: true, recheckHeartRate: true) }
         else { await health.connect(store: store, events: calendar.events) }
         if let latest = store.data.checkIns[check.id] {
             let wasAutomatic = check.wakeTime == nil || check.wakeTime == check.healthWakeTime

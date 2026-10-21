@@ -116,15 +116,19 @@ enum HealthImport {
         }
         let originalStart = record.actualStart, originalEnd = record.actualEnd, originalMinutes = record.activeMinutes
         let originalStatus = record.status
+        let calendarSuggested = firstImport && record.timingFromCalendar == true && record.calendarTimingNeedsConfirmation != true
+        if calendarSuggested {
+            record.actualStart = nil; record.actualEnd = nil; record.activeMinutes = 0
+        }
         // Explicit clock edits and calendar-synchronization requests are never
         // replaced by an observation, even if their numeric value coincides.
-        if record.calendarTimingNeedsConfirmation == true || (firstImport && (originalStart != nil || originalEnd != nil)) {
+        if record.calendarTimingNeedsConfirmation == true || (firstImport && !calendarSuggested && (originalStart != nil || originalEnd != nil)) {
             managed.subtract([.actualStart, .actualEnd, .activeMinutes])
         } else {
             merge(.actualStart, &record.actualStart, old: previous?.start, incoming: summary.start)
             merge(.actualEnd, &record.actualEnd, old: previous?.end, incoming: summary.end)
             if firstImport {
-                if originalStart == nil && originalEnd == nil && record.activeMinutes == 0 {
+                if (calendarSuggested || (originalStart == nil && originalEnd == nil)) && record.activeMinutes == 0 {
                     managed.insert(.activeMinutes); record.activeMinutes = summary.durationSeconds / 60
                 }
             } else if managed.contains(.activeMinutes) {
@@ -140,6 +144,7 @@ enum HealthImport {
         }
         record.health = summary
         if firstImport { record.status = .completed }
+        if managed.contains(.actualStart) && managed.contains(.actualEnd) { record.timingFromCalendar = false }
         if let kind = CardioKind.suggested(event.title) {
             // Removing the cardio record or changing its type is a manual edit.
             if (firstImport && record.cardio == nil) || record.cardio?.kind == kind {
