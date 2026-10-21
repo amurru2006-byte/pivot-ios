@@ -69,7 +69,7 @@ final class PremiumCoachInteractionTests: XCTestCase {
         cancelReview(app)
     }
     func testExpandingCalendarScopeRevokesPreviousConversationPermissionBeforeAnyNewSend() {
-        let app = launch(["--online-coach-review-test"])
+        let app = launch(["--online-coach-review-test", "--coach-scope-test"])
         enter("Vorrei organizzare lo studio", app)
         tap(app.buttons["coach-online-approve"], app)
         let counter = app.staticTexts["coach-online-fixture-requests"]
@@ -81,9 +81,30 @@ final class PremiumCoachInteractionTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["coach-online-conversation-authorized"].waitForNonExistence(timeout: 5))
         tap(app.buttons["coach-send"], app)
         XCTAssertTrue(app.navigationBars["Prima dell’invio"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Impegni inclusi: 2"].waitForExistence(timeout: 5))
         capture("premium-week-scope-requires-new-authorization", app)
         cancelReview(app)
         XCTAssertEqual(counter.label, "Richieste sintetiche: 1", "A wider scope needs a new review, not an automatic provider call")
+    }
+    func testBusyWeekRefusesWithoutSendingAndCanBeNarrowedWithoutLosingMessage() {
+        let app = launch(["--online-coach-review-test", "--coach-scope-test", "--coach-scope-busy-test"])
+        tap(app.buttons["coach-calendar-scope"], app)
+        tap(app.buttons["Prossimi 7 giorni"], app)
+        let text = "Vorrei organizzare lo studio"
+        enter(text, app)
+        let warning = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Troppi impegni nell’intervallo scelto")).firstMatch
+        XCTAssertTrue(warning.waitForExistence(timeout: 10))
+        XCTAssertEqual(app.staticTexts["coach-online-fixture-requests"].label, "Richieste sintetiche: 0")
+        XCTAssertFalse(app.buttons["coach-online-approve"].exists)
+        XCTAssertEqual(app.descendants(matching: .any)["coach-message-input"].value as? String, text)
+        capture("premium-busy-week-refuses-with-actionable-guidance", app)
+        tap(app.buttons["coach-calendar-scope"], app); tap(app.buttons["Oggi"], app)
+        tap(app.buttons["coach-send"], app)
+        XCTAssertTrue(app.navigationBars["Prima dell’invio"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Impegni inclusi: 1"].waitForExistence(timeout: 5))
+        cancelReview(app)
+        XCTAssertEqual(app.staticTexts["coach-online-fixture-requests"].label, "Richieste sintetiche: 0")
+        XCTAssertEqual(app.descendants(matching: .any)["coach-message-input"].value as? String, text)
     }
     func testNamedWeekdayRecoveryOpensExactDayLocallyWithoutOnlineRequest() {
         let app = launch(["--recovery-forecast-test"])
