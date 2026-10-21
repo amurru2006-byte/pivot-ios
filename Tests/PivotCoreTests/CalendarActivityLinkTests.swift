@@ -137,7 +137,12 @@ final class CalendarActivityLinkTests: XCTestCase {
         let estimate = TravelEstimate(request: request, fetchedAt: now, departure: arrival.addingTimeInterval(-1800),
             arrival: arrival, travelSeconds: 1800, distanceMeters: 1000)
         let choice = CalendarCreationTravel(minutes: 30, origin: options.travel!.origin, estimate: estimate)
-        var data = linked(); data.calendarActivityLinks?[0].settings.estimate = estimate
+        var data = linked()
+        var originalEstimate = estimate
+        originalEstimate.request.date = receipt.activity.start
+        originalEstimate.departure = receipt.travel!.start; originalEstimate.arrival = receipt.activity.start
+        originalEstimate.travelSeconds = 1200
+        data.calendarActivityLinks?[0].settings.estimate = originalEstimate
         XCTAssertThrowsError(try expand([action], data: data))
         XCTAssertThrowsError(try expand([action], data: data, choices: [linkID.uuidString: choice]))
         XCTAssertEqual(try expand([action], data: data, choices: [linkID.uuidString: choice], consent: true).count, 2)
@@ -245,5 +250,13 @@ final class CalendarActivityLinkTests: XCTestCase {
         CalendarActivityLinks.reconcileAcknowledgements(data: &data)
         XCTAssertEqual(data.calendarActivityLinks?.first?.deleted, true)
         XCTAssertTrue(data.moves.isEmpty); XCTAssertTrue(data.income.isEmpty)
+    }
+    func testBackupCannotSmuggleMismatchedDestinationDurationOrReadOnlyComponent() {
+        var data = linked(); data.calendarActivityLinks?[0].travel.location = "Altra destinazione QA"
+        XCTAssertFalse(CalendarActivityLinks.valid(data))
+        data = linked(); data.calendarActivityLinks?[0].settings.minutes = 40
+        XCTAssertFalse(CalendarActivityLinks.valid(data))
+        data = linked(); data.calendarActivityLinks?[0].travel.writable = false
+        XCTAssertFalse(CalendarActivityLinks.valid(data))
     }
 }
