@@ -242,6 +242,8 @@ final class CalendarService: ObservableObject {
         return try await applyConfirmedTiming(timing, source: event, data: data)
     }
     func applyConfirmedTiming(_ timing: CalendarSynchronization.ActualTiming, source: CalendarItem, data: AppData) async throws -> CalendarItem {
+        guard !mutationInProgress else { throw CalendarFailure.changed }
+        mutationInProgress = true; defer { mutationInProgress = false }
         let updated = try await worker.applyActualTimes(timing, source: source)
         invalidateSnapshot()
         await refresh(settings: data.settings, force: true)

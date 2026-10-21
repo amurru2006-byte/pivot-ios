@@ -117,6 +117,7 @@ struct EventDetailView: View {
                 }
             }
         }
+        .disabled(syncingCalendar)
         .navigationTitle("Attività")
         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Salva") { Task { await finishEditing() } }.accessibilityIdentifier("activity-save").disabled(store.locked || syncingCalendar) } }
         .alert("Aggiornare gli orari nel Calendario?", isPresented: $confirmingCalendarTiming) {
@@ -569,16 +570,25 @@ struct EventDetailView: View {
         guard await store.flushPendingWrites() else { message = "Salvataggio in Pivot non confermato. Calendario non modificato."; return }
         do {
             let key = record.id
+            let expected = record
             let updated = try await calendar.applyConfirmedTiming(timing, source: source, data: store.data)
             calendarBaseline = updated
-            record.snapshot = updated; record.calendarTimingNeedsConfirmation = nil
+            var acknowledged = false
             let persisted = store.change { data in
                 guard var saved = data.records[key] else { return }
-                saved.snapshot = updated; saved.calendarTimingNeedsConfirmation = nil; data.records[key] = saved
+                saved.snapshot = updated
+                if saved.actualStart == expected.actualStart && saved.actualEnd == expected.actualEnd && saved.status == expected.status {
+                    saved.calendarTimingNeedsConfirmation = nil; acknowledged = true
+                }
+                data.records[key] = saved
             }
             guard persisted, await store.flushPendingWrites() else {
                 message = "Calendario aggiornato, ma il salvataggio della conferma in Pivot non è riuscito. Non ripetere la modifica: aggiorna la giornata e controlla gli orari."; return
             }
+            guard acknowledged, let saved = store.data.records[key] else {
+                message = "Calendario aggiornato con gli orari confermati. Nel frattempo l’attività è cambiata in Pivot: controlla i nuovi dati prima di salvarli."; return
+            }
+            record = saved; savedFingerprint = fingerprint
             message = "Attività salvata e orari aggiornati nel Calendario."
             if closeWhenDone { closeAfterSaving() }
         } catch {
