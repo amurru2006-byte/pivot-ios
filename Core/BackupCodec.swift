@@ -32,6 +32,7 @@ enum BackupCodec {
         guard CoachCalendarRouting.valid(data.settings) else { throw BackupError.invalidData }
         guard data.settings.recoveryPlanningPreferences?.isValid ?? true else { throw BackupError.invalidData }
         guard CalendarArchive.valid(data) else { throw BackupError.invalidData }
+        guard CalendarActivityLinks.valid(data) else { throw BackupError.invalidData }
         guard CoachCalendarBatch.valid(data.coachState) else { throw BackupError.invalidData }
         try StudyFiles.validateBackup(data)
         try data.training?.validate()

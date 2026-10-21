@@ -28,7 +28,7 @@ jobs:
       - run: bash Scripts/prepare-ios-ci.sh
       - name: Editor nativo e consenso Maps senza rete reale
         env:
-          PIVOT_UI_ONLY_TESTING: PivotUITests/CalendarCreationInteractionTests
+          PIVOT_UI_ONLY_TESTING: v8-087-linked-travel-regression
         run: bash Scripts/preview-ui.sh
       - uses: actions/upload-artifact@v4
         if: always()

@@ -405,6 +405,7 @@ struct AppData: Codable {
     var savingsCashCoverage: IncomeObservationCoverage? = nil
     var calendarActionArchive: [ArchivedCalendarMutation]? = nil
     var calendarRestorations: [CalendarRestorationLink]? = nil
+    var calendarActivityLinks: [CalendarActivityLink]? = nil
 }
 
 struct ActivityDraft: Codable {

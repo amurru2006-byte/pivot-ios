@@ -80,7 +80,7 @@ final class CalendarService: ObservableObject {
             creationID: creationID ?? draft.id, mapsConsent: AppleMapsService.shared.consentGranted)
     }
     func create(_ draft: CoachCalendarDraft, calendarID: String, expectedConflicts: [CalendarItem], settings: Settings,
-                options: CalendarCreationOptions = .init(), creationID: UUID? = nil, verifyOnly: Bool = false) async throws -> (item: CalendarItem, existing: Bool) {
+                options: CalendarCreationOptions = .init(), creationID: UUID? = nil, verifyOnly: Bool = false) async throws -> (receipt: CalendarCreationReceipt, existing: Bool) {
         guard !mutationInProgress else { throw CalendarFailure.changed }
         mutationInProgress = true; defer { mutationInProgress = false }
         let result = try await worker.create(draft, calendarID: calendarID, expectedConflicts: expectedConflicts, settings: settings,
@@ -155,6 +155,10 @@ final class CalendarService: ObservableObject {
               !(store.data.calendarActionArchive ?? []).contains(where: { $0.batchID == batchID }),
               store.beginCalendarMutation() else { throw CalendarFailure.changed }
         mutationInProgress = true; defer { mutationInProgress = false; store.endCalendarMutation() }
+        let proposed = review.entries.map { CoachCalendarMutation(id: $0.actionID, kind: $0.kind, source: $0.original.snapshot, after: $0.after) }
+        let linked = try CalendarActivityLinks.expanded(proposed, data: store.data, choices: batch.linkedTravelChoices ?? [:],
+            now: Date(), mapsConsent: AppleMapsService.shared.consentGranted)
+        guard linked == proposed else { throw CalendarActivityLinks.Failure.selection }
         guard store.change({ data in
             var archive = data.calendarActionArchive ?? []; archive.append(contentsOf: review.entries); data.calendarActionArchive = archive
             if let index = data.coachState.calendarBatches?.firstIndex(where: { $0.id == batchID }) { data.coachState.calendarBatches?[index].status = .reviewRequired }
@@ -163,7 +167,10 @@ final class CalendarService: ObservableObject {
             try Task.checkCancellation()
             guard !store.locked, !store.isRestoring else { throw CalendarFailure.archiveNotSaved }
             let completed = try await worker.commitMutations(review, settings: store.data.settings)
+            var acknowledged = store.data
+            try CalendarActivityLinks.record(completed, choices: batch.linkedTravelChoices ?? [:], data: &acknowledged)
             guard store.change({ data in
+                data.calendarActivityLinks = acknowledged.calendarActivityLinks
                 for item in completed {
                     if let index = data.calendarActionArchive?.firstIndex(where: { $0.id == item.id }) { data.calendarActionArchive?[index] = item }
                 }
@@ -292,12 +299,17 @@ private actor CalendarWorker {
             mutationFixtureCache = saved; return saved
         }
         let start = PivotDate.calendar.startOfDay(for: Date())
-        let initial = (1...2).map { index in
+        var initial = (1...2).map { index in
             CalendarItem(id: "mutation-qa-\(index)", eventIdentifier: "mutation-qa-\(index)", calendarIdentifier: "create-fixture",
                 calendarTitle: "Personale test", title: "Impegno QA \(index)", start: start.addingTimeInterval(Double(8 + index) * 3600),
                 end: start.addingTimeInterval(Double(9 + index) * 3600), location: "", notes: "Nota QA", colorHex: "7EE6CD", isAllDay: false,
                 writable: true, kind: .other, sourceIdentifier: "source-fixture", sourceTitle: "Account test",
                 calendarModifiedAt: start.addingTimeInterval(3600.375), recurring: false, calendarCreatedAt: start.addingTimeInterval(1800.625))
+        }
+        if ProcessInfo.processInfo.arguments.contains("--linked-travel-test") {
+            initial[0].location = "Destinazione QA"
+            initial[1].title = "Spostamento"; initial[1].location = "Destinazione QA"
+            initial[1].start = initial[0].start.addingTimeInterval(-1200); initial[1].end = initial[0].start
         }
         saveMutationFixture(initial); return initial
     }
@@ -354,7 +366,7 @@ private actor CalendarWorker {
             .map(Self.item).sorted { $0.id < $1.id }
     }
     func create(_ draft: CoachCalendarDraft, calendarID: String, expectedConflicts: [CalendarItem], settings: Settings,
-                options: CalendarCreationOptions, creationID: UUID, mapsConsent: Bool, verifyOnly: Bool) throws -> (item: CalendarItem, existing: Bool) {
+                options: CalendarCreationOptions, creationID: UUID, mapsConsent: Bool, verifyOnly: Bool) throws -> (receipt: CalendarCreationReceipt, existing: Bool) {
         guard options.isValid, draft.problem(now: Date(), calendarID: calendarID) == nil else { throw CalendarFailure.notWritable }
         // Reconciliation is a read, not a new use of an expired route or permission.
         let fresh: [CalendarItem]
@@ -367,14 +379,15 @@ private actor CalendarWorker {
             let matches = parts.compactMap { part in createdFixtureItems.first { $0.eventIdentifier == part.marker } }
             if !matches.isEmpty {
                 guard CalendarCreationBundle.existing(parts: parts, items: matches), let existing = matches.last else { throw CalendarFailure.uncertainOccurrence }
-                return (existing, true)
+                return (.init(activity: existing, travel: matches.count == 2 ? matches.first : nil), true)
             }
             guard !verifyOnly else { throw CalendarFailure.uncertainOccurrence }
             guard fresh == expectedConflicts else { throw CalendarFailure.changed }
             let added = parts.map { part in CalendarItem(id: part.marker, eventIdentifier: part.marker, calendarIdentifier: calendarID,
                 calendarTitle: "Personale test", title: part.title, start: part.start, end: part.end,
                 location: part.location, notes: part.notes, colorHex: "7EE6CD", isAllDay: false, writable: true, kind: .other) }
-            createdFixtureItems.append(contentsOf: added); return (added.last!, false)
+            createdFixtureItems.append(contentsOf: added)
+            return (.init(activity: added.last!, travel: added.count == 2 ? added.first : nil), false)
         }
         #endif
         guard let target = eventStore.calendar(withIdentifier: calendarID), target.allowsContentModifications,
@@ -393,7 +406,7 @@ private actor CalendarWorker {
                           && (event.alarms ?? []).count == (part.alertMinutes == nil ? 0 : 1)
                           && (part.alertMinutes.map { minutes in event.alarms?.first?.relativeOffset == -Double(minutes) * 60 } ?? true)
                   }) else { throw CalendarFailure.uncertainOccurrence }
-            return (Self.item(existing.last!), true)
+            return (.init(activity: Self.item(existing.last!), travel: existing.count == 2 ? Self.item(existing[0]) : nil), true)
         }
         if let duplicate = candidates.first(where: { $0.startDate == main.start && $0.endDate == main.end &&
             EventCoalescer.normalized($0.title ?? "") == EventCoalescer.normalized(main.title) }) {
@@ -402,7 +415,7 @@ private actor CalendarWorker {
                   (duplicate.alarms ?? []).count == (main.alertMinutes == nil ? 0 : 1),
                   main.alertMinutes.map({ duplicate.alarms?.first?.relativeOffset == -Double($0) * 60 }) ?? true else { throw CalendarFailure.uncertainOccurrence }
             try draft.checkExistingNotes(Self.item(duplicate).notes)
-            return (Self.item(duplicate), true)
+            return (.init(activity: Self.item(duplicate), travel: nil), true)
         }
         guard !verifyOnly else { throw CalendarFailure.uncertainOccurrence }
         guard fresh == expectedConflicts else { throw CalendarFailure.changed }
@@ -425,7 +438,7 @@ private actor CalendarWorker {
             // Stage both before the one commit. A failed commit is not evidence
             // that nothing reached the calendar: reconcile before another write.
             try eventStore.commit()
-            return (Self.item(staged.last!), false)
+            return (.init(activity: Self.item(staged.last!), travel: staged.count == 2 ? Self.item(staged[0]) : nil), false)
         } catch {
             eventStore.reset()
             throw CalendarFailure.creationOptions("Salvataggio non confermato. Controlla attività e spostamento nel Calendario prima di riprovare: non aggiungere copie manualmente.")

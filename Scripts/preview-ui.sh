@@ -26,7 +26,7 @@ case "$PIVOT_UI_ONLY_TESTING" in
     PIVOT_UI_RESULT=build/online-privacy-tests.xcresult
     PIVOT_SIM_ENTITLEMENTS=build/online-privacy-simulator-entitlements.plist
     ;;
-  v8-086-presentation-regression|v8-086-rest-audio-regression|v8-086-contact-save-regression|PivotUITests/PremiumCoachInteractionTests|PivotUITests/PremiumCoachInteractionTests/testMemoryOptInPersistsAppearsInExactDisclosureAndCanBeRevoked)
+  v8-087-linked-travel-regression|v8-086-presentation-regression|v8-086-rest-audio-regression|v8-086-contact-save-regression|PivotUITests/PremiumCoachInteractionTests|PivotUITests/PremiumCoachInteractionTests/testMemoryOptInPersistsAppearsInExactDisclosureAndCanBeRevoked)
     PIVOT_PREVIEW_OUTPUT=build/Previews/OnlinePrivacy
     PIVOT_UI_BUILD_LOG=build/online-privacy-build.log
     PIVOT_UI_LOG=build/online-privacy-tests.log
@@ -119,6 +119,13 @@ if [ -n "$PIVOT_RELEASE_SHARD" ]; then
   while IFS= read -r PIVOT_TEST_FLAG; do
     PIVOT_UI_TEST_COMMAND+=("$PIVOT_TEST_FLAG")
   done <<< "$PIVOT_RELEASE_FLAGS"
+elif [ "$PIVOT_UI_ONLY_TESTING" = v8-087-linked-travel-regression ]; then
+  # Focused diagnostic only. All native cases still gate the final candidate.
+  PIVOT_UI_TEST_COMMAND+=(
+    -only-testing:PivotUITests/CalendarMutationInteractionTests/testLinkedJourneyIsReviewedTogetherAndPersistsAfterRelaunch
+    -only-testing:PivotUITests/CalendarMutationInteractionTests/testExternallyChangedLinkedPairIsRefusedWithoutLosingMoneyOrCreatingCopies
+    -only-testing:PivotUITests/CalendarCreationInteractionTests/testNativeEditorManualJourneySurvivesRelaunchAndCreatesExactlyTwoAfterConfirmation
+  )
 elif [ "$PIVOT_UI_ONLY_TESTING" = v8-086-calendar-timing-regression ]; then
   # Remaining native failure: the centre of the plain clock row was not a
   # hit target. Keep its ordinary tap and every calendar-write assertion.
