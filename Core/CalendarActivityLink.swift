@@ -37,7 +37,7 @@ enum CalendarActivityLinks {
             switch self {
             case .changed: return "L’attività o il viaggio sono cambiati rispetto al collegamento salvato. Verifica entrambi nel Calendario: non li sovrascrivo."
             case .route: return "Verifica il viaggio per il nuovo orario: ricalcola con Maps oppure conferma un tempo manuale."
-            case .selection: return "Attività e viaggio collegato vanno verificati insieme. Non applico solo una parte dello spostamento o dell’eliminazione."
+            case .selection: return "Attività e viaggio collegato vanno verificati insieme nell’anteprima modifiche della chat. Non applico solo una parte dello spostamento o dell’eliminazione."
             case .invalid: return "Non riesco a verificare il collegamento tra attività e viaggio. Nessuna modifica applicata."
             }
         }
@@ -70,6 +70,50 @@ enum CalendarActivityLinks {
             CalendarSnapshotMatch.identity($0.activity, item) || CalendarSnapshotMatch.identity($0.travel, item)
         ) }
         return matches.count == 1 ? matches.first : nil
+    }
+    static func requiresPairedReview(_ item: CalendarItem, data: AppData) -> Bool {
+        (data.calendarActivityLinks ?? []).contains { !$0.deleted && (
+            CalendarSnapshotMatch.identity($0.activity, item) || CalendarSnapshotMatch.identity($0.travel, item)) }
+    }
+    static func archiving(_ entries: [ArchivedCalendarMutation], data: AppData) -> [ArchivedCalendarMutation] {
+        entries.map { entry in
+            var next = entry
+            if let link = link(for: entry.original.snapshot, data: data),
+               CalendarSnapshotMatch.identity(link.activity, entry.original.snapshot) { next.linkedTravelBefore = link.settings }
+            return next
+        }
+    }
+    /// Adopt a restore only after a full native pair from one archived batch is
+    /// acknowledged. Half-restores stay on the old baseline and cannot pass the
+    /// next preflight. Neither names nor calendar URLs establish a new link.
+    static func reconcileRestorations(data: inout AppData) {
+        let groups = Dictionary(grouping: data.calendarActionArchive ?? [], by: \.batchID)
+        for index in (data.calendarActivityLinks ?? []).indices {
+            guard let link = data.calendarActivityLinks?[index] else { continue }
+            let candidates: [CalendarActivityLink] = groups.values.compactMap { entries in
+                let main = entries.first { entry in
+                    let baseline: CalendarItem? = link.deleted ? entry.original.snapshot : entry.after
+                    return baseline.map { CalendarSnapshotMatch.revision(link.activity, $0) } ?? false
+                }
+                guard let main, main.status == .restored, let activity = main.restoredEvent,
+                      let settings = main.linkedTravelBefore else { return nil }
+                let trip = entries.first { entry in
+                    let baseline: CalendarItem? = link.deleted ? entry.original.snapshot : entry.after
+                    return baseline.map { CalendarSnapshotMatch.revision(link.travel, $0) } ?? false
+                }
+                var candidate = link
+                if let trip {
+                    guard trip.status == .restored, let travel = trip.restoredEvent else { return nil }
+                    candidate.travel = travel
+                } else {
+                    guard !link.deleted, main.kind == .update,
+                          CalendarSnapshotMatch.instant(activity.start, link.activity.start) else { return nil }
+                }
+                candidate.activity = activity; candidate.settings = settings; candidate.deleted = false
+                return candidate.isValid ? candidate : nil
+            }
+            if candidates.count == 1 { data.calendarActivityLinks?[index] = candidates[0] }
+        }
     }
     /// Expands only local, native-identity links. The cloud cannot add a journey
     /// by inventing a title/URL. Every generated action is still an uncommitted

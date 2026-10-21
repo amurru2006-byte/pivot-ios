@@ -105,6 +105,9 @@ enum CoachPlanner {
         let canonical = EventCoalescer.unique(events, data: data)
         var simulated = data
         for move in option.moves {
+            if CalendarActivityLinks.requiresPairedReview(move.source, data: data) {
+                return "Questa attività ha un viaggio collegato. Chiedi la modifica nella chat e controlla entrambi nell’anteprima prima di confermare."
+            }
             guard move.proposedStart > now, move.proposedEnd > move.proposedStart else { return "Uno degli orari proposti non è più valido." }
             guard let current = canonical.first(where: { $0.id == move.source.id }),
                   matchesSnapshot(move.source, current) else {

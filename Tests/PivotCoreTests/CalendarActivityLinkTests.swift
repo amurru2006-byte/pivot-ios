@@ -156,4 +156,67 @@ final class CalendarActivityLinkTests: XCTestCase {
         XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encode(data)))
         XCTAssertNoThrow(try BackupCodec.decode(BackupCodec.encode(AppData())))
     }
+    func testUndoRequiresBothPartsOfTheSameBatchAndRestoresOriginalTravelSettings() throws {
+        var data = linked()
+        let choice = CalendarCreationTravel(minutes: 35, origin: "Altra partenza QA")
+        let choices = [linkID.uuidString: choice]
+        let actions = try expand([move()], choices: choices)
+        var entries = CalendarActivityLinks.archiving(completed(actions), data: data)
+        XCTAssertEqual(entries[0].linkedTravelBefore, options.travel)
+        try CalendarActivityLinks.record(entries, choices: choices, data: &data)
+        let moved = data.calendarActivityLinks
+        entries[0].status = .restored; entries[0].restoredAt = now; entries[0].restoredEvent = entries[0].original.snapshot
+        data.calendarActionArchive = entries
+        CalendarActivityLinks.reconcileRestorations(data: &data)
+        XCTAssertEqual(data.calendarActivityLinks, moved, "A half-restore must not silently redefine the pair")
+        entries[1].status = .restored; entries[1].restoredAt = now; entries[1].restoredEvent = entries[1].original.snapshot
+        data.calendarActionArchive = entries
+        CalendarActivityLinks.reconcileRestorations(data: &data)
+        XCTAssertEqual(data.calendarActivityLinks?.first?.activity, receipt.activity)
+        XCTAssertEqual(data.calendarActivityLinks?.first?.travel, receipt.travel)
+        XCTAssertEqual(data.calendarActivityLinks?.first?.settings, options.travel)
+    }
+    func testRestoredDeletionUsesAcknowledgedNewNativeIDsOnlyAfterBothPartsReturn() throws {
+        var data = linked()
+        let actions = try expand([.init(kind: .delete, source: receipt.activity, after: nil)])
+        var entries = CalendarActivityLinks.archiving(completed(actions), data: data)
+        try CalendarActivityLinks.record(entries, choices: [:], data: &data)
+        for index in entries.indices {
+            var restored = entries[index].original.snapshot
+            restored.eventIdentifier = "restored-qa-\(index)"; restored.id = restored.eventIdentifier
+            entries[index].status = .restored; entries[index].restoredAt = now; entries[index].restoredEvent = restored
+        }
+        var half = entries; half[1].status = .committed; half[1].restoredAt = nil; half[1].restoredEvent = nil
+        data.calendarActionArchive = half; CalendarActivityLinks.reconcileRestorations(data: &data)
+        XCTAssertEqual(data.calendarActivityLinks?.first?.deleted, true)
+        data.calendarActionArchive = entries; CalendarActivityLinks.reconcileRestorations(data: &data)
+        XCTAssertEqual(data.calendarActivityLinks?.first?.deleted, false)
+        XCTAssertEqual(data.calendarActivityLinks?.first?.activity.eventIdentifier, "restored-qa-0")
+        XCTAssertEqual(data.calendarActivityLinks?.first?.travel.eventIdentifier, "restored-qa-1")
+        XCTAssertTrue(CalendarActivityLinks.valid(data))
+    }
+    func testAmbiguousRestoreBatchesCannotReestablishTheLink() throws {
+        var data = linked(); let actions = try expand([move()])
+        var entries = CalendarActivityLinks.archiving(completed(actions), data: data)
+        try CalendarActivityLinks.record(entries, choices: [:], data: &data)
+        for index in entries.indices {
+            entries[index].status = .restored; entries[index].restoredAt = now; entries[index].restoredEvent = entries[index].original.snapshot
+        }
+        let otherID = UUID()
+        let duplicate = entries.map { original -> ArchivedCalendarMutation in
+            var copy = original; copy.batchID = otherID; copy.id = UUID(); copy.actionID = UUID(); return copy
+        }
+        let before = data.calendarActivityLinks
+        data.calendarActionArchive = entries + duplicate
+        CalendarActivityLinks.reconcileRestorations(data: &data)
+        XCTAssertEqual(data.calendarActivityLinks, before)
+    }
+    func testLocalSingleEventPlannerCannotBypassPairedConfirmation() {
+        let data = linked(), action = move()
+        XCTAssertTrue(CalendarActivityLinks.requiresPairedReview(action.source, data: data))
+        XCTAssertTrue(CalendarActivityLinks.requiresPairedReview(receipt.travel!, data: data))
+        let plan = PlanMove(source: action.source, proposedStart: action.after!.start, proposedEnd: action.after!.end)
+        let option = CoachOption(title: "QA", explanation: "QA", consequences: "QA", moves: [plan])
+        XCTAssertTrue(CoachPlanner.validate(option, events: [receipt.activity, receipt.travel!], data: data, now: now)?.contains("viaggio collegato") == true)
+    }
 }

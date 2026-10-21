@@ -113,6 +113,12 @@ final class CalendarMutationInteractionTests: XCTestCase {
         app.terminate(); app.launch(); openCoach(app)
         _ = audit(2, app); tap(linked, app)
         XCTAssertEqual(linked.label, "1 collegamenti · sincronizzato")
+        tap(batch(app), app); restoreFirst(app)
+        _ = audit(2, app); tap(linked, app)
+        XCTAssertEqual(linked.label, "1 collegamenti · da verificare")
+        tap(batch(app), app); restoreFirst(app)
+        _ = audit(2, app); tap(linked, app)
+        XCTAssertEqual(linked.label, "1 collegamenti · sincronizzato")
     }
     func testExternallyChangedLinkedPairIsRefusedWithoutLosingMoneyOrCreatingCopies() {
         let app = launch(linkedTravel: true); prepareLinked(app)

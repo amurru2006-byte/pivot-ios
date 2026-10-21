@@ -73,7 +73,10 @@ final class CalendarService: ObservableObject {
         inFlight = nil
         isRefreshing = false
     }
-    func apply(_ move: PlanMove, data: AppData) async throws { try await worker.apply(move, data: data) }
+    func apply(_ move: PlanMove, data: AppData) async throws {
+        guard !CalendarActivityLinks.requiresPairedReview(move.source, data: data) else { throw CalendarActivityLinks.Failure.selection }
+        try await worker.apply(move, data: data)
+    }
     func reviewCreation(_ draft: CoachCalendarDraft, calendarID: String, settings: Settings,
                         options: CalendarCreationOptions = .init(), creationID: UUID? = nil) async throws -> [CalendarItem] {
         try await worker.reviewCreation(draft, calendarID: calendarID, settings: settings, options: options,
@@ -159,14 +162,15 @@ final class CalendarService: ObservableObject {
         let linked = try CalendarActivityLinks.expanded(proposed, data: store.data, choices: batch.linkedTravelChoices ?? [:],
             now: Date(), mapsConsent: AppleMapsService.shared.consentGranted)
         guard linked == proposed else { throw CalendarActivityLinks.Failure.selection }
+        let archivedReview = CalendarMutationReview(entries: CalendarActivityLinks.archiving(review.entries, data: store.data), conflicts: review.conflicts)
         guard store.change({ data in
-            var archive = data.calendarActionArchive ?? []; archive.append(contentsOf: review.entries); data.calendarActionArchive = archive
+            var archive = data.calendarActionArchive ?? []; archive.append(contentsOf: archivedReview.entries); data.calendarActionArchive = archive
             if let index = data.coachState.calendarBatches?.firstIndex(where: { $0.id == batchID }) { data.coachState.calendarBatches?[index].status = .reviewRequired }
         }), await store.flushPendingWrites() else { throw CalendarFailure.archiveNotSaved }
         do {
             try Task.checkCancellation()
             guard !store.locked, !store.isRestoring else { throw CalendarFailure.archiveNotSaved }
-            let completed = try await worker.commitMutations(review, settings: store.data.settings)
+            let completed = try await worker.commitMutations(archivedReview, settings: store.data.settings)
             var acknowledged = store.data
             try CalendarActivityLinks.record(completed, choices: batch.linkedTravelChoices ?? [:], data: &acknowledged)
             guard store.change({ data in
@@ -224,6 +228,7 @@ final class CalendarService: ObservableObject {
                 links.removeAll { $0.archiveID == id }
                 links.append(.init(archiveID: id, original: entry.original.snapshot, restored: result.item)); data.calendarRestorations = links
             }
+            CalendarActivityLinks.reconcileRestorations(data: &data)
         }), await store.flushPendingWrites() else { throw CalendarFailure.acknowledgementNotSaved }
         invalidateSnapshot(); await refresh(settings: store.data.settings)
         return result.originalPresent ? "L’originale era già presente: nessuna copia aggiunta." : "Modifica annullata. Incassi e registrazioni in Pivot sono rimasti invariati."
@@ -242,13 +247,18 @@ final class CalendarService: ObservableObject {
         }), await store.flushPendingWrites() else { throw CalendarFailure.archiveNotSaved }
         return applied.performed ? "Esito verificato nel Calendario. Ora puoi chiedere il ripristino della copia originale." : "L’evento originale è presente e invariato. Non ho applicato altre modifiche."
     }
-    func applyActualWorkout(_ draft: ActualWorkoutDraft, data: AppData) async throws { try await worker.applyActualWorkout(draft, data: data) }
+    func applyActualWorkout(_ draft: ActualWorkoutDraft, data: AppData) async throws {
+        guard !WorkoutContext.moves(draft, events: []).contains(where: { CalendarActivityLinks.requiresPairedReview($0.source, data: data) })
+            else { throw CalendarActivityLinks.Failure.selection }
+        try await worker.applyActualWorkout(draft, data: data)
+    }
     func applyActualTimes(for record: EventRecord, event: CalendarItem, data: AppData) async throws -> CalendarItem? {
         guard let timing = CalendarSynchronization.actualTiming(for: record, event: event),
               CalendarSynchronization.needsCalendarUpdate(timing, event: event) else { return nil }
         return try await applyConfirmedTiming(timing, source: event, data: data)
     }
     func applyConfirmedTiming(_ timing: CalendarSynchronization.ActualTiming, source: CalendarItem, data: AppData) async throws -> CalendarItem {
+        guard !CalendarActivityLinks.requiresPairedReview(source, data: data) else { throw CalendarActivityLinks.Failure.selection }
         guard !mutationInProgress else { throw CalendarFailure.changed }
         mutationInProgress = true; defer { mutationInProgress = false }
         let updated = try await worker.applyActualTimes(timing, source: source)
