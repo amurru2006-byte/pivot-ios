@@ -110,6 +110,20 @@ final class PivotStore: ObservableObject {
             diagnostics.record("Caricamento storico", seconds: ProcessInfo.processInfo.systemUptime - started)
             if !locked { applyInitialSettings() }
             #if DEBUG && targetEnvironment(simulator)
+            if !locked, ProcessInfo.processInfo.arguments.contains("--interaction-test"),
+               ProcessInfo.processInfo.arguments.contains("--saved-travel-editor-test"),
+               ProcessInfo.processInfo.arguments.contains("--coach-calendar-create-test"),
+               UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_COACH_ACTION_ID"] ?? "") != nil,
+               data.coachState.calendarDrafts?.isEmpty != false {
+                change { data in
+                    let day = PivotDate.key(Date()), start = Date().addingTimeInterval(3600)
+                    let reply = CoachMessage(dayKey: day, role: .coach, text: "Bozza sintetica da verificare")
+                    let draft = CoachCalendarDraft(title: "Impegno di prova", start: start, end: start.addingTimeInterval(3600),
+                        calendarHint: "Personale test", notes: "", endEstimated: false)
+                    data.coachState.messages.append(reply)
+                    data.coachState.calendarDrafts = [.init(messageID: reply.id, dayKey: day, draft: draft, calendarID: "create-fixture")]
+                }
+            }
             if !locked, ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--rest-alarm-test"),
                UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_REST_ID"] ?? "") != nil, data.training == nil {
                 let exercise = TrainingExercise(id: "rest-alarm-qa", name: "Esercizio audio QA", sets: 1, reps: "6", restSeconds: 900, coachNotes: "")
@@ -450,9 +464,16 @@ final class PivotStore: ObservableObject {
             // Merely reopening/autosaving that workout must not arm a new
             // device alarm. Its cue volume survives; activation does not.
             restored.settings.workoutRestAudio = restored.settings.workoutRestAudio?.requiringDeviceActivation
+            if var budget = restored.savingsBudget {
+                for index in budget.goals.indices {
+                    budget.goals[index].weeklyPlan = budget.goals[index].weeklyPlan?.requiringDeviceActivation
+                }
+                restored.savingsBudget = budget
+            }
             try await WorkoutRestAlarmService.shared.cancelAll()
             try await persistence.save(restored, restoring: true)
             data = restored
+            await NotificationService.clearWeeklyReminders()
             deletedTrainingIDs.removeAll()
             locked = false
             error = nil

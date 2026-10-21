@@ -2,13 +2,15 @@ import XCTest
 
 final class CalendarCreationInteractionTests: XCTestCase {
     override func tearDown() { attachFailureDiagnostics(name); super.tearDown() }
-    private func launch() -> XCUIApplication {
+    private func launch(savedDraft: Bool = false) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["--interaction-test", "--online-coach-action-test", "--coach-calendar-create-test", "--calendar-travel-test", "--travel-estimate-test"]
         app.launchEnvironment["PIVOT_QA_COACH_ACTION_ID"] = UUID().uuidString
         app.launchEnvironment["PIVOT_QA_TRAVEL_ID"] = UUID().uuidString
+        if savedDraft { app.launchArguments.append("--saved-travel-editor-test") }
         app.launch(); openCoach(app)
+        if savedDraft { reopened(app); return app }
         let input = app.descendants(matching: .any)["coach-message-input"]
         tap(input, app); input.typeText("Crea un impegno di prova nel calendario Personale test")
         done("pivot-keyboard-done", app)
@@ -20,8 +22,8 @@ final class CalendarCreationInteractionTests: XCTestCase {
         XCTAssertTrue(app.buttons["open-pivot-coach"].waitForExistence(timeout: 15)); tap(app.buttons["open-pivot-coach"], app)
     }
     private func tap(_ element: XCUIElement, _ app: XCUIApplication) {
-        _ = element.waitForExistence(timeout: 2); scrollControlIntoView(element, in: app, maxSwipes: 20)
-        XCTAssertTrue(element.exists); XCTAssertTrue(element.isEnabled); element.tap()
+        scrollControlIntoView(element, in: app, maxSwipes: 20)
+        XCTAssertTrue(element.isEnabled); element.tap()
     }
     private func done(_ id: String, _ app: XCUIApplication) {
         let button = app.buttons[id]; XCTAssertTrue(button.waitForExistence(timeout: 5)); button.tap()
@@ -67,7 +69,10 @@ final class CalendarCreationInteractionTests: XCTestCase {
         tap(audit, app); XCTAssertEqual(audit.label, "2 eventi · 1 spostamenti · 0 incassi")
     }
     func testMapsEstimateRequiresConsentCanBeUsedThenRemovedWithoutWriting() {
-        let app = launch()
+        // Calendar creation through chat is covered by the separate native
+        // creation/online cases. Start this routing regression with a persisted
+        // synthetic draft; still exercise every real editor and consent step.
+        let app = launch(savedDraft: true)
         tap(app.buttons["creation-travel-open"], app); tap(app.buttons["creation-travel-maps"], app)
         XCTAssertTrue(app.buttons["travel-consent"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.staticTexts["travel-test-count"].label, "Richieste sintetiche: 0")

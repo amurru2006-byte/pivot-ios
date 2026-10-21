@@ -239,7 +239,10 @@ final class CalendarService: ObservableObject {
     func applyActualTimes(for record: EventRecord, event: CalendarItem, data: AppData) async throws -> CalendarItem? {
         guard let timing = CalendarSynchronization.actualTiming(for: record, event: event),
               CalendarSynchronization.needsCalendarUpdate(timing, event: event) else { return nil }
-        let updated = try await worker.applyActualTimes(timing, source: event)
+        return try await applyConfirmedTiming(timing, source: event, data: data)
+    }
+    func applyConfirmedTiming(_ timing: CalendarSynchronization.ActualTiming, source: CalendarItem, data: AppData) async throws -> CalendarItem {
+        let updated = try await worker.applyActualTimes(timing, source: source)
         invalidateSnapshot()
         await refresh(settings: data.settings, force: true)
         return updated
@@ -780,28 +783,27 @@ private actor CalendarWorker {
         return CalendarSnapshot(hasAccess: true, choices: choices, events: events)
     }
     func applyActualTimes(_ timing: CalendarSynchronization.ActualTiming, source: CalendarItem) throws -> CalendarItem {
+        #if DEBUG && targetEnvironment(simulator)
+        if creationFixture, mutationFixtureKey != nil, ProcessInfo.processInfo.arguments.contains("--actual-time-sync-test") {
+            var items = mutationFixtureItems()
+            guard let index = items.firstIndex(where: { CalendarSnapshotMatch.revision(source, $0) }),
+                  timing.start.timeIntervalSinceReferenceDate.isFinite, timing.end.timeIntervalSinceReferenceDate.isFinite,
+                  timing.end > timing.start else { throw CalendarFailure.changed }
+            items[index].start = timing.start; items[index].end = timing.end; items[index].calendarModifiedAt = Date()
+            saveMutationFixture(items)
+            return items[index]
+        }
+        #endif
         guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { throw CalendarFailure.noAccess }
-        guard source.writable, !source.isAllDay, timing.end > timing.start else { throw CalendarFailure.notWritable }
+        guard source.writable, !source.isAllDay, timing.start.timeIntervalSinceReferenceDate.isFinite,
+              timing.end.timeIntervalSinceReferenceDate.isFinite, timing.end > timing.start else { throw CalendarFailure.notWritable }
         let padding: TimeInterval = 36 * 3600
         let predicate = eventStore.predicateForEvents(withStart: source.start.addingTimeInterval(-padding), end: source.end.addingTimeInterval(padding), calendars: nil)
-        let matching = eventStore.events(matching: predicate).first { event in
-            let sameID = event.eventIdentifier == source.eventIdentifier
-                || (source.externalIdentifier != nil && event.calendarItemExternalIdentifier == source.externalIdentifier)
-            let sameOccurrence = source.recurring != true
-                || (source.occurrenceAnchor != nil && event.occurrenceDate == source.occurrenceAnchor)
-                || (abs(event.startDate.timeIntervalSince(source.start)) < 1 && abs(event.endDate.timeIntervalSince(source.end)) < 1)
-            return sameID && sameOccurrence && event.calendar.calendarIdentifier == source.calendarIdentifier
-        }
-        guard let event = matching, event.calendar.allowsContentModifications else { throw CalendarFailure.changed }
+        let matching = eventStore.events(matching: predicate).filter { CalendarSnapshotMatch.identity(source, Self.item($0)) }
+        guard matching.count == 1, let event = matching.first, event.calendar.allowsContentModifications else { throw CalendarFailure.changed }
         // The view is a snapshot. Refuse the write if another app changed this
         // occurrence after Pivot displayed it.
-        guard event.title == source.title,
-              abs(event.startDate.timeIntervalSince(source.start)) < 1,
-              abs(event.endDate.timeIntervalSince(source.end)) < 1,
-              CoachPlanner.modificationDateMatches(source.calendarModifiedAt, event.lastModifiedDate),
-              (event.location ?? "") == source.location,
-              CalendarNoteText.plain(event.notes ?? "") == source.notes,
-              event.isAllDay == source.isAllDay else { throw CalendarFailure.changed }
+        guard CalendarSnapshotMatch.revision(source, Self.item(event)) else { throw CalendarFailure.changed }
         event.startDate = timing.start
         event.endDate = timing.end
         try eventStore.save(event, span: .thisEvent, commit: true)

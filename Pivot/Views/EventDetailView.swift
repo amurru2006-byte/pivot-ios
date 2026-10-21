@@ -37,6 +37,12 @@ struct EventDetailView: View {
     @State private var loadedDraft = false
     @State private var savedFingerprint = ""
     @State private var skipChoice = false
+    @State private var calendarTiming: CalendarSynchronization.ActualTiming?
+    @State private var calendarSource: CalendarItem?
+    @State private var confirmingCalendarTiming = false
+    @State private var calendarCloseAfterSync = false
+    @State private var syncingCalendar = false
+    @State private var calendarBaseline: CalendarItem?
     var linkedIncome: IncomeEntry? { store.data.income.first { $0.id == record.incomeID || $0.calendarEventID == event.id } }
     var selectedClient: Client? { store.data.clients.first { $0.id == selectedClientID } }
     @Environment(\.dismiss) private var dismiss
@@ -50,6 +56,13 @@ struct EventDetailView: View {
     var body: some View {
         PivotScreen {
             hero
+            #if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--actual-time-sync-test") {
+                let raw = calendar.events.first { $0.id == sourceEvent.id }
+                Text("Calendario " + (raw.map { PivotDate.time($0.end) } ?? "assente") + " · inizio reale " + (record.actualStart.map(PivotDate.time) ?? "assente") + " · " + record.status.rawValue)
+                    .font(.caption).accessibilityIdentifier("activity-calendar-timing-audit")
+            }
+            #endif
             registration
             if !event.notes.isEmpty {
                 PivotCard {
@@ -90,7 +103,7 @@ struct EventDetailView: View {
                 DisclosureGroup { rules.padding(.top, 12) } label: { Label("Regole e tragitto", systemImage: "arrow.triangle.branch").font(.subheadline.weight(.semibold)) }
             }
             if let message { Label(message, systemImage: "info.circle").font(.subheadline).foregroundStyle(PivotTheme.amber) }
-            Button { Task { await finishEditing() } } label: { Label("Salva attività", systemImage: "checkmark.circle.fill") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked)
+            Button { Task { await finishEditing() } } label: { Label("Salva attività", systemImage: "checkmark.circle.fill") }.buttonStyle(PivotPrimaryButton()).disabled(store.locked || syncingCalendar)
             if rule.flexibility != .fixed && !event.isAllDay {
                 Button { findRecovery() } label: { Label("Trova uno spazio per recuperare", systemImage: "arrow.triangle.2.circlepath") }.buttonStyle(PivotSecondaryButton()).disabled(store.locked)
             }
@@ -105,10 +118,25 @@ struct EventDetailView: View {
             }
         }
         .navigationTitle("Attività")
-        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Salva") { Task { await finishEditing() } }.accessibilityIdentifier("activity-save").disabled(store.locked) } }
+        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Salva") { Task { await finishEditing() } }.accessibilityIdentifier("activity-save").disabled(store.locked || syncingCalendar) } }
+        .alert("Aggiornare gli orari nel Calendario?", isPresented: $confirmingCalendarTiming) {
+            Button("Non ora", role: .cancel) { message = "Orari salvati in Pivot. Il Calendario non è stato modificato: puoi riprovare con Salva." }
+            Button("Aggiorna Calendario") {
+                guard let calendarTiming, let calendarSource else { return }
+                Task { await performCalendarSync(calendarTiming, source: calendarSource, closeWhenDone: calendarCloseAfterSync) }
+            }.accessibilityIdentifier("activity-calendar-confirm")
+        } message: {
+            if let calendarTiming {
+                Text("Solo questa occorrenza: " + DisplayDate.label(calendarTiming.start, format: "d MMM HH:mm") + " – " + DisplayDate.label(calendarTiming.end, format: "d MMM HH:mm")
+                    + ((record.actualStart == nil || record.actualEnd == nil) ? ". L’orario non registrato resta quello previsto; non viene aggiunto come orario reale." : ""))
+            }
+        }
         .onAppear {
             let firstAppearance = !loadedDraft
             if firstAppearance {
+                calendarBaseline = calendar.events.first { $0.id == sourceEvent.id }
+                    ?? calendar.events.first { CalendarSnapshotMatch.identity(sourceEvent, $0) }
+                    ?? record.snapshot
                 if let draft = store.data.activityDrafts?[event.id] {
                     // A notification supplies an explicit outcome; don't replace it with an old draft outcome.
                     let selectedOutcome = record.status
@@ -214,8 +242,9 @@ struct EventDetailView: View {
                 Label("Sonno da Salute · \(ActivityTiming.duration(seconds))", systemImage: "bed.double.fill").font(.caption).foregroundStyle(PivotTheme.accent)
             }
             DisclosureGroup("Orari reali e durata") {
-            ClockField(title: "Inizio reale", value: Binding(get: { record.actualStart }, set: { record.actualStart = $0; record.timingFromCalendar = false; updateMinutes() }), fallback: event.start)
-            ClockField(title: "Fine reale", value: Binding(get: { record.actualEnd }, set: { record.actualEnd = $0; record.timingFromCalendar = false; updateMinutes() }), fallback: event.end)
+            ClockField(title: "Inizio reale", value: Binding(get: { record.actualStart }, set: { record.actualStart = $0; record.timingFromCalendar = false; record.calendarTimingNeedsConfirmation = true; updateMinutes() }), fallback: event.start)
+            ClockField(title: "Fine reale", value: Binding(get: { record.actualEnd }, set: { record.actualEnd = $0; record.timingFromCalendar = false; record.calendarTimingNeedsConfirmation = true; updateMinutes() }), fallback: event.end)
+                .accessibilityIdentifier("activity-real-end")
             if let start = record.actualStart, let end = record.actualEnd, let seconds = ActivityTiming.seconds(start: start, end: end) {
                 Text("Durata calcolata: \(ActivityTiming.duration(seconds))").font(.subheadline).foregroundStyle(PivotTheme.accent)
             }
@@ -226,7 +255,7 @@ struct EventDetailView: View {
                 .font(.caption).foregroundStyle(event.writable ? PivotTheme.blue : PivotTheme.amber)
                 .onChange(of: record.actualStart) { _, _ in updateMinutes() }
                 .onChange(of: record.actualEnd) { _, _ in updateMinutes() }
-            }.font(.subheadline)
+            }.font(.subheadline).accessibilityIdentifier("activity-real-times")
             if record.status == .partial || record.status == .skipped {
                 TextField("Cosa ti ha fermato?", text: $record.reason, axis: .vertical).lineLimit(2...5).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
                 Text("Racconta il motivo: ci aiuta ad adattare il programma.").font(.caption).foregroundStyle(PivotTheme.amber)
@@ -510,22 +539,45 @@ struct EventDetailView: View {
         return ok
     }
     private func finishEditing() async {
+        guard !syncingCalendar else { return }
         if record.status == .skipped { skipChoice = true }
         else if save() { await syncCalendar(closeWhenDone: true) }
     }
     private func syncCalendar(closeWhenDone: Bool) async {
-        guard let timing = CalendarSynchronization.actualTiming(for: record, event: event),
-              CalendarSynchronization.needsCalendarUpdate(timing, event: event) else {
+        // Agenda can contain an unsynced local move. EventKit must compare
+        // against the real source, never an already adjusted display item.
+        let source = calendarBaseline ?? record.snapshot
+        if record.calendarTimingNeedsConfirmation == true {
+            guard let timing = CalendarSynchronization.explicitlyEditedTiming(for: record, event: source) else {
+                message = "Orari salvati in Pivot. Per aggiornare Calendario, controlla inizio e fine; l’attività non deve essere in corso o saltata."; return
+            }
+            if CalendarSynchronization.needsCalendarUpdate(timing, event: source) {
+                calendarTiming = timing; calendarSource = source; calendarCloseAfterSync = closeWhenDone
+                confirmingCalendarTiming = true; return
+            }
+        }
+        guard let timing = CalendarSynchronization.actualTiming(for: record, event: source),
+              CalendarSynchronization.needsCalendarUpdate(timing, event: source) else {
             if closeWhenDone { closeAfterSaving() }
             return
         }
+        await performCalendarSync(timing, source: source, closeWhenDone: closeWhenDone)
+    }
+    private func performCalendarSync(_ timing: CalendarSynchronization.ActualTiming, source: CalendarItem, closeWhenDone: Bool) async {
+        guard !syncingCalendar, store.beginCalendarMutation() else { return }
+        syncingCalendar = true; defer { syncingCalendar = false; store.endCalendarMutation() }
+        guard await store.flushPendingWrites() else { message = "Salvataggio in Pivot non confermato. Calendario non modificato."; return }
         do {
-            if let updated = try await calendar.applyActualTimes(for: record, event: event, data: store.data) {
-                record.snapshot = updated
-                store.change { data in
-                    guard var saved = data.records[event.id] else { return }
-                    saved.snapshot = updated; data.records[event.id] = saved
-                }
+            let key = record.id
+            let updated = try await calendar.applyConfirmedTiming(timing, source: source, data: store.data)
+            calendarBaseline = updated
+            record.snapshot = updated; record.calendarTimingNeedsConfirmation = nil
+            let persisted = store.change { data in
+                guard var saved = data.records[key] else { return }
+                saved.snapshot = updated; saved.calendarTimingNeedsConfirmation = nil; data.records[key] = saved
+            }
+            guard persisted, await store.flushPendingWrites() else {
+                message = "Calendario aggiornato, ma il salvataggio della conferma in Pivot non è riuscito. Non ripetere la modifica: aggiorna la giornata e controlla gli orari."; return
             }
             message = "Attività salvata e orari aggiornati nel Calendario."
             if closeWhenDone { closeAfterSaving() }

@@ -5,11 +5,12 @@ struct SavingsForecastView: View {
     @EnvironmentObject private var store: PivotStore
     @Environment(\.dismiss) private var dismiss
     let goalID: UUID
-    @State private var upfront = "0"
-    @State private var weekly = "0"
+    @State private var upfront = ""
+    @State private var weekly = ""
     private var goal: SavingsGoal? { store.data.savingsBudget?.goals.first { $0.id == goalID && !$0.archived } }
     private var forecast: SavingsGoalForecast? {
-        guard let initial = Money.cents(from: upfront), let cadence = Money.cents(from: weekly) else { return nil }
+        guard let initial = Money.cents(from: upfront.isEmpty ? "0" : upfront),
+              let cadence = Money.cents(from: weekly.isEmpty ? "0" : weekly) else { return nil }
         return .make(goalID: goalID, data: store.data, upfrontCents: initial, weeklyCents: cadence, now: Date())
     }
     var body: some View {
@@ -19,6 +20,9 @@ struct SavingsForecastView: View {
                 NavigationLink { SavingsEvidenceForecastView(goalID: goalID) } label: {
                     Label("Stima dai miei guadagni", systemImage: "sparkles").frame(maxWidth: .infinity)
                 }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("forecast-evidence-open")
+                NavigationLink { SavingsWeeklyPlanView(goalID: goalID) } label: {
+                    Label("Piano settimanale", systemImage: "calendar.badge.clock")
+                }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("forecast-weekly-open")
                 PivotCard {
                     Text("Simulazione, senza spostare denaro").font(.headline)
                     TextField("Da destinare ora (€)", text: $upfront).keyboardType(.decimalPad).accessibilityIdentifier("forecast-upfront")

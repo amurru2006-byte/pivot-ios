@@ -8,13 +8,14 @@ private func savingsPreview(_ data: AppData) -> SavingsBudget? {
 
 private enum SavingsMovementKind: String { case reserve, release, expense }
 private enum SavingsRoute: Identifiable {
-    case goal(SavingsGoal?), movement(SavingsMovementKind, UUID?), expense(BudgetExpense), forecast(UUID)
+    case goal(SavingsGoal?), movement(SavingsMovementKind, UUID?), expense(BudgetExpense), forecast(UUID), weekly(UUID)
     var id: String {
         switch self {
         case .goal(let goal): return "goal-" + (goal?.id.uuidString ?? "new")
         case .movement(let kind, let id): return kind.rawValue + (id?.uuidString ?? "new")
         case .expense(let expense): return "expense-" + expense.id.uuidString
         case .forecast(let id): return "forecast-" + id.uuidString
+        case .weekly(let id): return "weekly-" + id.uuidString
         }
     }
 }
@@ -79,6 +80,7 @@ struct SavingsPanel: View {
             case .movement(let kind, let goalID): SavingsMovementForm(kind: kind, goalID: goalID)
             case .expense(let expense): SavingsMovementForm(kind: .expense, goalID: nil, existingExpense: expense)
             case .forecast(let id): SavingsForecastView(goalID: id)
+            case .weekly(let id): NavigationStack { SavingsWeeklyPlanView(goalID: id) }
             }
         }
     }
@@ -109,6 +111,19 @@ struct SavingsPanel: View {
                     Text("Obiettivo \(Money.display(goal.targetCents))").font(.subheadline).foregroundStyle(PivotTheme.muted)
                     ProgressView(value: Double(held), total: Double(goal.targetCents)).tint(orange)
                     Text(goal.name).font(.subheadline.weight(.semibold))
+                    Button { route = .weekly(goal.id) } label: {
+                        HStack {
+                            Image(systemName: "calendar.badge.clock")
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Piano settimanale").font(.subheadline.weight(.semibold))
+                                Text(goal.weeklyPlan == nil ? "Configura" :
+                                    goal.weeklyPlan?.activatedAt == nil ? "Da riattivare" :
+                                    goal.weeklyPlan?.mode == .automatic ? "Accantonamenti automatici" : "Conferma tu la quota")
+                                    .font(.caption).foregroundStyle(PivotTheme.muted)
+                            }
+                            Spacer(); Image(systemName: "chevron.right").font(.caption)
+                        }.padding(10).background(orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                    }.buttonStyle(.plain).accessibilityIdentifier("savings-weekly-open")
                     HStack {
                         if let deadline = goal.deadline { Text(DisplayDate.label(deadline, format: "d MMM yyyy")) }
                         Spacer()

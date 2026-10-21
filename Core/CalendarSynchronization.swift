@@ -8,6 +8,19 @@ enum CalendarSynchronization {
         var end: Date
     }
 
+    /// A one-endpoint correction is a proposal, not a measured second endpoint.
+    /// The UI must show both endpoints and obtain explicit confirmation. Keep
+    /// absent actual timestamps absent in the activity/financial history.
+    static func explicitlyEditedTiming(for record: EventRecord, event: CalendarItem) -> ActualTiming? {
+        guard record.calendarTimingNeedsConfirmation == true, !event.isAllDay,
+              record.status != .running, record.status != .skipped,
+              record.actualStart != nil || record.actualEnd != nil else { return nil }
+        let start = record.actualStart ?? event.start, end = record.actualEnd ?? event.end
+        guard start.timeIntervalSinceReferenceDate.isFinite, end.timeIntervalSinceReferenceDate.isFinite,
+              end > start else { return nil }
+        return .init(start: start, end: end)
+    }
+
     static func actualTiming(for record: EventRecord, event: CalendarItem) -> ActualTiming? {
         guard !event.isAllDay,
               record.timingFromCalendar != true,

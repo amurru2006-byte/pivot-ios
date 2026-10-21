@@ -41,6 +41,7 @@ struct SavingsAllocation: Codable, Identifiable, Equatable {
     // Positive reserves funds; negative releases a reservation. Neither is an expense.
     var cents: Int
     var date: Date
+    var weeklyReview: SavingsWeeklyReceipt? = nil
 }
 
 struct SavingsBudget: Codable {
@@ -106,6 +107,7 @@ enum SavingsAccounting {
         var reserved: [UUID: Int] = [:]
         for move in budget.allocations {
             guard (-maximumMovementCents...maximumMovementCents).contains(move.cents), move.cents != 0,
+                  (move.weeklyReview.map { move.cents > 0 && $0.isValid } ?? true),
                   let goal = budget.goals.first(where: { $0.id == move.goalID }) else { throw SavingsBudgetError.invalidData }
             let value = try sum([reserved[goal.id] ?? 0, move.cents])
             guard value >= 0 else { throw SavingsBudgetError.invalidData }

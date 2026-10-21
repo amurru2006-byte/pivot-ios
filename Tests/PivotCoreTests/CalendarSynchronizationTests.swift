@@ -2,6 +2,39 @@ import XCTest
 @testable import PivotCore
 
 final class CalendarSynchronizationTests: XCTestCase {
+    func testExplicitEndOnlyEditProposesPlannedStartWithoutInventingMeasuredStartOrOutcome() throws {
+        let start = date("2026-10-20T13:30:00+02:00")
+        let item = event(start: start, end: date("2026-10-20T14:30:00+02:00"))
+        var record = EventRecord(id: item.id, snapshot: item)
+        record.actualEnd = date("2026-10-20T17:30:00+02:00")
+        XCTAssertNil(CalendarSynchronization.explicitlyEditedTiming(for: record, event: item))
+        record.calendarTimingNeedsConfirmation = true
+        let proposal = try XCTUnwrap(CalendarSynchronization.explicitlyEditedTiming(for: record, event: item))
+        XCTAssertEqual(proposal.start, start); XCTAssertEqual(proposal.end, record.actualEnd)
+        XCTAssertNil(record.actualStart); XCTAssertEqual(record.status, .pending)
+        XCTAssertTrue(CalendarSynchronization.needsCalendarUpdate(proposal, event: item))
+        XCTAssertNil(CalendarSynchronization.actualTiming(for: record, event: item), "Proposal still needs an explicit user confirmation")
+        let restored = try JSONDecoder().decode(EventRecord.self, from: JSONEncoder().encode(record))
+        XCTAssertEqual(CalendarSynchronization.explicitlyEditedTiming(for: restored, event: item), proposal)
+    }
+    func testExplicitTimingRejectsInvalidEndpointsRunningSkippedAndAllDay() {
+        let start = date("2026-10-20T13:30:00+02:00")
+        var item = event(start: start, end: start.addingTimeInterval(3600))
+        var record = EventRecord(id: item.id, snapshot: item)
+        record.calendarTimingNeedsConfirmation = true
+        XCTAssertNil(CalendarSynchronization.explicitlyEditedTiming(for: record, event: item))
+        record.actualEnd = start.addingTimeInterval(-1)
+        XCTAssertNil(CalendarSynchronization.explicitlyEditedTiming(for: record, event: item))
+        record.actualEnd = start.addingTimeInterval(7200)
+        for status in [Completion.running, .skipped] {
+            record.status = status
+            XCTAssertNil(CalendarSynchronization.explicitlyEditedTiming(for: record, event: item))
+        }
+        record.status = .completed; item.isAllDay = true
+        XCTAssertNil(CalendarSynchronization.explicitlyEditedTiming(for: record, event: item))
+        item.isAllDay = false; record.actualEnd = Date(timeIntervalSinceReferenceDate: .infinity)
+        XCTAssertNil(CalendarSynchronization.explicitlyEditedTiming(for: record, event: item))
+    }
     private func date(_ value: String) -> Date {
         ISO8601DateFormatter().date(from: value)!
     }

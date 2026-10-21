@@ -118,10 +118,12 @@ if [ -n "$PIVOT_RELEASE_SHARD" ]; then
   done <<< "$PIVOT_RELEASE_FLAGS"
 elif [ "$PIVOT_UI_ONLY_TESTING" = v8-086-evidence-and-maps-regression ]; then
   # One diagnostic build covers the two observed failures and the missing-data
-  # savings control. Every one of the 76 release tests remains mandatory.
+  # savings control. Every release test remains mandatory, exactly once.
   PIVOT_UI_TEST_COMMAND+=(
     -only-testing:PivotUITests/CalendarCreationInteractionTests/testMapsEstimateRequiresConsentCanBeUsedThenRemovedWithoutWriting
     -only-testing:PivotUITests/SavingsEvidenceInteractionTests
+    -only-testing:PivotUITests/SavingsInteractionTests/testWeeklyPlanIsOptInPersistsAndDeletionKeepsGoalAndMoneyWithEmptySimulationFields
+    -only-testing:PivotUITests/CalendarTimingInteractionTests
   )
 elif [ "$PIVOT_UI_ONLY_TESTING" = v8-086-presentation-regression ]; then
   # Observed failures only, for diagnosis. This cannot package a release or

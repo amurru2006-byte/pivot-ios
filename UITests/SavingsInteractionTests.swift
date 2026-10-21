@@ -2,6 +2,49 @@ import XCTest
 
 final class SavingsInteractionTests: XCTestCase {
     override func tearDownWithError() throws { attachFailureDiagnostics("savings"); try super.tearDownWithError() }
+    func testWeeklyPlanIsOptInPersistsAndDeletionKeepsGoalAndMoneyWithEmptySimulationFields() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--interaction-test", "--savings-test"]
+        app.launchEnvironment["PIVOT_QA_SAVINGS_ID"] = UUID().uuidString
+        app.launch(); openSavings(in: app)
+        func tap(_ id: String) { let button = app.buttons[id]; scrollControlIntoView(button, in: app); button.tap() }
+        tap("savings-create-goal")
+        let name = app.textFields["savings-goal-name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 8)); name.tap(); name.typeText("Piano settimanale QA")
+        let target = app.textFields["savings-goal-target"]; target.tap(); target.typeText("900")
+        finishKeyboard(in: app); tap("savings-goal-save")
+        tap("savings-forecast")
+        let upfront = app.textFields["forecast-upfront"], weekly = app.textFields["forecast-weekly"]
+        XCTAssertEqual(upfront.value as? String, upfront.placeholderValue)
+        XCTAssertEqual(weekly.value as? String, weekly.placeholderValue)
+        app.navigationBars["Scenario Salvadanaio"].buttons["Chiudi"].tap()
+        tap("savings-weekly-open")
+        let automatic = app.switches["weekly-automatic"]
+        XCTAssertEqual(automatic.value as? String, "0"); XCTAssertFalse(app.buttons["weekly-delete"].exists)
+        tap("weekly-save")
+        XCTAssertTrue(app.staticTexts["weekly-next"].waitForExistence(timeout: 8))
+        scrollControlIntoView(automatic, in: app)
+        let native = automatic.switches.firstMatch
+        if native.exists { native.tap() } else { automatic.tap() }
+        XCTAssertEqual(automatic.value as? String, "1"); tap("weekly-save")
+        app.buttons["Chiudi"].tap()
+        XCTAssertTrue(app.staticTexts["savings-reserved-total"].label.contains("0,00"))
+        XCTAssertTrue(app.staticTexts["savings-free-total"].label.contains("350,00"))
+        app.terminate(); app.launch(); openSavings(in: app); tap("savings-weekly-open")
+        XCTAssertEqual(app.switches["weekly-automatic"].value as? String, "1")
+        tap("weekly-delete")
+        let alert = app.alerts["Eliminare il piano?"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 5)); alert.buttons["Annulla"].tap()
+        XCTAssertTrue(app.buttons["weekly-delete"].exists)
+        tap("weekly-delete"); alert.buttons["weekly-delete-confirm"].tap()
+        XCTAssertTrue(app.buttons["savings-weekly-open"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["savings-reserved-total"].label.contains("0,00"))
+        XCTAssertTrue(app.staticTexts["savings-free-total"].label.contains("350,00"))
+        tap("savings-weekly-open")
+        XCTAssertEqual(app.switches["weekly-automatic"].value as? String, "0")
+        XCTAssertFalse(app.buttons["weekly-delete"].exists)
+    }
     func testGoalReservationLimitRealExpenseReleaseAndRelaunch() {
         continueAfterFailure = false
         let app = XCUIApplication()
