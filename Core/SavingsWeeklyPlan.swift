@@ -133,7 +133,16 @@ struct SavingsWeeklyReview: Equatable {
         }
         // The same week's cash cannot feed several goals twice. Existing
         // allocations to any goal consume that shared, already saved margin.
-        for allocation in budget.allocations where isThisWeek(allocation.weeklyReview?.periodEnd ?? allocation.date) {
+        for allocation in budget.allocations {
+            if let receipt = allocation.weeklyReview {
+                guard isThisWeek(receipt.periodEnd) else { continue }
+            } else {
+                // A manual reservation can be newer than the cash-completeness
+                // confirmation. It still consumes this period's margin. Do not
+                // include reservations from a different scheduled review week.
+                guard allocation.date > start, allocation.date <= now,
+                      plan.previousReview(before: allocation.date) == start else { continue }
+            }
             result.alreadyReservedCents = try add(result.alreadyReservedCents, allocation.cents)
         }
         guard result.issues.isEmpty else { return result }
@@ -176,7 +185,7 @@ enum SavingsWeeklyAutomation {
     @discardableResult static func applyDue(now: Date, data: inout AppData) throws -> Int {
         var copy = data, count = 0
         for goal in copy.savingsBudget?.goals ?? [] where !goal.archived && goal.weeklyPlan?.mode == .automatic {
-            guard let due = goal.weeklyPlan?.latestDue(at: now) else { continue }
+            guard let budget = copy.savingsBudget, let due = reviewEnd(goal: goal, budget: budget, now: now) else { continue }
             let review = try SavingsWeeklyReview.make(goalID: goal.id, data: copy, now: now, periodEnd: due)
             if try apply(goalID: goal.id, expected: review, automatic: true, now: now, data: &copy) { count += 1 }
         }
