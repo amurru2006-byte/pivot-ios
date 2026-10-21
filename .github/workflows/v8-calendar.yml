@@ -39,10 +39,10 @@ jobs:
           if-no-files-found: error
   ui:
     needs: core
-    # Standard free Intel image includes the required iOS 26+ simulators.
-    # Keep every native shard and gate while the hosted ARM pool reports
-    # capacity failures; this is not a larger/paid runner or an OS downgrade.
-    runs-on: macos-15-intel
+    # Standard free Apple Silicon image, with the same required iOS 26+ floor.
+    # Intel simulator discovery / AX startup failed before executing tests.
+    # Preserve every shard, exact-once gate and existing test timeout.
+    runs-on: macos-15
     timeout-minutes: 180
     strategy:
       fail-fast: false

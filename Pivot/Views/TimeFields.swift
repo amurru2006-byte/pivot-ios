@@ -16,6 +16,7 @@ struct ClockField: View {
                 Text(value.map { "\(PivotDate.shortDate($0)) · \(PivotDate.time($0))" } ?? "Da indicare").foregroundStyle(PivotTheme.accent)
                 Image(systemName: "chevron.right").font(.caption)
             }.font(.subheadline).padding(.vertical, 8)
+                .frame(minHeight: 44).contentShape(Rectangle())
         }.buttonStyle(.plain)
         .sheet(isPresented: $editing) {
             NavigationStack {
@@ -52,6 +53,7 @@ struct DurationField: View {
                 Spacer()
                 Text(seconds.map(ActivityTiming.duration) ?? "Da indicare").foregroundStyle(PivotTheme.accent).monospacedDigit()
             }.font(.subheadline).padding(.vertical, 8)
+                .frame(minHeight: 44).contentShape(Rectangle())
         }.buttonStyle(.plain)
         .sheet(isPresented: $editing) {
             NavigationStack {

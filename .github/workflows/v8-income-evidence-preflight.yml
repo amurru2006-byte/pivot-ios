@@ -31,7 +31,7 @@ jobs:
       - run: bash Scripts/prepare-ios-ci.sh
       - name: Conferme orari e piano settimanale con dati sintetici
         env:
-          PIVOT_UI_ONLY_TESTING: v8-086-weekly-and-timing-regression
+          PIVOT_UI_ONLY_TESTING: v8-086-calendar-timing-regression
         run: bash Scripts/preview-ui.sh
       - uses: actions/upload-artifact@v4
         if: always()
