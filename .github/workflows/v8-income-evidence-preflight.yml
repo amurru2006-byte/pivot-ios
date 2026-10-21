@@ -30,6 +30,8 @@ jobs:
       - uses: actions/checkout@v4
       - run: bash Scripts/prepare-ios-ci.sh
       - name: Conferme orari e piano settimanale con dati sintetici
+        # Leave time for always-upload diagnostics if build/startup stalls.
+        timeout-minutes: 45
         env:
           PIVOT_UI_ONLY_TESTING: v8-086-calendar-timing-regression
         run: bash Scripts/preview-ui.sh
