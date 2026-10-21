@@ -219,4 +219,31 @@ final class CalendarActivityLinkTests: XCTestCase {
         let option = CoachOption(title: "QA", explanation: "QA", consequences: "QA", moves: [plan])
         XCTAssertTrue(CoachPlanner.validate(option, events: [receipt.activity, receipt.travel!], data: data, now: now)?.contains("viaggio collegato") == true)
     }
+    func testLostAcknowledgementCannotAdvanceLinkUntilBothOutcomesAreVerified() throws {
+        var data = linked()
+        let choice = CalendarCreationTravel(minutes: 35, origin: "Nuova partenza QA")
+        let choices = [linkID.uuidString: choice]
+        let actions = try expand([move()], choices: choices)
+        var entries = CalendarActivityLinks.archiving(completed(actions), data: data, choices: choices)
+        entries[1].status = .uncertain
+        data.calendarActionArchive = entries
+        CalendarActivityLinks.reconcileAcknowledgements(data: &data)
+        XCTAssertEqual(data.calendarActivityLinks?.first?.activity, receipt.activity)
+        entries[1].status = .committed; data.calendarActionArchive = entries
+        CalendarActivityLinks.reconcileAcknowledgements(data: &data)
+        XCTAssertEqual(data.calendarActivityLinks?.first?.activity, actions[0].after)
+        XCTAssertEqual(data.calendarActivityLinks?.first?.travel, actions[1].after)
+        XCTAssertEqual(data.calendarActivityLinks?.first?.settings, choice)
+        let before = data.calendarActivityLinks
+        CalendarActivityLinks.reconcileAcknowledgements(data: &data)
+        XCTAssertEqual(data.calendarActivityLinks, before)
+    }
+    func testLostDeletionAcknowledgementDoesNotReactivateOrRecreateAnything() throws {
+        var data = linked()
+        let actions = try expand([.init(kind: .delete, source: receipt.activity, after: nil)])
+        data.calendarActionArchive = CalendarActivityLinks.archiving(completed(actions), data: data)
+        CalendarActivityLinks.reconcileAcknowledgements(data: &data)
+        XCTAssertEqual(data.calendarActivityLinks?.first?.deleted, true)
+        XCTAssertTrue(data.moves.isEmpty); XCTAssertTrue(data.income.isEmpty)
+    }
 }

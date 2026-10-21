@@ -75,12 +75,39 @@ enum CalendarActivityLinks {
         (data.calendarActivityLinks ?? []).contains { !$0.deleted && (
             CalendarSnapshotMatch.identity($0.activity, item) || CalendarSnapshotMatch.identity($0.travel, item)) }
     }
-    static func archiving(_ entries: [ArchivedCalendarMutation], data: AppData) -> [ArchivedCalendarMutation] {
+    static func archiving(_ entries: [ArchivedCalendarMutation], data: AppData,
+        choices: [String: CalendarCreationTravel] = [:]) -> [ArchivedCalendarMutation] {
         entries.map { entry in
             var next = entry
             if let link = link(for: entry.original.snapshot, data: data),
-               CalendarSnapshotMatch.identity(link.activity, entry.original.snapshot) { next.linkedTravelBefore = link.settings }
+               CalendarSnapshotMatch.identity(link.activity, entry.original.snapshot) {
+                next.linkedTravelBefore = link.settings
+                next.linkedTravelAfter = choices[link.id.uuidString] ?? link.settings
+            }
             return next
+        }
+    }
+    /// Recover a lost local acknowledgement only after both native outcomes are
+    /// independently verified. This is a read/reconciliation, never a new write
+    /// using an old route, and never completion of a partial external operation.
+    static func reconcileAcknowledgements(data: inout AppData) {
+        let groups = Dictionary(grouping: data.calendarActionArchive ?? [], by: \.batchID)
+        let links = data.calendarActivityLinks ?? []
+        for link in links where !link.deleted {
+            let candidates: [(entries: [ArchivedCalendarMutation], choice: CalendarCreationTravel)] = groups.values.compactMap { entries in
+                guard let main = entries.first(where: { CalendarSnapshotMatch.revision(link.activity, $0.original.snapshot) }),
+                      main.status == .committed, main.linkedTravelBefore != nil, let settings = main.linkedTravelAfter else { return nil }
+                let trip = entries.first { CalendarSnapshotMatch.revision(link.travel, $0.original.snapshot) }
+                if let trip {
+                    guard trip.status == .committed else { return nil }
+                    return ([main, trip], settings)
+                }
+                guard main.kind == .update, let after = main.after,
+                      CalendarSnapshotMatch.instant(after.start, link.activity.start) else { return nil }
+                return ([main], settings)
+            }
+            guard candidates.count == 1 else { continue }
+            try? record(candidates[0].entries, choices: [link.id.uuidString: candidates[0].choice], data: &data)
         }
     }
     /// Adopt a restore only after a full native pair from one archived batch is

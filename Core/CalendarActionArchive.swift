@@ -57,8 +57,10 @@ struct ArchivedCalendarMutation: Codable, Identifiable, Equatable {
     var restoredAt: Date?
     var restoredEvent: CalendarItem?
     var linkedTravelBefore: CalendarCreationTravel? = nil
+    var linkedTravelAfter: CalendarCreationTravel? = nil
     var isValid: Bool {
-        guard original.isValid, linkedTravelBefore?.isValid ?? true, preparedAt.timeIntervalSinceReferenceDate.isFinite,
+        guard original.isValid, linkedTravelBefore?.isValid ?? true, linkedTravelAfter?.isValid ?? true,
+              preparedAt.timeIntervalSinceReferenceDate.isFinite,
               committedAt.map({ $0.timeIntervalSinceReferenceDate.isFinite && $0 >= preparedAt }) ?? true,
               restoredAt.map({ $0.timeIntervalSinceReferenceDate.isFinite && $0 >= preparedAt }) ?? true,
               after.map(CalendarEventBackup.valid) ?? true,
