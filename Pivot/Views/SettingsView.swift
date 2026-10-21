@@ -141,7 +141,7 @@ struct SettingsView: View {
         }
         Button("Collega app Salute") { Task { await health.connect(store: store, events: calendar.events); settings = store.data.settings } }
             .buttonStyle(PivotPrimaryButton()).disabled(health.isRefreshing || health.isConnecting || store.locked)
-        Button("Aggiorna dati da Salute") { Task { await health.refresh(store: store, events: calendar.events, force: true) } }
+        Button("Aggiorna dati da Salute") { Task { await health.refresh(store: store, events: calendar.events, force: true, recheckHeartRate: true) } }
             .buttonStyle(PivotSecondaryButton()).disabled(health.isRefreshing || store.data.settings.healthEnabled != true)
         Text("Sola lettura. Dopo il consenso, iOS può avvisare Pivot in background quando cambiano sonno o allenamenti; non viene avviato un monitoraggio continuo. Le camminate fuori dagli orari di allenamento restano attività generale. Per revocare i permessi usa l’app Salute.").font(.caption).foregroundStyle(PivotTheme.muted)
                 Toggle("Sincronizza automaticamente da Salute", isOn: Binding(get: { settings.healthEnabled == true }, set: { settings.healthEnabled = $0 }))

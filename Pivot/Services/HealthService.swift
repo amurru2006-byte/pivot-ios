@@ -93,7 +93,7 @@ final class HealthService: ObservableObject {
             guard store.change({ $0.settings.healthEnabled = true }) else { return }
             prepareBackgroundObservers()
             await setBackgroundDelivery(enabled: true)
-            await refresh(store: store, events: events, force: true)
+            await refresh(store: store, events: events, force: true, recheckHeartRate: true)
         } catch {
             authorizationRequestCompleted = false
             recordDiagnostic(error, phase: "Richiesta dei permessi Salute")
@@ -134,7 +134,7 @@ final class HealthService: ObservableObject {
             status = Self.connectionMessage(for: error)
         }
     }
-    func refresh(store: PivotStore, events: [CalendarItem], force: Bool = false) async {
+    func refresh(store: PivotStore, events: [CalendarItem], force: Bool = false, recheckHeartRate: Bool = false) async {
         guard !PreviewMode.enabled, store.data.settings.healthEnabled == true, !store.locked, !store.isRestoring, !store.isLoading, !isRefreshing else { return }
         if !force, let lastRefresh, Date().timeIntervalSince(lastRefresh) < 300 { return }
         guard HKHealthStore.isHealthDataAvailable() else { return }
@@ -183,7 +183,7 @@ final class HealthService: ObservableObject {
                 summary.averageBPM = cached?.compatibleHeartRate(for: summary)
                 var checkedAt = cached?.heartRateReadAt
                 var attemptedAt = cached?.heartRateAttemptedAt
-                if cached?.needsHeartRate(for: summary, now: now, force: force) ?? true {
+                if cached?.needsHeartRate(for: summary, now: now, force: recheckHeartRate) ?? true {
                     checkedAt = nil
                     if heartRateQueries < 12 {
                         heartRateQueries += 1
@@ -191,7 +191,8 @@ final class HealthService: ObservableObject {
                         do {
                             summary.averageBPM = try await averageHeartRate(value)
                             checkedAt = Date()
-                        } catch {
+                        } catch is CancellationError { throw CancellationError() }
+                        catch {
                             // Retain the last observation on a transient query
                             // failure, but do not mark it freshly checked.
                             deferredHeartRates = true
@@ -202,6 +203,9 @@ final class HealthService: ObservableObject {
                 nextCache[summary.id] = .init(summary: summary, heartRateReadAt: checkedAt, heartRateAttemptedAt: attemptedAt)
             }
             try Task.checkCancellation()
+            guard !store.isRestoring, !store.isLoading, !store.locked, store.data.settings.healthEnabled == true else {
+                workoutCache.removeAll(); return
+            }
             workouts = summaries.sorted { $0.start > $1.start }
             workoutCache = nextCache
             // Rebase if the user edited a record while reconciliation was running.
@@ -238,6 +242,10 @@ final class HealthService: ObservableObject {
                 status = base
             }
             if deferredHeartRates { status += " Alcuni battiti saranno verificati al prossimo aggiornamento." }
+        } catch is CancellationError {
+            // Cancellation isn't a failed Health authorization and must not
+            // replace the last successful synchronization report.
+            return
         } catch {
             recordDiagnostic(error, phase: "Lettura sonno e allenamenti")
             status = Self.connectionMessage(for: error)

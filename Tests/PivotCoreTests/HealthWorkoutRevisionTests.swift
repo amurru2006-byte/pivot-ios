@@ -119,6 +119,16 @@ final class HealthWorkoutRevisionTests: XCTestCase {
         let after = try XCTUnwrap(merge([revision], into: data))
         XCTAssertNil(after.records[event.id]?.cardio)
     }
+    func testFirstImportMayReplaceExplicitCalendarSuggestionsNotManualValues() {
+        var data = AppData(); var record = EventRecord(id: event.id, snapshot: event)
+        record.actualStart = start.addingTimeInterval(-600); record.actualEnd = event.end
+        record.activeMinutes = 80; record.timingFromCalendar = true
+        data.records[event.id] = record
+        HealthImport.apply(initial, to: event, data: &data)
+        XCTAssertEqual(data.records[event.id]?.actualStart, initial.start)
+        XCTAssertEqual(data.records[event.id]?.activeMinutes, 60)
+        XCTAssertEqual(data.records[event.id]?.timingFromCalendar, false)
+    }
     func testRevisionCannotCrossManuallyCorrectedOppositeClock() throws {
         var data = imported(); data.records[event.id]?.actualEnd = start.addingTimeInterval(60)
         var next = revision; next.start = start.addingTimeInterval(120)
@@ -148,7 +158,8 @@ final class HealthWorkoutRevisionTests: XCTestCase {
         XCTAssertEqual(data.records[event.id]?.health, initial)
     }
     func testNewAmbiguousWorkoutAndAlreadyLinkedDifferentUUIDAreNotApplied() {
-        var other = event; other.id = "qa-other"
+        var other = event; other.id = "qa-other"; other.eventIdentifier = "qa-other"
+        XCTAssertFalse(EventCoalescer.matches(event, other))
         let ambiguous = merge([initial], into: AppData(), events: [event, other])
         XCTAssertTrue(ambiguous?.records.isEmpty ?? true)
         var next = initial; next.id = "qa-different-source"
