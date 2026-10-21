@@ -267,7 +267,7 @@ struct EventDetailView: View {
                 .font(.caption).foregroundStyle(event.writable ? PivotTheme.blue : PivotTheme.amber)
                 .onChange(of: record.actualStart) { _, _ in updateMinutes() }
                 .onChange(of: record.actualEnd) { _, _ in updateMinutes() }
-            }.font(.subheadline).accessibilityIdentifier("activity-real-times")
+            }.font(.subheadline)
             if record.status == .partial || record.status == .skipped {
                 TextField("Cosa ti ha fermato?", text: $record.reason, axis: .vertical).lineLimit(2...5).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
                 Text("Racconta il motivo: ci aiuta ad adattare il programma.").font(.caption).foregroundStyle(PivotTheme.amber)

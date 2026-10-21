@@ -33,7 +33,7 @@ case "$PIVOT_UI_ONLY_TESTING" in
     PIVOT_UI_RESULT=build/online-privacy-tests.xcresult
     PIVOT_SIM_ENTITLEMENTS=build/online-privacy-simulator-entitlements.plist
     ;;
-  v8-086-evidence-and-maps-regression|PivotUITests/SavingsEvidenceInteractionTests|PivotUITests/OnlineCoachSetupInteractionTests)
+  v8-086-weekly-and-timing-regression|v8-086-evidence-and-maps-regression|PivotUITests/SavingsEvidenceInteractionTests|PivotUITests/OnlineCoachSetupInteractionTests)
     PIVOT_PREVIEW_OUTPUT=build/Previews/QRPreflight
     PIVOT_UI_BUILD_LOG=build/qr-preflight-build.log
     PIVOT_UI_LOG=build/qr-preflight-tests.log
@@ -116,6 +116,13 @@ if [ -n "$PIVOT_RELEASE_SHARD" ]; then
   while IFS= read -r PIVOT_TEST_FLAG; do
     PIVOT_UI_TEST_COMMAND+=("$PIVOT_TEST_FLAG")
   done <<< "$PIVOT_RELEASE_FLAGS"
+elif [ "$PIVOT_UI_ONLY_TESTING" = v8-086-weekly-and-timing-regression ]; then
+  # Only the two observed selector failures. The release workflow still
+  # requires every native case exactly once on its own consolidated SHA.
+  PIVOT_UI_TEST_COMMAND+=(
+    -only-testing:PivotUITests/CalendarTimingInteractionTests
+    -only-testing:PivotUITests/SavingsInteractionTests/testWeeklyPlanIsOptInPersistsAndDeletionKeepsGoalAndMoneyWithEmptySimulationFields
+  )
 elif [ "$PIVOT_UI_ONLY_TESTING" = v8-086-evidence-and-maps-regression ]; then
   # One diagnostic build covers the two observed failures and the missing-data
   # savings control. Every release test remains mandatory, exactly once.
