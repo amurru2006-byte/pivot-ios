@@ -25,6 +25,37 @@ final class CoachRecoveryRequestTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(CoachRecoveryRequest.parse("Recupera palestra dopodomani", now: now)).dayOffset, 2)
         XCTAssertEqual(try XCTUnwrap(CoachRecoveryRequest.parse("Recupera palestra stasera", now: now)).band, .evening)
     }
+    func testWeekdayWithinHorizonKeepsTheRequestedDayAndBand() throws {
+        let request = try XCTUnwrap(CoachRecoveryRequest.parse("Vorrei recuperare la palestra venerdì sera", now: now))
+        XCTAssertEqual(request.dayOffset, 4); XCTAssertEqual(request.band, .evening)
+        XCTAssertEqual(request.day.map(PivotDate.key), "2026-10-23")
+        XCTAssertNil(CoachRecoveryRequest.parse("Recupera palestra venerdì o sabato", now: now))
+        XCTAssertNil(CoachRecoveryRequest.parse("Recupera palestra domani venerdì", now: now))
+        XCTAssertNil(CoachRecoveryRequest.parse("Recupera palestra venerdì prossimo", now: now))
+    }
+    func testThisWeekIsBoundedAndDoesNotMoveForwardWhenReopened() throws {
+        let wednesday = ISO8601DateFormatter().date(from: "2026-10-21T12:00:00+02:00")!
+        let request = try XCTUnwrap(CoachRecoveryRequest.parse("Recupera palestra questa settimana", now: wednesday))
+        XCTAssertEqual(request.horizonDays, 5); XCTAssertNil(request.dayOffset)
+        let saturday = ISO8601DateFormatter().date(from: "2026-10-24T12:00:00+02:00")!
+        let monday = ISO8601DateFormatter().date(from: "2026-10-26T12:00:00+01:00")!
+        XCTAssertEqual(request.remainingHorizon(at: saturday), 2)
+        XCTAssertEqual(request.remainingHorizon(at: monday), 0)
+        XCTAssertEqual(request.remainingHorizon(at: wednesday.addingTimeInterval(-1)), 0)
+        let sunday = ISO8601DateFormatter().date(from: "2026-10-25T12:00:00+01:00")!
+        XCTAssertNil(CoachRecoveryRequest.parse("Recupera palestra domani questa settimana", now: sunday))
+    }
+    func testWeekdayAcrossDSTAndPrivateHorizonRoundTrip() throws {
+        let before = ISO8601DateFormatter().date(from: "2026-10-24T23:00:00+02:00")!
+        let request = try XCTUnwrap(CoachRecoveryRequest.parse("Recupera palestra domenica mattina questa settimana", now: before))
+        XCTAssertEqual(request.day.map(PivotDate.key), "2026-10-25")
+        XCTAssertEqual(request.horizonDays, 2)
+        var data = AppData()
+        data.coachState.messages = [.init(dayKey: PivotDate.key(before), role: .coach, text: "Recupero QA", recoveryRequest: request)]
+        XCTAssertEqual(try BackupCodec.decode(BackupCodec.encode(data)).coachState.messages.first?.recoveryRequest, request)
+        var invalid = request; invalid.horizonDays = 1
+        XCTAssertFalse(invalid.isValid)
+    }
     func testNegationsConditionsMedicalRequestsAndUnsupportedDatesStayInConversation() {
         for text in ["Non recuperare palestra", "Recupera palestra se sto bene", "Recupera palestra ma ho dolore", "Recupera palestra con febbre",
                      "Elimina e recupera palestra", "Crea recupero palestra", "Recupera palestra alle 19:30", "Recupera palestra il 25", "Recupera palestra lunedì",

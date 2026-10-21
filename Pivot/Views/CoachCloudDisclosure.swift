@@ -47,7 +47,7 @@ struct CoachCloudDisclosure: View {
                 Text("Solo sigle interne, categorie, orari, durata, stato e vincoli. Non vengono aggiunti titoli, note o indirizzi del calendario.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
                 ForEach(request.events, id: \.id) { event in
-                    Text("\(event.kind.label) · \(PivotDate.time(event.start))–\(PivotDate.time(event.end)) · \(event.status.label)")
+                    Text("\(PivotDate.shortDate(event.start)) · \(event.kind.label) · \(PivotDate.time(event.start))–\(PivotDate.time(event.end)) · \(event.status.label)")
                         .font(.subheadline)
                 }
             }

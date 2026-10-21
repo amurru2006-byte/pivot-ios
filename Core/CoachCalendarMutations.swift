@@ -64,10 +64,10 @@ struct CoachCalendarBatch: Codable, Identifiable, Equatable {
             && (linkedTravelChoices.map { $0.count <= 10 && $0.allSatisfy { UUID(uuidString: $0.key) != nil && $0.value.isValid } } ?? true)
     }
     static func make(_ edits: [CoachCalendarEdit], sources: [String: CalendarItem], messageID: UUID,
-        now: Date, data: AppData) throws -> Self {
+        now: Date, data: AppData, calendarScope: CoachCalendarScope = .today) throws -> Self {
         guard (1...10).contains(edits.count), Set(edits.map(\.eventID)).count == edits.count else { throw CoachV8Error.invalidResponse }
         let actions: [CoachCalendarMutation] = try edits.map { edit in
-            guard edit.valid(now: now), let source = sources[edit.eventID], source.occurs(on: now),
+            guard edit.valid(now: now), let source = sources[edit.eventID], calendarScope.contains(source, now: now),
                   source.writable, !source.isAllDay, data.records[source.id]?.status != .running,
                   !data.moves.contains(where: { !$0.syncedToCalendar && $0.source.id == source.id }) else { throw CoachV8Error.invalidResponse }
             var after: CalendarItem?

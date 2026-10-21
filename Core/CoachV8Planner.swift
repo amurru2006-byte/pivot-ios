@@ -15,7 +15,8 @@ enum CoachV8Planner {
         guard response.mode == .plan else {
             if response.mode == .actions {
                 guard response.version == 3, let actions = response.actions else { throw CoachV8Error.invalidResponse }
-                _ = try CoachCalendarBatch.make(actions, sources: snapshot.sources, messageID: UUID(), now: now, data: data)
+                _ = try CoachCalendarBatch.make(actions, sources: snapshot.sources, messageID: UUID(), now: now, data: data,
+                    calendarScope: snapshot.calendarScope)
                 return .init(reply: "Ho preparato le modifiche da controllare. Apri l’anteprima e conferma soltanto quelle che vuoi applicare: il Calendario non è ancora cambiato.", options: [])
             }
             return .init(reply: userFacingReply(response.reply, request: snapshot.request), options: [], needsActivityClarification: response.mode == .clarify)
@@ -31,9 +32,16 @@ enum CoachV8Planner {
                   ![Completion.running, .completed, .partial].contains(data.records[source.id]?.status ?? .pending) else {
                 throw CoachV8Error.invalidResponse
             }
+            // The existing provider plan schema still schedules today's lunch/
+            // gym only. A wider read/edit scope is not a license to reinterpret
+            // a future occurrence as a missed appointment today.
+            guard source.occurs(on: now) else {
+                return .init(reply: "Questo impegno è in un altro giorno. Puoi chiedere una modifica con orari precisi; per cercare recuperi su più giorni usa le proposte locali. Nessun evento è stato spostato.", options: [])
+            }
             // A model cannot resolve indistinguishable occurrences by picking an ID.
             let eligible = snapshot.request.events.filter {
-                $0.category == summary.category && ![Completion.running, .completed, .partial].contains($0.status)
+                $0.category == summary.category && $0.start < PivotDate.calendar.date(byAdding: .day, value: 1, to: PivotDate.calendar.startOfDay(for: now))!
+                    && $0.end > PivotDate.calendar.startOfDay(for: now) && ![Completion.running, .completed, .partial].contains($0.status)
             }
             guard eligible.count == 1 else {
                 return .init(reply: "Ci sono più attività di questo tipo oggi. Indica quale vuoi organizzare; non scelgo una ricorrenza al posto tuo.", options: [], needsActivityClarification: true)
