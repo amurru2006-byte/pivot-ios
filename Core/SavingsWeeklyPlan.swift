@@ -133,6 +133,7 @@ struct SavingsWeeklyReview: Equatable {
         }
         // The same week's cash cannot feed several goals twice. Existing
         // allocations to any goal consume that shared, already saved margin.
+        var ownReservedCents = 0
         for allocation in budget.allocations {
             if let receipt = allocation.weeklyReview {
                 guard isThisWeek(receipt.periodEnd) else { continue }
@@ -144,10 +145,13 @@ struct SavingsWeeklyReview: Equatable {
                       plan.previousReview(before: allocation.date) == start else { continue }
             }
             result.alreadyReservedCents = try add(result.alreadyReservedCents, allocation.cents)
+            if allocation.goalID == goalID { ownReservedCents = try add(ownReservedCents, allocation.cents) }
         }
         guard result.issues.isEmpty else { return result }
         let margin = max(0, result.receivedCents - result.spentCents)
-        let proposed = max(0, margin * plan.reservePercent / 100 - max(0, result.alreadyReservedCents))
+        let ownQuota = max(0, margin * plan.reservePercent / 100 - max(0, ownReservedCents))
+        let sharedRemainder = max(0, margin - max(0, result.alreadyReservedCents))
+        let proposed = min(ownQuota, sharedRemainder)
         result.proposedCents = min(proposed, result.freeCents, result.remainingCents, SavingsAccounting.maximumMovementCents)
         return result
     }

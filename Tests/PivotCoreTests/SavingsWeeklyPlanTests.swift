@@ -77,6 +77,14 @@ final class SavingsWeeklyPlanTests: XCTestCase {
         XCTAssertEqual(data.savingsBudget?.allocations.count, 1)
         XCTAssertEqual(try SavingsAccounting.reserved(for: id, in: data.savingsBudget!), 8000)
         XCTAssertEqual(data.savingsBudget?.openingFundsCents, 22_000)
+        var (shared, _) = fixture()
+        plan.reservePercent = 50
+        shared.savingsBudget?.goals[0].weeklyPlan = plan
+        shared.savingsBudget?.goals.append(.init(name: "Seconda metà QA", targetCents: 90_000, weeklyPlan: plan))
+        shared.incomeObservationCoverage?.through = runAt
+        XCTAssertEqual(try SavingsWeeklyAutomation.applyDue(now: runAt, data: &shared), 2)
+        XCTAssertEqual(shared.savingsBudget?.allocations.map(\.cents), [4000, 4000])
+        XCTAssertEqual(shared.savingsBudget?.allocations.reduce(0) { $0 + $1.cents }, 8000)
     }
     func testQuotaStillRespectsRemainingGoalAndSharedFreeFunds() throws {
         var (data, id) = fixture()
