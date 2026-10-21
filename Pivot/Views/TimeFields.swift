@@ -20,12 +20,19 @@ struct ClockField: View {
         }.buttonStyle(.plain)
         .sheet(isPresented: $editing) {
             NavigationStack {
-                VStack(spacing: 18) {
-                    DatePicker("Data", selection: $draft, displayedComponents: .date).datePickerStyle(.graphical)
-                    DatePicker(title, selection: $draft, displayedComponents: .hourAndMinute).datePickerStyle(.wheel).labelsHidden()
-                    Button("Conferma orario") { value = draft; editing = false }.buttonStyle(PivotPrimaryButton())
-                    if value != nil { Button("Cancella orario", role: .destructive) { value = nil; editing = false } }
-                }.padding(24).navigationTitle(title)
+                ScrollView {
+                    VStack(spacing: 18) {
+                        DatePicker("Data", selection: $draft, displayedComponents: .date).datePickerStyle(.graphical)
+                        DatePicker(title, selection: $draft, displayedComponents: .hourAndMinute).datePickerStyle(.wheel).labelsHidden()
+                        if value != nil { Button("Cancella orario", role: .destructive) { value = nil; editing = false } }
+                    }.padding(24)
+                }
+                    .safeAreaInset(edge: .bottom) {
+                        Button("Conferma orario") { value = draft; editing = false }.buttonStyle(PivotPrimaryButton())
+                            .padding(.horizontal, 24).padding(.vertical, 12)
+                            .background(PivotTheme.background)
+                    }
+                    .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
                     .toolbar { Button("Annulla") { editing = false } }
                     .background(PivotTheme.background.ignoresSafeArea())
             }.presentationDetents([.large])
@@ -57,15 +64,23 @@ struct DurationField: View {
         }.buttonStyle(.plain)
         .sheet(isPresented: $editing) {
             NavigationStack {
-                VStack(spacing: 20) {
-                    HStack(spacing: 0) {
-                        Picker("Ore", selection: $hours) { ForEach(0...maxHours, id: \.self) { Text("\($0) h").tag($0) } }.pickerStyle(.wheel)
-                        Picker("Minuti", selection: $minutes) { ForEach(0...59, id: \.self) { Text("\($0) min").tag($0) } }.pickerStyle(.wheel)
-                        if showSeconds { Picker("Secondi", selection: $remainder) { ForEach(0...59, id: \.self) { Text("\($0) s").tag($0) } }.pickerStyle(.wheel) }
+                ScrollView {
+                    VStack(spacing: 20) {
+                        HStack(spacing: 0) {
+                            Picker("Ore", selection: $hours) { ForEach(0...maxHours, id: \.self) { Text("\($0) h").tag($0) } }.pickerStyle(.wheel)
+                            Picker("Minuti", selection: $minutes) { ForEach(0...59, id: \.self) { Text("\($0) min").tag($0) } }.pickerStyle(.wheel)
+                            if showSeconds { Picker("Secondi", selection: $remainder) { ForEach(0...59, id: \.self) { Text("\($0) s").tag($0) } }.pickerStyle(.wheel) }
+                        }
+                        if seconds != nil { Button("Cancella durata", role: .destructive) { seconds = nil; editing = false } }
+                    }.padding(20)
+                }
+                    .safeAreaInset(edge: .bottom) {
+                        Button("Conferma durata") { seconds = hours * 3600 + minutes * 60 + (showSeconds ? remainder : 0); editing = false }.buttonStyle(PivotPrimaryButton())
+                            .padding(.horizontal, 20).padding(.vertical, 12)
+                            .background(PivotTheme.background)
                     }
-                    Button("Conferma durata") { seconds = hours * 3600 + minutes * 60 + (showSeconds ? remainder : 0); editing = false }.buttonStyle(PivotPrimaryButton())
-                    if seconds != nil { Button("Cancella durata", role: .destructive) { seconds = nil; editing = false } }
-                }.padding(20).navigationTitle(title).toolbar { Button("Annulla") { editing = false } }
+                    .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+                    .toolbar { Button("Annulla") { editing = false } }
                     .background(PivotTheme.background.ignoresSafeArea())
             }.presentationDetents([.medium, .large])
         }
