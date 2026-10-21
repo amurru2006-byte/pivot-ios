@@ -15,6 +15,21 @@ struct HealthWorkoutSummary: Codable, Identifiable, Equatable {
     var activeCalories: Double?
     var averageBPM: Int?
     var elevationM: Double?
+    var isValid: Bool {
+        !id.isEmpty && start.timeIntervalSince1970.isFinite && end.timeIntervalSince1970.isFinite
+            && end > start && end.timeIntervalSince(start) <= 2_678_400 && (1...2_678_400).contains(durationSeconds)
+            && [distanceKM, activeCalories, elevationM].allSatisfy { $0.map { $0.isFinite && (0...1_000_000).contains($0) } ?? true }
+            && (averageBPM.map { (1...300).contains($0) } ?? true)
+    }
+    var pace: Int? {
+        guard let km = distanceKM, km > 0 else { return nil }
+        let value = Double(durationSeconds) / km
+        return value.isFinite && (0...86400).contains(value) ? Int(value) : nil
+    }
+}
+
+enum HealthWorkoutField: String, Codable, CaseIterable {
+    case actualStart, actualEnd, activeMinutes, duration, distance, calories, heartRate, elevation, pace
 }
 
 struct HealthSleepSummary: Equatable {
@@ -76,28 +91,88 @@ enum HealthImport {
             return overlap > 0 && overlap >= max(1, workout.end.timeIntervalSince(workout.start)) * 0.7
         }.sorted { $0.start < $1.start }
     }
-    static func apply(_ summary: HealthWorkoutSummary, to event: CalendarItem, data: inout AppData) {
+    @discardableResult
+    static func apply(_ summary: HealthWorkoutSummary, to event: CalendarItem, data: inout AppData, now: Date = Date()) -> Bool {
+        guard summary.isValid else { return false }
         var record = data.records[event.id] ?? EventRecord(id: event.id, snapshot: event)
-        // Don't overwrite an explicit skip, partial outcome or manually corrected timer.
-        guard record.status == .pending || record.health?.id == summary.id else { return }
+        let previous = record.health
+        guard previous.map({ $0.id == summary.id }) ?? (record.status == .pending) else { return false }
+        var managed = Set(previous == nil ? [] : (record.healthManagedFields ?? []))
+        let originalManaged = record.healthManagedFields
+        let firstImport = previous == nil
+        let allowFields = firstImport || record.status == .completed
+        // A field stops following Health permanently once it differs from the
+        // last imported value, including explicit clearing. A later coincidence
+        // with a new measurement must not silently reclaim that manual field.
+        func merge<T: Equatable>(_ field: HealthWorkoutField, _ current: inout T?, old: T?, incoming: T?) {
+            guard allowFields else { managed.remove(field); return }
+            if firstImport {
+                guard current == nil else { return }
+                managed.insert(field); current = incoming
+            } else if managed.contains(field) {
+                guard current == old else { managed.remove(field); return }
+                current = incoming
+            }
+        }
+        let originalStart = record.actualStart, originalEnd = record.actualEnd, originalMinutes = record.activeMinutes
+        let originalStatus = record.status
+        // Explicit clock edits and calendar-synchronization requests are never
+        // replaced by an observation, even if their numeric value coincides.
+        if record.calendarTimingNeedsConfirmation == true || (firstImport && (originalStart != nil || originalEnd != nil)) {
+            managed.subtract([.actualStart, .actualEnd, .activeMinutes])
+        } else {
+            merge(.actualStart, &record.actualStart, old: previous?.start, incoming: summary.start)
+            merge(.actualEnd, &record.actualEnd, old: previous?.end, incoming: summary.end)
+            if firstImport {
+                if originalStart == nil && originalEnd == nil && record.activeMinutes == 0 {
+                    managed.insert(.activeMinutes); record.activeMinutes = summary.durationSeconds / 60
+                }
+            } else if managed.contains(.activeMinutes) {
+                if allowFields && record.activeMinutes == previous.map({ $0.durationSeconds / 60 }) {
+                    record.activeMinutes = summary.durationSeconds / 60
+                } else { managed.remove(.activeMinutes) }
+            }
+        }
+        if let start = record.actualStart, let end = record.actualEnd, end <= start {
+            record.actualStart = originalStart; record.actualEnd = originalEnd
+            managed.subtract([.actualStart, .actualEnd, .activeMinutes])
+            record.activeMinutes = originalMinutes
+        }
         record.health = summary
-        if record.status == .pending {
-            record.actualStart = summary.start; record.actualEnd = summary.end
-            record.activeMinutes = summary.durationSeconds / 60; record.status = .completed
-        }
+        if firstImport { record.status = .completed }
         if let kind = CardioKind.suggested(event.title) {
-            var cardio = record.cardio ?? CardioRecord(kind: kind)
-            cardio.durationSeconds = summary.durationSeconds; cardio.distanceKM = summary.distanceKM
-            cardio.activeCalories = summary.activeCalories; cardio.averageBPM = summary.averageBPM; cardio.elevationM = summary.elevationM
-            if let km = summary.distanceKM, km > 0 { cardio.paceSecondsPerKM = Int(Double(summary.durationSeconds) / km) }
-            record.cardio = cardio
+            // Removing the cardio record or changing its type is a manual edit.
+            if (firstImport && record.cardio == nil) || record.cardio?.kind == kind {
+                var cardio = record.cardio ?? CardioRecord(kind: kind)
+                merge(.duration, &cardio.durationSeconds, old: previous?.durationSeconds, incoming: summary.durationSeconds)
+                merge(.distance, &cardio.distanceKM, old: previous?.distanceKM, incoming: summary.distanceKM)
+                merge(.calories, &cardio.activeCalories, old: previous?.activeCalories, incoming: summary.activeCalories)
+                merge(.heartRate, &cardio.averageBPM, old: previous?.averageBPM, incoming: summary.averageBPM)
+                merge(.elevation, &cardio.elevationM, old: previous?.elevationM, incoming: summary.elevationM)
+                if managed.contains(.duration) && managed.contains(.distance) {
+                    merge(.pace, &cardio.paceSecondsPerKM, old: previous?.pace, incoming: summary.pace)
+                } else { managed.remove(.pace) }
+                record.cardio = cardio
+            } else { managed.subtract([.duration, .distance, .calories, .heartRate, .elevation, .pace]) }
         }
-        record.updatedAt = Date(); record.snapshot = event; data.records[event.id] = record
+        record.healthManagedFields = HealthWorkoutField.allCases.filter { managed.contains($0) }
+        let changed = previous != summary || originalManaged != record.healthManagedFields
+            || originalStart != record.actualStart || originalEnd != record.actualEnd
+            || originalMinutes != record.activeMinutes || originalStatus != record.status
+        guard changed else { return false }
+        record.updatedAt = now
+        if firstImport { record.snapshot = event }
+        data.records[event.id] = record
+        return true
     }
     // Default exports exclude automatically imported health values. Explicit user consent can include them.
     static func exportData(_ data: AppData, allowHealth: Bool? = nil) -> AppData {
         guard !(allowHealth ?? (data.settings.includeHealthInExports == true)) else { return data }
         var result = data
+        // Provenance itself reveals a Health import, even if a caller has
+        // removed the associated summary. Strip it from every exported copy.
+        for id in Array(result.records.keys) { result.records[id]?.healthManagedFields = nil }
+        for id in Array((result.activityDrafts ?? [:]).keys) { result.activityDrafts?[id]?.record.healthManagedFields = nil }
         // Legacy profiles have no reliable per-field provenance. Exclude the
         // entire copy rather than misclassifying imported measurements as manual.
         result.strengthProfile = nil

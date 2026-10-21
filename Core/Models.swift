@@ -151,6 +151,9 @@ struct EventRecord: Codable, Identifiable {
     var reminders: String? = nil
     var cardio: CardioRecord? = nil
     var health: HealthWorkoutSummary? = nil
+    // Only fields explicitly populated by this importer may follow revisions.
+    // nil is a legacy record with unknown provenance, not permission to overwrite.
+    var healthManagedFields: [HealthWorkoutField]? = nil
     var healthSleep: SleepRecord? = nil
     var updatedAt: Date = Date()
 }

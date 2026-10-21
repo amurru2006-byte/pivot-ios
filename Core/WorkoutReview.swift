@@ -37,7 +37,13 @@ enum WorkoutContext {
         let old = data.workoutReviews ?? []
         let planned = Planner.plannedEvents(events, data: data)
         var result = old
-        for value in values where value.end <= now && value.start >= now.addingTimeInterval(-7 * 86400) {
+        for value in values where value.isValid && value.end <= now && value.start >= now.addingTimeInterval(-7 * 86400) {
+            if let index = result.firstIndex(where: { $0.id == value.id }) {
+                // Keep the user's choice, but not stale measurements in a
+                // still-visible review when the Watch finishes synchronizing.
+                result[index].workout = value
+                continue
+            }
             guard !old.contains(where: { $0.id == value.id }),
                   !data.records.values.contains(where: { $0.health?.id == value.id }) else { continue }
             let candidates = planned.filter { event in
@@ -130,7 +136,11 @@ enum WorkoutContext {
         var record = data.records[draft.source.id] ?? .init(id: draft.source.id, snapshot: draft.source)
         record.status = .completed; record.actualStart = draft.start; record.actualEnd = draft.end
         record.activeMinutes = draft.health.map { $0.durationSeconds / 60 } ?? Int(draft.end!.timeIntervalSince(draft.start) / 60)
-        record.health = draft.health; record.updatedAt = now; data.records[record.id] = record
+        record.health = draft.health
+        // This screen explicitly confirms actual timing; subsequent automatic
+        // revisions must not reinterpret those confirmed values as owned fields.
+        record.healthManagedFields = nil
+        record.updatedAt = now; data.records[record.id] = record
         let key = PivotDate.key(draft.start); var check = data.checkIns[key] ?? .init(id: key)
         check.wakeTime = draft.wake
         if let bedtime = draft.bedtime {
