@@ -19,8 +19,14 @@ struct CoachCalendarBatchView: View {
 
     var body: some View {
         NavigationStack {
+            ScrollViewReader { scroll in
             Form {
                 if let batch {
+                    if let problem {
+                        Section {
+                            Text(problem).foregroundStyle(PivotTheme.amber).accessibilityIdentifier("coach-mutations-error")
+                        }.id("coach-mutations-notice")
+                    }
                     Section {
                         Text("Controlla ogni evento. Le cancellazioni riguardano solo questa occorrenza; incassi, diario e allenamenti in Pivot non vengono eliminati.").font(.subheadline)
                         Text("Se ripristini un evento eliminato, Pivot ne ricrea una copia singola: non riattiva una serie né reinvia inviti.").font(.caption).foregroundStyle(PivotTheme.muted)
@@ -66,9 +72,11 @@ struct CoachCalendarBatchView: View {
                         Text(batch.status == .discarded ? "Proposte scartate: il Calendario non è stato modificato." : "Revisione conclusa. Trovi l’esito e le copie originali nello storico modifiche.")
                     }
                     NavigationLink { CalendarMutationHistoryView() } label: { Label("Storico modifiche", systemImage: "clock.arrow.circlepath") }
-                    if let problem { Text(problem).foregroundStyle(PivotTheme.amber).accessibilityIdentifier("coach-mutations-error") }
                 } else { Text("Questa proposta non è più disponibile.") }
             }.disabled(busy)
+                .onChange(of: problem) { _, value in
+                    if value != nil { withAnimation { scroll.scrollTo("coach-mutations-notice", anchor: .top) } }
+                }
                 .navigationTitle("Modifiche proposte")
                 .toolbar { Button("Chiudi") { task?.cancel(); dismiss() }.disabled(busy) }
                 .task {
@@ -97,6 +105,7 @@ struct CoachCalendarBatchView: View {
                         }
                     }
                 }
+            }
         }.interactiveDismissDisabled(busy)
     }
     private func prepare(_ batch: CoachCalendarBatch) {
