@@ -162,7 +162,8 @@ final class CalendarService: ObservableObject {
         let linked = try CalendarActivityLinks.expanded(proposed, data: store.data, choices: batch.linkedTravelChoices ?? [:],
             now: Date(), mapsConsent: AppleMapsService.shared.consentGranted)
         guard linked == proposed else { throw CalendarActivityLinks.Failure.selection }
-        let archivedReview = CalendarMutationReview(entries: CalendarActivityLinks.archiving(review.entries, data: store.data), conflicts: review.conflicts)
+        let archivedReview = CalendarMutationReview(entries: CalendarActivityLinks.archiving(review.entries, data: store.data,
+            choices: batch.linkedTravelChoices ?? [:]), conflicts: review.conflicts)
         guard store.change({ data in
             var archive = data.calendarActionArchive ?? []; archive.append(contentsOf: archivedReview.entries); data.calendarActionArchive = archive
             if let index = data.coachState.calendarBatches?.firstIndex(where: { $0.id == batchID }) { data.coachState.calendarBatches?[index].status = .reviewRequired }
@@ -244,6 +245,7 @@ final class CalendarService: ObservableObject {
         entry.committedAt = applied.performed ? Date() : nil
         guard store.change({ data in
             if let index = data.calendarActionArchive?.firstIndex(where: { $0.id == id }) { data.calendarActionArchive?[index] = entry }
+            CalendarActivityLinks.reconcileAcknowledgements(data: &data)
         }), await store.flushPendingWrites() else { throw CalendarFailure.archiveNotSaved }
         return applied.performed ? "Esito verificato nel Calendario. Ora puoi chiedere il ripristino della copia originale." : "L’evento originale è presente e invariato. Non ho applicato altre modifiche."
     }
