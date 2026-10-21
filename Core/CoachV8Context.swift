@@ -128,16 +128,18 @@ struct CoachV8Snapshot {
     private(set) var sources: [String: CalendarItem]
     // Local provenance, deliberately not encoded in the cloud DTO.
     private(set) var focusedDraft: CoachSavedCalendarDraft? = nil
+    private(set) var calendarScope: CoachCalendarScope = .today
 
     static func make(message: String, events: [CalendarItem], data: AppData, now: Date, purpose: String? = nil,
-        protocolVersion: Int = 2) throws -> Self {
+        protocolVersion: Int = 2, calendarScope: CoachCalendarScope = .today) throws -> Self {
         let clean = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { throw CoachV8Error.emptyMessage }
         guard clean.count <= (purpose == nil ? 1500 : 12_000),
               purpose == nil || ["conversation", "rewrite"].contains(purpose!) else { throw CoachV8Error.contextTooLarge }
         let canonical = EventCoalescer.unique(events, data: data)
         let calendarData = CoachPrivacy.calendarData(data)
-        let planned = Planner.plannedEvents(events, data: calendarData).filter { purpose != "rewrite" && !$0.isAllDay && $0.occurs(on: now) }
+        let effectiveScope: CoachCalendarScope = purpose == "conversation" && protocolVersion >= 3 ? calendarScope : .today
+        let planned = Planner.plannedEvents(events, data: calendarData).filter { purpose != "rewrite" && effectiveScope.contains($0, now: now) }
             .sorted { $0.start == $1.start ? $0.id < $1.id : $0.start < $1.start }
         guard planned.count <= 48 else { throw CoachV8Error.contextTooLarge }
         var sources: [String: CalendarItem] = [:]
@@ -205,7 +207,8 @@ struct CoachV8Snapshot {
         guard request.message.count <= (purpose == nil ? 1500 : 12_000) else { throw CoachV8Error.contextTooLarge }
         let bytes = try request.encoded()
         guard bytes.count <= 24_000 else { throw CoachV8Error.contextTooLarge }
-        return .init(request: request, encodedRequest: bytes, originalEvents: events, dataUpdatedAt: data.updatedAt, sources: sources, focusedDraft: focusedDraft)
+        return .init(request: request, encodedRequest: bytes, originalEvents: events, dataUpdatedAt: data.updatedAt, sources: sources,
+            focusedDraft: focusedDraft, calendarScope: effectiveScope)
     }
 
     func isCurrent(events: [CalendarItem], data: AppData, now: Date) -> Bool {

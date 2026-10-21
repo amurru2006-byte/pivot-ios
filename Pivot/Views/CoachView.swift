@@ -28,6 +28,7 @@ struct CoachView: View {
     @StateObject private var dictation = DictationService()
     @StateObject private var onlineCoach = OnlineCoachService()
     @State private var useLocal = false
+    @State private var calendarScope: CoachCalendarScope = .today
     @State private var onlineReview: OnlineCoachReview?
     @State private var approvedReviewAwaitingDismissal: OnlineCoachReview?
     @State private var lastAuthorizedRequest: CoachV8Request?
@@ -249,6 +250,11 @@ struct CoachView: View {
         .onChange(of: state.memories) { _, _ in
             store.onlineConversationPermission.revoke(); cancelTurn(); lastAuthorizedRequest = nil
         }
+        .onChange(of: calendarScope) { _, _ in
+            // The earlier permission covered a narrower dataset. Even a
+            // conversation-level opt-in cannot silently authorize a wider one.
+            store.onlineConversationPermission.revoke(); cancelTurn(); lastAuthorizedRequest = nil
+        }
         .onChange(of: store.isRestoring) { _, restoring in
             if restoring { cancelTurn(); lastAuthorizedRequest = nil }
         }
@@ -367,8 +373,11 @@ struct CoachView: View {
             }
             #endif
             if onlineCoach.isConfigured && !useLocal {
-                Text("Chat, riordino del testo e bozze anche per eventi passati. Puoi chiedere modifiche o cancellazioni agli eventi di oggi: controlli l’elenco e confermi prima di applicarle. Le copie originali sono nello storico modifiche. Previsioni, recuperi e Maps restano strumenti locali separati; nessuna gestione automatica di intere serie o catene di spostamenti.")
+                Text("Chat, riordino del testo e bozze anche per eventi passati. Puoi chiedere modifiche o cancellazioni agli eventi nell’intervallo scelto: controlli l’elenco e confermi. Le copie originali sono nello storico modifiche. La ricerca dei recuperi su più giorni resta locale; i viaggi collegati richiedono una verifica separata.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
+                Picker("Contesto calendario", selection: $calendarScope) {
+                    ForEach(CoachCalendarScope.allCases) { scope in Text(scope.label).tag(scope) }
+                }.pickerStyle(.menu).accessibilityIdentifier("coach-calendar-scope")
                 Button("Dati inviati") { showOnlineData = true }
                     .accessibilityIdentifier("coach-online-data")
                 if store.onlineConversationPermission.allows(dayKey: PivotDate.key(Date())) {
@@ -707,11 +716,12 @@ struct CoachView: View {
                 }
                 #endif
                 try Task.checkCancellation()
-                let snapshotData = store.data, events = calendar.events
+                let snapshotData = store.data, events = calendar.events, scope = calendarScope
                 let preparedRewrite = purpose == "rewrite" ? CoachRewriteDraft(original: clean, events: events, data: snapshotData) : nil
                 let outbound = preparedRewrite?.message ?? clean
                 let snapshot = try await Task.detached(priority: .userInitiated) {
-                    try CoachV8Snapshot.make(message: outbound, events: events, data: snapshotData, now: now, purpose: purpose, protocolVersion: 3)
+                    try CoachV8Snapshot.make(message: outbound, events: events, data: snapshotData, now: now, purpose: purpose,
+                        protocolVersion: 3, calendarScope: scope)
                 }.value
                 rewriteDraft = preparedRewrite
                 try Task.checkCancellation()
@@ -773,7 +783,7 @@ struct CoachView: View {
             let savedBatch: CoachCalendarBatch?
             if response.mode == .actions {
                 savedBatch = try CoachCalendarBatch.make(response.actions ?? [], sources: snapshot.sources,
-                    messageID: replyMessage.id, now: currentTime, data: currentData)
+                    messageID: replyMessage.id, now: currentTime, data: currentData, calendarScope: snapshot.calendarScope)
             } else { savedBatch = nil }
             guard store.change({ data in
                 var coach = data.coachState

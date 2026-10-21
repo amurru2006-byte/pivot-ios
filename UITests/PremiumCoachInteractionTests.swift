@@ -68,6 +68,39 @@ final class PremiumCoachInteractionTests: XCTestCase {
         XCTAssertFalse(app.buttons["coach-online-memories"].exists)
         cancelReview(app)
     }
+    func testExpandingCalendarScopeRevokesPreviousConversationPermissionBeforeAnyNewSend() {
+        let app = launch(["--online-coach-review-test"])
+        enter("Vorrei organizzare lo studio", app)
+        tap(app.buttons["coach-online-approve"], app)
+        let counter = app.staticTexts["coach-online-fixture-requests"]
+        let first = expectation(for: NSPredicate(format: "label == %@", "Richieste sintetiche: 1"), evaluatedWith: counter)
+        wait(for: [first], timeout: 12)
+        XCTAssertTrue(app.staticTexts["coach-online-conversation-authorized"].waitForExistence(timeout: 8))
+        tap(app.buttons["coach-calendar-scope"], app)
+        tap(app.buttons["Prossimi 7 giorni"], app)
+        XCTAssertTrue(app.staticTexts["coach-online-conversation-authorized"].waitForNonExistence(timeout: 5))
+        tap(app.buttons["coach-send"], app)
+        XCTAssertTrue(app.navigationBars["Prima dell’invio"].waitForExistence(timeout: 10))
+        capture("premium-week-scope-requires-new-authorization", app)
+        cancelReview(app)
+        XCTAssertEqual(counter.label, "Richieste sintetiche: 1", "A wider scope needs a new review, not an automatic provider call")
+    }
+    func testNamedWeekdayRecoveryOpensExactDayLocallyWithoutOnlineRequest() {
+        let app = launch(["--recovery-forecast-test"])
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(identifier: "Europe/Rome")!
+        let target = calendar.date(byAdding: .day, value: 3, to: Date())!
+        let names = ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"]
+        let name = names[calendar.component(.weekday, from: target) - 1]
+        enter("Vorrei recuperare la palestra \(name) sera", app)
+        XCTAssertFalse(app.buttons["coach-online-approve"].exists)
+        let link = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "coach-recovery-request-")).firstMatch
+        tap(link, app)
+        let day = app.staticTexts["prediction-recovery-requested-day"]
+        XCTAssertTrue(day.waitForExistence(timeout: 8))
+        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "it_IT"); formatter.timeZone = calendar.timeZone; formatter.dateFormat = "d MMM yyyy"
+        XCTAssertEqual(day.label, "Giorno richiesto: " + formatter.string(from: target))
+        capture("premium-named-weekday-keeps-exact-day", app)
+    }
     func testFocusedDraftSurvivesRelaunchEnrichesOneCardAndNewTopicClearsFocus() {
         let app = launch(["--online-coach-action-test", "--coach-calendar-create-test", "--conversation-continuity-test"])
         enter("Registra una attività passata, manca soltanto la fine", app)

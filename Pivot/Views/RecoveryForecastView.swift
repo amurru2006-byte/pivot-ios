@@ -17,6 +17,7 @@ struct RecoveryForecastView: View {
     @State private var didLoad = false
     @State private var staged = false
     @State private var searchDay: Date?
+    @State private var honorRequestedHorizon = true
     @State private var task: Task<Void, Never>?
     private var candidates: [CalendarItem] {
         let now = Date()
@@ -28,6 +29,11 @@ struct RecoveryForecastView: View {
             PivotCard {
                 if let text = initialRequest?.instruction {
                     DisclosureGroup("La tua richiesta") { Text(text).textSelection(.enabled) }
+                }
+                if honorRequestedHorizon, initialRequest?.horizonDays != nil {
+                    Text("Ricerca entro la settimana richiesta").font(.subheadline)
+                    Button("Cerca anche nelle settimane successive") { honorRequestedHorizon = false; invalidate() }
+                        .frame(minHeight: 44)
                 }
                 if let searchDay {
                     Text("Giorno richiesto: " + DisplayDate.label(searchDay, format: "d MMM yyyy"))
@@ -102,6 +108,7 @@ struct RecoveryForecastView: View {
                 }
                 if let request = initialRequest, request.isValid {
                     searchDay = request.day
+                    if let horizon = request.horizonDays { days = horizon }
                     if let band = request.band { preferredBand = band }
                     if let id = request.targetID, candidates.contains(where: { $0.id == id }) { targetID = id }
                     if let day = request.day, day < PivotDate.calendar.startOfDay(for: Date()) {
@@ -121,7 +128,10 @@ struct RecoveryForecastView: View {
     private func invalidate() { task?.cancel(); planning = false; options = []; reviewed = [] }
     private func search() {
         guard let targetID else { return }
-        let events = calendar.events, snapshot = store.data, now = Date(), count = days, band = preferredBand, included = preparationIncluded, day = searchDay
+        let now = Date()
+        let count = honorRequestedHorizon ? min(days, initialRequest?.remainingHorizon(at: now) ?? days) : days
+        guard count > 0 else { invalidate(); message = "La settimana di questa richiesta è terminata. Scegli esplicitamente di cercare negli altri giorni."; return }
+        let events = calendar.events, snapshot = store.data, band = preferredBand, included = preparationIncluded, day = searchDay
         options = []; reviewed = []; message = nil; planning = true; staged = false
         task = Task { @MainActor in
             let result = await Task.detached(priority: .userInitiated) {
