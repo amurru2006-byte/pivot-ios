@@ -5,11 +5,12 @@ struct CalendarCreationReceipt: Equatable {
     var activity: CalendarItem
     var travel: CalendarItem?
     var isValid: Bool {
-        guard CalendarEventBackup.valid(activity), !activity.isAllDay, activity.recurring != true else { return false }
+        guard CalendarEventBackup.valid(activity), activity.writable, !activity.isAllDay, activity.recurring != true else { return false }
         guard let travel else { return true }
-        return CalendarEventBackup.valid(travel) && !travel.isAllDay && travel.recurring != true
+        return CalendarEventBackup.valid(travel) && travel.writable && !travel.isAllDay && travel.recurring != true
             && travel.eventIdentifier != activity.eventIdentifier
             && travel.calendarIdentifier == activity.calendarIdentifier && travel.sourceIdentifier == activity.sourceIdentifier
+            && travel.location == activity.location && !activity.location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && CalendarSnapshotMatch.instant(travel.end, activity.start)
     }
 }
@@ -24,9 +25,16 @@ struct CalendarActivityLink: Codable, Identifiable, Equatable {
     var capturedAt: Date
     var deleted: Bool = false
     var isValid: Bool {
-        CalendarCreationReceipt(activity: activity, travel: travel).isValid && settings.isValid
+        guard CalendarCreationReceipt(activity: activity, travel: travel).isValid && settings.isValid
             && !settings.origin.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && capturedAt.timeIntervalSinceReferenceDate.isFinite
+            && capturedAt.timeIntervalSinceReferenceDate.isFinite else { return false }
+        if let estimate = settings.estimate {
+            return estimate.request.timing == .arriveBy && estimate.request.origin.address == settings.origin
+                && estimate.request.destination.address == activity.location && estimate.minutes == settings.minutes
+                && CalendarSnapshotMatch.instant(estimate.request.date, activity.start)
+                && CalendarSnapshotMatch.instant(estimate.departure, travel.start)
+        }
+        return abs(travel.end.timeIntervalSince(travel.start) - Double(settings.minutes) * 60) < 2
     }
 }
 
