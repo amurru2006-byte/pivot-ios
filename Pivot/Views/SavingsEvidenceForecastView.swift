@@ -9,7 +9,7 @@ struct SavingsEvidenceForecastView: View {
     @State private var activities = false
     @State private var receipts = false
     @State private var expenses = false
-    @State private var upfront = "0"
+    @State private var upfront = ""
     @State private var percent = 100
     @State private var forecast: SavingsEvidenceForecast?
     @State private var problem: String?
@@ -137,7 +137,7 @@ struct SavingsEvidenceForecastView: View {
         let key = calculation, data = store.data, now = Date(), selectedGoal = goalID
         forecast = nil; problem = nil; calculating = false
         guard !key.locked, !key.restoring else { return }
-        guard let initial = Money.cents(from: upfront) else { problem = "Controlla i fondi iniziali dell’ipotesi."; return }
+        guard let initial = Money.cents(from: upfront.isEmpty ? "0" : upfront) else { problem = "Controlla i fondi iniziali dell’ipotesi."; return }
         calculating = true
         let work = Task.detached(priority: .userInitiated) { () -> Result<SavingsEvidenceForecast, Error> in
             Result {

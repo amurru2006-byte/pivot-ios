@@ -11,6 +11,7 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
         var outcome: Completion?
         var clientID: String? = nil
         var sessionID: String? = nil
+        var goalID: String? = nil
     }
     @Published var route: Route?
     override init() {
@@ -34,19 +35,40 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
         let outcome: Completion? = response.actionIdentifier == "done" ? .completed : (response.actionIdentifier == "partial" ? .partial : nil)
         let clientID = info["clientID"] as? String
         let sessionID = info["sessionID"] as? String
-        await MainActor.run { self.route = Route(eventID: eventID, destination: destination, outcome: outcome, clientID: clientID, sessionID: sessionID) }
+        let goalID = info["goalID"] as? String
+        await MainActor.run { self.route = Route(eventID: eventID, destination: destination, outcome: outcome, clientID: clientID, sessionID: sessionID, goalID: goalID) }
     }
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions { [.banner, .list, .sound] }
     @Published private(set) var status = "Notifiche non configurate"
     private var generation = 0
     private var lastLessonPromptIDs: Set<String> = []
+    private var synthetic: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        return ProcessInfo.processInfo.arguments.contains("--interaction-test")
+        #else
+        return false
+        #endif
+    }
     func requestAccess() async {
+        if synthetic { status = "Collaudo sintetico · nessuna notifica reale"; return }
         do {
             let ok = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound])
             status = ok ? "Notifiche autorizzate" : "Notifiche negate: abilita Pivot nelle impostazioni di iOS"
         } catch { status = error.localizedDescription }
     }
+    static func clearWeeklyReminders(goalID: UUID? = nil) async {
+        #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--interaction-test") { return }
+        #endif
+        let center = UNUserNotificationCenter.current()
+        func owned(_ id: String) -> Bool { goalID.map { id == "savings-weekly-" + $0.uuidString } ?? id.hasPrefix("savings-weekly-") }
+        let pending = await center.pendingNotificationRequests()
+        center.removePendingNotificationRequests(withIdentifiers: pending.map(\.identifier).filter(owned))
+        let delivered = await center.deliveredNotifications()
+        center.removeDeliveredNotifications(withIdentifiers: delivered.map { $0.request.identifier }.filter(owned))
+    }
     func schedule(events: [CalendarItem], data: AppData) async {
+        if synthetic { status = "Collaudo sintetico · nessuna notifica reale"; return }
         generation += 1
         let token = generation
         let center = UNUserNotificationCenter.current()
@@ -58,14 +80,35 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
         let pending = await center.pendingNotificationRequests()
         guard token == generation else { return }
         let reserved = pending.filter { $0.identifier.hasPrefix("income-") || $0.identifier.hasPrefix("workout-rest-") || $0.identifier == "pivot-online-coach-retry" }.count
+        let allWeekly = SavingsWeeklyNotification.make(data: data)
+        let weekly = Array(allWeekly.prefix(max(0, 57 - reserved)))
+        var weeklyWarning: String? = allWeekly.count > weekly.count ? "Alcuni promemoria Salvadanaio non entrano nella coda di iOS: riduci gli avvisi attivi." : nil
         let requests = await Task.detached(priority: .utility) {
-            NotificationPlan.requestsFromPlanned(events: events, data: data, now: Date(), capacity: min(57, max(0, 60 - reserved)))
+            NotificationPlan.requestsFromPlanned(events: events, data: data, now: Date(), capacity: min(57, max(0, 60 - reserved - weekly.count)))
         }.value
         guard token == generation else { return }
-        let wanted = Set(requests.map(\.id))
+        let wanted = Set(requests.map(\.id) + weekly.map(\.id))
         center.removePendingNotificationRequests(withIdentifiers: pending.filter { !$0.identifier.hasPrefix("income-") && !$0.identifier.hasPrefix("workout-rest-") && !$0.identifier.hasPrefix("lesson-place-") && $0.identifier != "pivot-online-coach-retry" && !wanted.contains($0.identifier) }.map(\.identifier))
         let existing = Dictionary(pending.map { ($0.identifier, $0) }, uniquingKeysWith: { _, newer in newer })
         var count = 0
+        for reminder in weekly {
+            guard token == generation, !Task.isCancelled else { return }
+            let content = UNMutableNotificationContent()
+            content.title = "Il tuo piano di risparmio"
+            content.body = "Apri Pivot per controllare la quota aggiornata e gli accantonamenti. Nessun trasferimento bancario."
+            content.sound = .default
+            content.userInfo = ["destination": "savings", "goalID": reminder.goalID.uuidString]
+            var components = DateComponents()
+            components.weekday = reminder.weekday; components.hour = reminder.hour; components.minute = reminder.minute
+            components.second = 0; components.timeZone = PivotDate.calendar.timeZone
+            if let old = existing[reminder.id], let trigger = old.trigger as? UNCalendarNotificationTrigger,
+               trigger.repeats, trigger.dateComponents == components,
+               old.content.title == content.title, old.content.body == content.body,
+               old.content.userInfo["goalID"] as? String == reminder.goalID.uuidString { continue }
+            do { try await center.add(.init(identifier: reminder.id, content: content,
+                trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: true))) }
+            catch { weeklyWarning = "Promemoria Salvadanaio non confermato. Verifica le notifiche nelle Impostazioni." }
+        }
         for request in requests {
             guard token == generation, !Task.isCancelled else { return }
             let content = UNMutableNotificationContent()
@@ -110,6 +153,9 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
         let now = Date()
         let delivered = await center.deliveredNotifications()
         let staleDelivered = delivered.compactMap { notification -> String? in
+            if notification.request.identifier.hasPrefix("savings-weekly-") {
+                return wanted.contains(notification.request.identifier) ? nil : notification.request.identifier
+            }
             let eventID = notification.request.content.userInfo["eventID"] as? String ?? ""
             guard !eventID.isEmpty else { return nil }
             guard let event = currentEvents[eventID] else { return notification.request.identifier }
@@ -125,7 +171,7 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
         }
         center.removeDeliveredNotifications(withIdentifiers: staleDelivered)
         await incomeWarning(data: data, center: center)
-        status = "\(count) avvisi programmati per le prossime 36 ore. Le modifiche del Calendario vengono riconciliate quando Pivot si aggiorna. Full immersion può silenziarli."
+        status = weeklyWarning ?? "\(count) avvisi nelle prossime 36 ore e \(weekly.count) promemoria settimanali. Calendario riconciliato quando Pivot si aggiorna. Full immersion può silenziarli."
     }
     private func incomeWarning(data: AppData, center: UNUserNotificationCenter) async {
         let ledger = data.ledger ?? AnnualLedger()

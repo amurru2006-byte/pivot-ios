@@ -52,6 +52,7 @@ struct RootView: View {
     @State private var refreshGate = RefreshGate()
     @State private var notificationGate = RefreshGate()
     @State private var restAudioGate = RefreshGate()
+    @State private var savingsGate = RefreshGate()
     @State private var workoutLink: WorkoutDeepLink?
     @State private var coachSetup: CoachOnlineSetupLink?
     @State private var pendingCoachSetup: CoachOnlineSetupLink?
@@ -117,7 +118,7 @@ struct RootView: View {
                 #endif
             }
         }
-        .onReceive(refreshClock) { _ in if scene == .active { requestRefresh(); rebuildAgenda() } }
+        .onReceive(refreshClock) { _ in if scene == .active { requestRefresh(); rebuildAgenda(); reconcileSavings() } }
         .onOpenURL { url in
             if let setup = CoachOnlineSetupLink.parse(url, now: Date()) {
                 pendingCoachSetup = setup
@@ -132,7 +133,7 @@ struct RootView: View {
         }
         .sheet(item: $coachSetup) { setup in NavigationStack { OnlineCoachSettingsView(setup: setup) } }
         .onChange(of: scene) { _, value in
-            if value == .active { requestRefresh(force: true); openPendingCoachSetup(); reconcileRestAudio() }
+            if value == .active { requestRefresh(force: true); openPendingCoachSetup(); reconcileRestAudio(); reconcileSavings() }
             else { coachModel.pauseAndUnload() }
             if value == .background { store.saveBeforeBackground() }
             if value == .background { coachSetup = nil; pendingCoachSetup = nil }
@@ -163,12 +164,13 @@ struct RootView: View {
                 openPendingWorkout()
                 openPendingCoachSetup()
                 reconcileRestAudio()
+                reconcileSavings()
             }
         }
         .onChange(of: store.isRestoring) { _, restoring in if !restoring { requestRefresh(); rebuildAgenda(); openPendingWorkout(); openPendingCoachSetup(); reconcileRestAudio() } }
         .onChange(of: store.locked) { _, locked in if !locked { openPendingWorkout(); openPendingCoachSetup() } else { coachSetup = nil } }
         .onChange(of: notifications.route?.id) { _, _ in openPendingCoachSetup() }
-        .onChange(of: store.data.updatedAt) { _, _ in rebuildAgenda(); openPendingWorkout(); reconcileRestAudio() }
+        .onChange(of: store.data.updatedAt) { _, _ in rebuildAgenda(); openPendingWorkout(); reconcileRestAudio(); reconcileSavings() }
         .onChange(of: store.data.settings) { old, new in
             if old.excludedCalendarIDs != new.excludedCalendarIDs || old.excludedCalendarTitles != new.excludedCalendarTitles || old.excludeHolidays != new.excludeHolidays { requestRefresh(force: true) }
             if old.healthEnabled != new.healthEnabled {
@@ -202,6 +204,11 @@ struct RootView: View {
                 else if route.destination == "payment", let id = route.clientID, let client = store.data.clients.first(where: { $0.id.uuidString == id }) { ClientDetailView(client: client) }
                 else if route.destination == "payment" { IncomeView() }
                 else if route.destination == "coach" { CoachView() }
+                else if route.destination == "savings", let value = route.goalID, let id = UUID(uuidString: value),
+                        store.data.savingsBudget?.goals.contains(where: { $0.id == id && !$0.archived }) == true {
+                    SavingsWeeklyPlanView(goalID: id)
+                }
+                else if route.destination == "savings" { Text("Questo piano non è più attivo. Lo storico e gli accantonamenti restano nel Salvadanaio.").padding() }
                 else if route.destination == "workout", let session = store.data.training?.sessions.first(where: { $0.id.uuidString == route.sessionID }) {
                     TrainingSessionView(session: session, tips: store.data.training?.tips ?? [:], event: nil)
                 }
@@ -250,6 +257,22 @@ struct RootView: View {
     private func reconcileRestAudio() {
         guard !PreviewMode.enabled, !store.isLoading, !store.isRestoring else { return }
         restAudioGate.request { await WorkoutRestAlarmService.shared.reconcile(store: store) }
+    }
+    private func reconcileSavings() {
+        guard scene == .active, !PreviewMode.enabled, !store.isLoading, !store.isRestoring, !store.locked,
+              store.data.savingsBudget?.goals.contains(where: { !$0.archived && $0.weeklyPlan?.mode == .automatic && $0.weeklyPlan?.activatedAt != nil }) == true else { return }
+        savingsGate.request {
+            guard !store.isRestoring, !store.locked else { return }
+            let snapshot = store.data, revision = snapshot.updatedAt, now = Date()
+            let result = await Task.detached(priority: .utility) { () -> AppData? in
+                var next = snapshot
+                let applied = (try? SavingsWeeklyAutomation.applyDue(now: now, data: &next)) ?? 0
+                guard applied > 0 else { return nil }
+                return next
+            }.value
+            guard scene == .active, !store.isRestoring, !store.locked, store.data.updatedAt == revision, let result else { return }
+            if store.change({ $0 = result }) { _ = await store.flushPendingWrites() }
+        }
     }
     private func requestRefresh(force: Bool = false) {
         guard !PreviewMode.enabled, !store.isLoading, !store.isRestoring else { return }
