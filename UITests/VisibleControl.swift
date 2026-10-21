@@ -57,6 +57,8 @@ extension XCTestCase {
             viewportBottom = min(viewportBottom, bar.frame.minY)
         }
         var owningScroll: XCUIElement?
+        var diagnosticIdentifier = "unresolved-control"
+        var lastFrame = CGRect.zero
         for attempt in 0...maxSwipes {
             // Navigation/scroll ownership does not change when swiping this
             // screen. Avoid rediscovering the entire AX tree on every swipe.
@@ -76,6 +78,8 @@ extension XCTestCase {
             // repeatedly for properties of the same unchanged element.
             let target = try? element.snapshot()
             let frame = target?.frame ?? .zero
+            lastFrame = frame
+            if let target, !target.identifier.isEmpty { diagnosticIdentifier = target.identifier }
             let finite = frame.minY.isFinite && frame.maxY.isFinite && frame.height > 0
             if finite && frame.minY >= top + 8 && frame.maxY <= bottom - 8 && element.isHittable {
                 return
@@ -101,9 +105,11 @@ extension XCTestCase {
             }
         }
         let hierarchy = XCTAttachment(string: app.debugDescription)
-        hierarchy.name = "unreachable-control-" + element.identifier
+        // A missing target must not throw again while collecting diagnostics.
+        // Keep the complete hierarchy and the original behavioural failure.
+        hierarchy.name = "unreachable-control-" + diagnosticIdentifier
         hierarchy.lifetime = .keepAlways
         add(hierarchy)
-        XCTFail("Control never became fully visible: \(element.identifier), frame \(element.frame)", file: file, line: line)
+        XCTFail("Control never became fully visible: \(diagnosticIdentifier), last frame \(lastFrame)", file: file, line: line)
     }
 }

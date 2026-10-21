@@ -18,7 +18,9 @@ final class CalendarTimingInteractionTests: XCTestCase {
         openActivity()
         let audit = app.staticTexts["activity-calendar-timing-audit"]
         XCTAssertEqual(audit.label, "Calendario 11:00 · inizio reale assente · pending")
-        tap(app.buttons["activity-real-times"]); tap(app.buttons["activity-real-end"])
+        // Identify the disclosure by its visible label, not an identifier on
+        // its entire container that SwiftUI can propagate to child controls.
+        tap(app.buttons["Orari reali e durata"]); tap(app.buttons["activity-real-end"])
         XCTAssertTrue(app.navigationBars["Fine reale"].waitForExistence(timeout: 8))
         let hour = app.pickerWheels.element(boundBy: 0)
         XCTAssertTrue(hour.waitForExistence(timeout: 5)); hour.adjust(toPickerWheelValue: "17")
@@ -26,9 +28,10 @@ final class CalendarTimingInteractionTests: XCTestCase {
         app.buttons["activity-save"].tap()
         let confirm = app.alerts["Aggiornare gli orari nel Calendario?"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 8)); confirm.buttons["Non ora"].tap()
+        XCTAssertTrue(confirm.waitForNonExistence(timeout: 5))
         XCTAssertEqual(audit.label, "Calendario 11:00 · inizio reale assente · pending")
         app.buttons["activity-save"].tap()
-        XCTAssertTrue(confirm.waitForExistence(timeout: 8)); confirm.buttons["activity-calendar-confirm"].tap()
+        XCTAssertTrue(confirm.waitForExistence(timeout: 8)); confirm.buttons.matching(identifier: "activity-calendar-confirm").firstMatch.tap()
         XCTAssertTrue(app.navigationBars["Attività"].waitForNonExistence(timeout: 15))
         app.terminate(); app.launch(); openActivity()
         XCTAssertEqual(audit.label, "Calendario 17:00 · inizio reale assente · pending")
