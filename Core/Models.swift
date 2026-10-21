@@ -397,6 +397,9 @@ struct AppData: Codable {
     var incomeEdits: [IncomeEdit]? = nil
     var savingsBudget: SavingsBudget? = nil
     var incomeObservationCoverage: IncomeObservationCoverage? = nil
+    // A weekly cash check must not replace the independently verified activity
+    // history used by the long-term forecast.
+    var savingsCashCoverage: IncomeObservationCoverage? = nil
     var calendarActionArchive: [ArchivedCalendarMutation]? = nil
     var calendarRestorations: [CalendarRestorationLink]? = nil
 }
