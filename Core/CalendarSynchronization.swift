@@ -12,7 +12,11 @@ enum CalendarSynchronization {
     /// The UI must show both endpoints and obtain explicit confirmation. Keep
     /// absent actual timestamps absent in the activity/financial history.
     static func explicitlyEditedTiming(for record: EventRecord, event: CalendarItem) -> ActualTiming? {
-        guard record.calendarTimingNeedsConfirmation == true, !event.isAllDay,
+        // Older app versions already marked manual clock corrections with
+        // timingFromCalendar=false, but had no pending-confirmation field.
+        // Offer those as proposals too; never infer consent from Health data.
+        let legacyManual = record.timingFromCalendar == false && record.health == nil && record.healthSleep == nil
+        guard record.calendarTimingNeedsConfirmation == true || legacyManual, !event.isAllDay,
               record.status != .running, record.status != .skipped,
               record.actualStart != nil || record.actualEnd != nil else { return nil }
         let start = record.actualStart ?? event.start, end = record.actualEnd ?? event.end

@@ -16,6 +16,10 @@ final class CalendarSynchronizationTests: XCTestCase {
         XCTAssertNil(CalendarSynchronization.actualTiming(for: record, event: item), "Proposal still needs an explicit user confirmation")
         let restored = try JSONDecoder().decode(EventRecord.self, from: JSONEncoder().encode(record))
         XCTAssertEqual(CalendarSynchronization.explicitlyEditedTiming(for: restored, event: item), proposal)
+        var legacy = record
+        legacy.calendarTimingNeedsConfirmation = nil; legacy.timingFromCalendar = false
+        XCTAssertEqual(CalendarSynchronization.explicitlyEditedTiming(for: legacy, event: item), proposal,
+            "A correction saved by an older app can be reviewed without re-entering it or silently changing Calendar")
     }
     func testExplicitTimingRejectsInvalidEndpointsRunningSkippedAndAllDay() {
         let start = date("2026-10-20T13:30:00+02:00")

@@ -559,7 +559,9 @@ struct EventDetailView: View {
         // Agenda can contain an unsynced local move. EventKit must compare
         // against the real source, never an already adjusted display item.
         let source = calendarBaseline ?? record.snapshot
-        if record.calendarTimingNeedsConfirmation == true {
+        let hasLegacyManualTiming = record.timingFromCalendar == false && record.health == nil && record.healthSleep == nil
+            && (record.actualStart != nil || record.actualEnd != nil)
+        if record.calendarTimingNeedsConfirmation == true || hasLegacyManualTiming {
             guard source.writable else {
                 message = "Attività salvata solo in Pivot: questo Calendario è in sola lettura."; return
             }
