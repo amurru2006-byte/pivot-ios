@@ -64,9 +64,12 @@ PIVOT_SIM_SIGNING=(
   CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
   "CODE_SIGN_ENTITLEMENTS=$PWD/Scripts/simulator-keychain.entitlements"
 )
+# Standard ARM hosts have limited memory. Bound both target scheduling and
+# Swift frontend parallelism; preserve inherited flags and all test coverage.
+PIVOT_SIM_LIMITS=(-jobs 2 'OTHER_SWIFT_FLAGS=$(inherited) -j2')
 if xcodebuild -project Pivot.xcodeproj -scheme Pivot -configuration Debug \
   -destination "platform=iOS Simulator,id=$PIVOT_SIMULATOR" ONLY_ACTIVE_ARCH=YES \
-  -derivedDataPath build/DerivedData "${PIVOT_SIM_SIGNING[@]}" build > "$PIVOT_UI_BUILD_LOG" 2>&1; then
+  -derivedDataPath build/DerivedData -showBuildTimingSummary "${PIVOT_SIM_SIGNING[@]}" "${PIVOT_SIM_LIMITS[@]}" build > "$PIVOT_UI_BUILD_LOG" 2>&1; then
   printf '%s\n' 'App simulator build succeeded.'
 else
   PIVOT_BUILD_STATUS=$?
@@ -110,7 +113,7 @@ PIVOT_UI_TEST_COMMAND=(
   -test-timeouts-enabled YES
   -default-test-execution-time-allowance 600
   -maximum-test-execution-time-allowance 600
-  -resultBundlePath "$PIVOT_UI_RESULT" "${PIVOT_SIM_SIGNING[@]}" test
+  -resultBundlePath "$PIVOT_UI_RESULT" -showBuildTimingSummary "${PIVOT_SIM_SIGNING[@]}" "${PIVOT_SIM_LIMITS[@]}" test
 )
 if [ -n "$PIVOT_RELEASE_SHARD" ]; then
   while IFS= read -r PIVOT_TEST_FLAG; do
@@ -230,7 +233,7 @@ fi
 # Keep the complete synthetic QA log, but stream just milestones/errors so a
 # long run exposes the current test instead of appearing stalled for hours.
 "${PIVOT_UI_TEST_COMMAND[@]}" 2>&1 | tee "$PIVOT_UI_LOG" | awk '
-  /Test Case|Test Suite|Executed [0-9]+ tests|error:|\*\* (TEST|BUILD)/ { print; fflush() }
+  /Test Case|Test Suite|Executed [0-9]+ tests|error:|\*\* (TEST|BUILD)|^SwiftEmitModule|^SwiftCompile.*InteractionTests|^CodeSign.*PivotUITests-Runner|Running tests\.\.\.|Failed to initialize|Testing failed:|Test session results|Build Timing Summary/ { print; fflush() }
 ' || PIVOT_UI_TEST_STATUS=$?
 if [ -n "$PIVOT_RELEASE_SHARD" ] && [ "$PIVOT_UI_TEST_STATUS" -eq 0 ]; then
   python3 Scripts/ui_release_shards.py --shard "$PIVOT_RELEASE_SHARD" --verify-log "$PIVOT_UI_LOG" || PIVOT_UI_TEST_STATUS=1
