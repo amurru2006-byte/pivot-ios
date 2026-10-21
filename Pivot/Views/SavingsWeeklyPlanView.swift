@@ -164,14 +164,14 @@ struct SavingsWeeklyPlanView: View {
         message = notify ? "Piano salvato. " + notifications.status : "Piano salvato, senza notifiche."
     }
     @MainActor private func confirmCoverage(start: Date) {
-        let now = Date(), old = store.data.incomeObservationCoverage
+        let now = Date(), old = store.data.savingsCashCoverage
         // Preserve an earlier fully confirmed range. Otherwise confirm only
         // this displayed range, never unknown earlier weeks or activity data.
         let preserves = old?.isValid == true && old?.receiptsConfirmed == true && old?.expensesConfirmed == true && old!.from <= start
         let coverage = IncomeObservationCoverage(from: preserves ? old!.from : start, through: now,
             activitiesConfirmed: preserves ? old!.activitiesConfirmed : false, expensesConfirmed: true, receiptsConfirmed: true)
         guard coverage.isValid else { return }
-        if store.change({ $0.incomeObservationCoverage = coverage }) { reviewNow = now; message = "Registrazioni verificate. La quota è stata ricalcolata." }
+        if store.change({ $0.savingsCashCoverage = coverage }) { reviewNow = now; message = "Registrazioni verificate. La quota è stata ricalcolata." }
     }
     @MainActor private func reserve() async {
         guard !submitting, let approval else { return }

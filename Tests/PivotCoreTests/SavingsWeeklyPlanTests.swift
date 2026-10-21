@@ -86,6 +86,22 @@ final class SavingsWeeklyPlanTests: XCTestCase {
         data.savingsBudget?.expenses.append(.init(amountCents: 29_000, date: now.addingTimeInterval(-14 * 86400), description: "Spesa precedente QA"))
         XCTAssertEqual(try review(data, id).proposedCents, 1000)
     }
+    func testWeeklyCashCoverageDoesNotReplaceLongTermActivityCoverageAndIsValidatedInBackup() throws {
+        var (data, id) = fixture()
+        data.incomeObservationCoverage?.from = now.addingTimeInterval(-180 * 86400)
+        data.incomeObservationCoverage?.receiptsConfirmed = false
+        data.incomeObservationCoverage?.expensesConfirmed = false
+        let original = data.incomeObservationCoverage
+        data.savingsCashCoverage = .init(from: SavingsWeeklyPlan().previousReview(before: now)!,
+            through: now.addingTimeInterval(-1), activitiesConfirmed: false, expensesConfirmed: true, receiptsConfirmed: true)
+        XCTAssertEqual(try review(data, id).proposedCents, 8000)
+        XCTAssertEqual(data.incomeObservationCoverage, original)
+        let restored = try BackupCodec.decode(BackupCodec.encode(data))
+        XCTAssertEqual(restored.savingsCashCoverage, data.savingsCashCoverage)
+        XCTAssertEqual(restored.incomeObservationCoverage, original)
+        data.savingsCashCoverage?.from = now.addingTimeInterval(1)
+        XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encode(data)))
+    }
     func testUnconfirmedOrOldCoverageCannotBePresentedAsAnUpdatedWeeklyAmount() throws {
         var (data, id) = fixture()
         data.incomeObservationCoverage?.expensesConfirmed = false
@@ -190,7 +206,8 @@ final class SavingsWeeklyPlanTests: XCTestCase {
         let runAt = data.savingsBudget!.goals[0].weeklyPlan!.nextReview(after: now)!.addingTimeInterval(3600)
         XCTAssertEqual(try SavingsWeeklyAutomation.applyDue(now: runAt, data: &data), 0)
         data.incomeObservationCoverage?.through = runAt
-        data.savingsBudget?.goals[0].weeklyPlan = data.savingsBudget?.goals[0].weeklyPlan?.requiringDeviceActivation
+        let inactivePlan = data.savingsBudget?.goals[0].weeklyPlan?.requiringDeviceActivation
+        data.savingsBudget?.goals[0].weeklyPlan = inactivePlan
         XCTAssertEqual(try SavingsWeeklyAutomation.applyDue(now: runAt, data: &data), 0)
         XCTAssertTrue(SavingsWeeklyNotification.make(data: data).isEmpty)
     }

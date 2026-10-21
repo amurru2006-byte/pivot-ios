@@ -69,7 +69,8 @@ struct SavingsWeeklyReview: Equatable {
     var issues: [Issue]
 
     static func make(goalID: UUID, data: AppData, now: Date, periodEnd: Date? = nil) throws -> Self {
-        let end = periodEnd ?? min(now, data.incomeObservationCoverage?.through ?? now)
+        let confirmedCoverage = data.savingsCashCoverage ?? data.incomeObservationCoverage
+        let end = periodEnd ?? min(now, confirmedCoverage?.through ?? now)
         guard now.timeIntervalSinceReferenceDate.isFinite,
               end.timeIntervalSinceReferenceDate.isFinite, end <= now,
               let budget = data.savingsBudget,
@@ -88,7 +89,7 @@ struct SavingsWeeklyReview: Equatable {
             freeCents: balance.freeCents, proposedCents: nil, issues: [])
         if balance.shortfallCents > 0 { result.issues.append(.underfunded); return result }
         if result.remainingCents == 0 { result.proposedCents = 0; return result }
-        guard let coverage = data.incomeObservationCoverage, coverage.isValid,
+        guard let coverage = confirmedCoverage, coverage.isValid,
               coverage.from <= start, coverage.through <= now,
               PivotDate.calendar.isDate(coverage.through, inSameDayAs: now), coverage.through >= end else {
             result.issues.append(.verifyRecentData); return result
