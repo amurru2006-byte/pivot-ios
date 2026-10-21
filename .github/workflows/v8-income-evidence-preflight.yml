@@ -21,7 +21,10 @@ jobs:
           python3 -m unittest discover -s Scripts -p 'test_*.py'
   native:
     needs: core
-    runs-on: macos-15-intel
+    # Standard, free public-repository Apple Silicon image. Two Intel jobs
+    # failed before any test: destination discovery, then XCTest AX startup.
+    # Keep the exact tests/timeouts; do not retry or skip individual UI cases.
+    runs-on: macos-15
     timeout-minutes: 70
     steps:
       - uses: actions/checkout@v4
@@ -38,5 +41,5 @@ jobs:
             build/qr-preflight-build.log
             build/qr-preflight-tests.log
             build/Previews/QRPreflight/
-          retention-days: 3
+          retention-days: 1
           if-no-files-found: ignore
