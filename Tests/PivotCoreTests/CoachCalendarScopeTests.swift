@@ -65,18 +65,19 @@ final class CoachCalendarScopeTests: XCTestCase {
         XCTAssertThrowsError(try CoachCalendarBatch.make([edit], sources: ["e0": outside], messageID: UUID(), now: now, data: AppData(), calendarScope: .week))
     }
     func testTypedFutureResponseUsesTheSameScopeValidation() throws {
-        let item = event("tomorrow", offset: 1), value = try snapshot([item], scope: .week)
+        let data = AppData(), item = event("tomorrow", offset: 1)
+        let value = try snapshot([item], scope: .week, data: data)
         let edit = CoachCalendarEdit(kind: .delete, eventID: "e0", title: nil, start: nil, end: nil, notes: nil)
         let response = CoachV8Response(version: 3, requestID: value.request.requestID, mode: .actions, eventIDs: [], reply: "Proposta QA", actions: [edit])
-        let result = try CoachV8Planner.preview(response, snapshot: value, events: [item], data: AppData(), now: now)
+        let result = try CoachV8Planner.preview(response, snapshot: value, events: [item], data: data, now: now)
         XCTAssertTrue(result.options.isEmpty)
         XCTAssertTrue(result.reply.contains("non è ancora cambiato"))
     }
     func testFuturePlanCannotTreatFutureWorkoutAsMissedToday() throws {
         var item = event("tomorrow", offset: 1, kind: .workout); item.title = "Palestra QA"
-        let value = try snapshot([item], scope: .week)
+        let data = AppData(), value = try snapshot([item], scope: .week, data: data)
         let response = CoachV8Response(version: 3, requestID: value.request.requestID, mode: .plan, eventIDs: ["e0"], reply: "Proposta QA")
-        let result = try CoachV8Planner.preview(response, snapshot: value, events: [item], data: AppData(), now: now)
+        let result = try CoachV8Planner.preview(response, snapshot: value, events: [item], data: data, now: now)
         XCTAssertTrue(result.options.isEmpty); XCTAssertTrue(result.reply.contains("altro giorno"))
     }
     func testSevenDaysAcrossDSTUseCalendarBoundaries() {

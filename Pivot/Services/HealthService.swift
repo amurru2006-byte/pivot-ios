@@ -174,6 +174,9 @@ final class HealthService: ObservableObject {
             }
             for value in ordered {
                 try Task.checkCancellation()
+                guard !store.isRestoring, !store.isLoading, !store.locked, store.data.settings.healthEnabled == true else {
+                    workoutCache.removeAll(); return
+                }
                 let elevation = (value.metadata?[HKMetadataKeyElevationAscended] as? HKQuantity)?.doubleValue(for: .meter())
                 var summary = HealthWorkoutSummary(id: value.uuid.uuidString, start: value.startDate, end: value.endDate, type: Self.kind(value),
                     durationSeconds: Int(value.duration.rounded()), distanceKM: value.totalDistance?.doubleValue(for: .meterUnit(with: .kilo)),
