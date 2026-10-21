@@ -49,7 +49,16 @@ final class CoachCalendarScopeTests: XCTestCase {
         let events = (0..<49).map { index -> CalendarItem in
             var item = event("qa-\(index)", offset: index % 7); item.start.addTimeInterval(Double(index) * 60); return item
         }
+        XCTAssertThrowsError(try snapshot(events, scope: .week)) { error in
+            guard case CoachV8Error.calendarTooLarge = error else { return XCTFail("Expected actionable calendar limit, got \(error)") }
+        }
+    }
+    func testNarrowingBusyWeekKeepsAllEventsInChosenDayWithoutRelaxingCap() throws {
+        let events = (0..<50).map { index in event("qa-\(index)", offset: index == 0 ? 0 : 1 + (index - 1) % 6) }
         XCTAssertThrowsError(try snapshot(events, scope: .week))
+        let value = try snapshot(events)
+        XCTAssertEqual(value.sources.values.map(\.id), ["qa-0"])
+        XCTAssertEqual(value.originalEvents.count, 50, "Local stale-context checks still retain the complete calendar")
     }
     func testAllDayEventsRemainExcluded() throws {
         var item = event("all-day", offset: 1); item.isAllDay = true

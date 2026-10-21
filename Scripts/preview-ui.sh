@@ -126,6 +126,7 @@ elif [ "$PIVOT_UI_ONLY_TESTING" = v8-087-linked-travel-regression ]; then
     -only-testing:PivotUITests/CalendarMutationInteractionTests/testExternallyChangedLinkedPairIsRefusedWithoutLosingMoneyOrCreatingCopies
     -only-testing:PivotUITests/CalendarCreationInteractionTests/testNativeEditorManualJourneySurvivesRelaunchAndCreatesExactlyTwoAfterConfirmation
     -only-testing:PivotUITests/PremiumCoachInteractionTests/testExpandingCalendarScopeRevokesPreviousConversationPermissionBeforeAnyNewSend
+    -only-testing:PivotUITests/PremiumCoachInteractionTests/testBusyWeekRefusesWithoutSendingAndCanBeNarrowedWithoutLosingMessage
     -only-testing:PivotUITests/PremiumCoachInteractionTests/testNamedWeekdayRecoveryOpensExactDayLocallyWithoutOnlineRequest
   )
 elif [ "$PIVOT_UI_ONLY_TESTING" = v8-086-calendar-timing-regression ]; then

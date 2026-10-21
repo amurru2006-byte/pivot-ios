@@ -108,11 +108,12 @@ struct CoachV8Response: Decodable {
 }
 
 enum CoachV8Error: Error, LocalizedError {
-    case invalidResponse, contextTooLarge, sharedMemoryTooLarge, emptyMessage, staleContext
+    case invalidResponse, contextTooLarge, calendarTooLarge, sharedMemoryTooLarge, emptyMessage, staleContext
     var errorDescription: String? {
         switch self {
         case .invalidResponse: return "La risposta AI non supera i controlli. Nessuna modifica preparata."
         case .contextTooLarge: return "Il messaggio o il calendario supera i limiti di questo collegamento AI. Il testo resta qui e non viene tagliato: dividi il messaggio o usa la base locale."
+        case .calendarTooLarge: return "Troppi impegni nell’intervallo scelto (massimo 48). Nessun invio online: il messaggio resta qui. In Contesto calendario scegli Oggi e riprova; per organizzare più giorni puoi usare la base locale. Nessun evento è stato escluso di nascosto."
         case .sharedMemoryTooLarge: return "Una preferenza online è troppo lunga dopo il filtro privacy. Accorciala in Preferenze di Pivot oppure lasciala solo sul dispositivo. Nessun testo è stato tagliato o inviato."
         case .emptyMessage: return "Scrivi un messaggio prima di inviare."
         case .staleContext: return "La richiesta è scaduta o i dati sono cambiati. Prepara una nuova anteprima."
@@ -141,7 +142,7 @@ struct CoachV8Snapshot {
         let effectiveScope: CoachCalendarScope = purpose == "conversation" && protocolVersion >= 3 ? calendarScope : .today
         let planned = Planner.plannedEvents(events, data: calendarData).filter { purpose != "rewrite" && effectiveScope.contains($0, now: now) }
             .sorted { $0.start == $1.start ? $0.id < $1.id : $0.start < $1.start }
-        guard planned.count <= 48 else { throw CoachV8Error.contextTooLarge }
+        guard planned.count <= 48 else { throw CoachV8Error.calendarTooLarge }
         var sources: [String: CalendarItem] = [:]
         let summaries: [CoachV8Request.Event] = planned.enumerated().compactMap { index, item in
             guard let source = canonical.first(where: { $0.id == item.id }) else { return nil }

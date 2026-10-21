@@ -887,6 +887,22 @@ private actor CalendarWorker {
     }
     #if DEBUG && targetEnvironment(simulator)
     private func interactionSnapshot() -> CalendarSnapshot {
+        if ProcessInfo.processInfo.arguments.contains("--coach-scope-test") {
+            // Isolate scope consent from the unrelated 700-event stress fixture.
+            // Both days are real native UI inputs; the busy variant tests refusal.
+            let busy = ProcessInfo.processInfo.arguments.contains("--coach-scope-busy-test")
+            let today = PivotDate.calendar.startOfDay(for: Date())
+            let items = (0..<(busy ? 50 : 2)).map { index -> CalendarItem in
+                let offset = index == 0 ? 0 : (busy ? 1 + (index - 1) % 6 : 1)
+                let day = PivotDate.calendar.date(byAdding: .day, value: offset, to: today)!
+                let start = day.addingTimeInterval(9 * 3600 + Double(index) * 60)
+                let id = "scope-qa-\(index)"
+                return CalendarItem(id: id, eventIdentifier: id, calendarIdentifier: "scope-qa", calendarTitle: "QA",
+                    title: "Impegno QA \(index)", start: start, end: start.addingTimeInterval(1800),
+                    location: "", notes: "", colorHex: "7EE6CD", isAllDay: false, writable: true, kind: .other)
+            }
+            return .init(hasAccess: true, choices: [.init(id: "scope-qa", title: "QA", colorHex: "7EE6CD", holiday: false, writable: true)], events: items)
+        }
         if ProcessInfo.processInfo.arguments.contains("--recovery-forecast-test") {
             if recoveryForecastFixture == nil {
                 let start = Date().addingTimeInterval(-3 * 3600)
