@@ -4,9 +4,19 @@ enum HealthReconciliation {
     static func merge(workouts: [HealthWorkoutSummary], sleeps: [String: HealthSleepSummary],
                       events: [CalendarItem], data: AppData, now: Date) -> AppData? {
         let planned = Planner.plannedEvents(events, data: data)
-        let matches = workouts.map { ($0, HealthImport.candidates($0, events: planned)) }.filter { $0.1.count == 1 }
-        let matchCounts = Dictionary(matches.compactMap { $0.1.first?.id }.map { ($0, 1) }, uniquingKeysWith: +)
+        // Refresh existing links by Health UUID, never by a new title/time guess.
+        // A moved/deleted calendar occurrence does not erase its diary history.
+        let groups = Dictionary(grouping: workouts.filter { $0.isValid && $0.end <= now }, by: \.id)
+        let unique = groups.values.compactMap { $0.count == 1 ? $0.first : nil }
+        let linked = Dictionary(grouping: data.records.values.filter { $0.health != nil }, by: { $0.health!.id })
         var next = data, modified = false
+        for workout in unique {
+            guard let records = linked[workout.id], records.count == 1, let record = records.first else { continue }
+            if HealthImport.apply(workout, to: record.snapshot, data: &next, now: now) { modified = true }
+        }
+        let matches = unique.filter { linked[$0.id] == nil }
+            .map { ($0, HealthImport.candidates($0, events: planned)) }.filter { $0.1.count == 1 }
+        let matchCounts = Dictionary(matches.compactMap { $0.1.first?.id }.map { ($0, 1) }, uniquingKeysWith: +)
         for (workout, candidates) in matches {
             guard let event = candidates.first, matchCounts[event.id] == 1 else { continue }
             let programmedCardio = CardioKind.suggested(event.title) != nil
@@ -14,9 +24,9 @@ enum HealthReconciliation {
                   workout.durationSeconds >= event.durationMinutes * 30,
                   next.records[event.id]?.health?.id != workout.id,
                   (next.records[event.id]?.status ?? .pending) == .pending else { continue }
-            HealthImport.apply(workout, to: event, data: &next); modified = true
+            if HealthImport.apply(workout, to: event, data: &next, now: now) { modified = true }
         }
-        let reviews = WorkoutContext.refreshed(workouts, events: events, data: next, now: now)
+        let reviews = WorkoutContext.refreshed(unique, events: events, data: next, now: now)
         if reviews != next.workoutReviews { next.workoutReviews = reviews; modified = true }
         var coach = next.coachState
         for review in reviews where !review.resolved && !review.dismissed {

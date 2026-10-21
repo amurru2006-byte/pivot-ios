@@ -15,7 +15,7 @@ final class HealthService: ObservableObject {
     @Published private(set) var lastReport: HealthRefreshReport?
     private let healthStore = HKHealthStore()
     private var sleepByDay: [String: HealthSleepSummary] = [:]
-    private var workoutCache: [String: HealthWorkoutSummary] = [:]
+    private var workoutCache: [String: HealthWorkoutCacheEntry] = [:]
     private var observerQueries: [HKObserverQuery] = []
     private var pendingObserverCompletions: [HKObserverQueryCompletionHandler] = []
     private var isHandlingBackgroundUpdate = false
@@ -55,6 +55,7 @@ final class HealthService: ObservableObject {
     func setBackgroundDelivery(enabled: Bool) async {
         guard HKHealthStore.isHealthDataAvailable() else { return }
         if !enabled {
+            workoutCache.removeAll()
             for query in observerQueries { healthStore.stop(query) }
             observerQueries.removeAll()
             finishPendingBackgroundUpdates()
@@ -162,19 +163,47 @@ final class HealthService: ObservableObject {
             }.value
             let values = try await samples(type: HKObjectType.workoutType(), predicate: predicate).compactMap { $0 as? HKWorkout }
             var summaries: [HealthWorkoutSummary] = []
-            for value in values {
-                if let cached = workoutCache[value.uuid.uuidString], cached.start == value.startDate, cached.end == value.endDate,
-                   cached.durationSeconds == Int(value.duration.rounded()) {
-                    summaries.append(cached); continue
-                }
-                let bpm = try? await averageHeartRate(value)
-                let elevation = (value.metadata?[HKMetadataKeyElevationAscended] as? HKQuantity)?.doubleValue(for: .meter())
-                summaries.append(.init(id: value.uuid.uuidString, start: value.startDate, end: value.endDate, type: Self.kind(value),
-                                       durationSeconds: Int(value.duration.rounded()), distanceKM: value.totalDistance?.doubleValue(for: .meterUnit(with: .kilo)),
-                                       activeCalories: value.totalEnergyBurned?.doubleValue(for: .kilocalorie()), averageBPM: bpm, elevationM: elevation))
+            var nextCache: [String: HealthWorkoutCacheEntry] = [:]
+            var heartRateQueries = 0, deferredHeartRates = false
+            // A bounded extra-query budget, oldest checks first, avoids both
+            // unbounded background work and starvation when many workouts sync.
+            let ordered = values.sorted {
+                let lhs = workoutCache[$0.uuid.uuidString]?.heartRateAttemptedAt ?? .distantPast
+                let rhs = workoutCache[$1.uuid.uuidString]?.heartRateAttemptedAt ?? .distantPast
+                return lhs == rhs ? $0.uuid.uuidString < $1.uuid.uuidString : lhs < rhs
             }
+            for value in ordered {
+                try Task.checkCancellation()
+                let elevation = (value.metadata?[HKMetadataKeyElevationAscended] as? HKQuantity)?.doubleValue(for: .meter())
+                var summary = HealthWorkoutSummary(id: value.uuid.uuidString, start: value.startDate, end: value.endDate, type: Self.kind(value),
+                    durationSeconds: Int(value.duration.rounded()), distanceKM: value.totalDistance?.doubleValue(for: .meterUnit(with: .kilo)),
+                    activeCalories: value.totalEnergyBurned?.doubleValue(for: .kilocalorie()), elevationM: elevation)
+                guard summary.isValid else { continue }
+                let cached = workoutCache[summary.id]
+                summary.averageBPM = cached?.compatibleHeartRate(for: summary)
+                var checkedAt = cached?.heartRateReadAt
+                var attemptedAt = cached?.heartRateAttemptedAt
+                if cached?.needsHeartRate(for: summary, now: now, force: force) ?? true {
+                    checkedAt = nil
+                    if heartRateQueries < 12 {
+                        heartRateQueries += 1
+                        attemptedAt = Date()
+                        do {
+                            summary.averageBPM = try await averageHeartRate(value)
+                            checkedAt = Date()
+                        } catch {
+                            // Retain the last observation on a transient query
+                            // failure, but do not mark it freshly checked.
+                            deferredHeartRates = true
+                        }
+                    } else { deferredHeartRates = true }
+                }
+                summaries.append(summary)
+                nextCache[summary.id] = .init(summary: summary, heartRateReadAt: checkedAt, heartRateAttemptedAt: attemptedAt)
+            }
+            try Task.checkCancellation()
             workouts = summaries.sorted { $0.start > $1.start }
-            workoutCache = Dictionary(summaries.map { ($0.id, $0) }, uniquingKeysWith: { _, newer in newer })
+            workoutCache = nextCache
             // Rebase if the user edited a record while reconciliation was running.
             let readWorkouts = summaries, readSleeps = sleepByDay
             var applied = false
@@ -208,6 +237,7 @@ final class HealthService: ObservableObject {
             } else {
                 status = base
             }
+            if deferredHeartRates { status += " Alcuni battiti saranno verificati al prossimo aggiornamento." }
         } catch {
             recordDiagnostic(error, phase: "Lettura sonno e allenamenti")
             status = Self.connectionMessage(for: error)
