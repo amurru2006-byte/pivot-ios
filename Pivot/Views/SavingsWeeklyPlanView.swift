@@ -75,7 +75,7 @@ struct SavingsWeeklyPlanView: View {
                             .font(.caption).foregroundStyle(PivotTheme.muted)
                         LabeledContent("Incassi ordinari", value: Money.display(value.receivedCents))
                         LabeledContent("Spese", value: Money.display(value.spentCents))
-                        LabeledContent("Già accantonati nel periodo", value: Money.display(max(0, value.alreadyReservedCents)))
+                        LabeledContent("Accantonati su tutti gli obiettivi", value: Money.display(max(0, value.alreadyReservedCents)))
                         if let amount = value.proposedCents {
                             LabeledContent("Quota disponibile", value: Money.display(amount)).accessibilityIdentifier("weekly-quota")
                             Button("Metti da parte questa quota") { approval = value; confirming = true }

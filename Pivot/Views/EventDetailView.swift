@@ -225,7 +225,7 @@ struct EventDetailView: View {
             } label: { Label("Fatto come previsto · autocompila", systemImage: "checkmark.square.fill") }
                 .buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("activity-autofill")
             if record.timingFromCalendar == true {
-                Text("Orari suggeriti dal Calendario, non misurati. Se li correggi e salvi un’attività conclusa, Pivot aggiorna soltanto questa occorrenza.").font(.caption).foregroundStyle(PivotTheme.blue)
+                Text("Orari suggeriti dal Calendario, non misurati. Se li correggi, puoi confermare l’aggiornamento della singola occorrenza.").font(.caption).foregroundStyle(PivotTheme.blue)
             }
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 6) { outcomeButtons }
@@ -252,7 +252,7 @@ struct EventDetailView: View {
             DurationField(title: "Tempo attivo (escluse pause)", seconds: Binding(get: { record.activeMinutes == 0 ? nil : record.activeMinutes * 60 }, set: { record.activeMinutes = ($0 ?? 0) / 60 }), maxHours: 48)
             Button("Usa la durata tra inizio e fine") { updateMinutes() }.font(.caption)
             Text("Inizio e fine calcolano la durata. Se hai fatto pause, puoi correggere il tempo attivo in ore e minuti.").font(.caption).foregroundStyle(PivotTheme.muted)
-            Text(event.writable ? "Salvando un’attività conclusa, questi orari diventano anche gli orari della singola occorrenza nel Calendario." : "Questo Calendario è in sola lettura: gli orari restano comunque salvati in Pivot.")
+            Text(event.writable ? "Premi Salva per controllare e confermare gli orari da aggiornare nella singola occorrenza del Calendario." : "Questo Calendario è in sola lettura: gli orari restano comunque salvati in Pivot.")
                 .font(.caption).foregroundStyle(event.writable ? PivotTheme.blue : PivotTheme.amber)
                 .onChange(of: record.actualStart) { _, _ in updateMinutes() }
                 .onChange(of: record.actualEnd) { _, _ in updateMinutes() }
@@ -549,6 +549,9 @@ struct EventDetailView: View {
         // against the real source, never an already adjusted display item.
         let source = calendarBaseline ?? record.snapshot
         if record.calendarTimingNeedsConfirmation == true {
+            guard source.writable else {
+                message = "Attività salvata solo in Pivot: questo Calendario è in sola lettura."; return
+            }
             guard let timing = CalendarSynchronization.explicitlyEditedTiming(for: record, event: source) else {
                 message = "Orari salvati in Pivot. Per aggiornare Calendario, controlla inizio e fine; l’attività non deve essere in corso o saltata."; return
             }
