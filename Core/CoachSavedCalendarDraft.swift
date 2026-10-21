@@ -15,6 +15,17 @@ struct CoachSavedCalendarDraft: Codable, Identifiable {
 }
 
 enum CoachDraftStore {
+    @discardableResult static func completeCreation(id: UUID, receipt: CalendarCreationReceipt, options: CalendarCreationOptions,
+        data: inout AppData, now: Date = Date()) -> Bool {
+        var next = data
+        guard let saved = next.coachState.calendarDrafts?.first(where: { $0.id == id }),
+              saved.calendarID == receipt.activity.calendarIdentifier,
+              CalendarCreationBundle.existing(parts: options.parts(draft: saved.draft, creationID: id),
+                  items: receipt.travel.map { [$0, receipt.activity] } ?? [receipt.activity]),
+              CalendarActivityLinks.capture(id: id, receipt: receipt, options: options, data: &next, now: now),
+              markCreated(id: id, eventID: receipt.activity.id, calendarID: receipt.activity.calendarIdentifier, data: &next, now: now) else { return false }
+        data = next; return true
+    }
     static func valid(_ coach: CoachState) -> Bool {
         let drafts = coach.calendarDrafts ?? []
         guard Set(drafts.map(\.id)).count == drafts.count,

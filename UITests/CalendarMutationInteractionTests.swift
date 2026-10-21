@@ -4,12 +4,13 @@ import XCTest
 /// disk persistence, archive and mapping paths, not live calendar/model quality.
 final class CalendarMutationInteractionTests: XCTestCase {
     override func tearDown() { attachFailureDiagnostics(name); super.tearDown() }
-    private func launch(continuity: Bool = false, archiveFailure: Bool = false) -> XCUIApplication {
+    private func launch(continuity: Bool = false, archiveFailure: Bool = false, linkedTravel: Bool = false) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["--interaction-test", "--online-coach-action-test", "--coach-calendar-create-test",
                                continuity ? "--conversation-continuity-test" : "--calendar-mutations-test"]
         if archiveFailure { app.launchArguments.append("--calendar-archive-write-failure-test") }
+        if linkedTravel { app.launchArguments.append("--linked-travel-test") }
         app.launchEnvironment["PIVOT_QA_COACH_ACTION_ID"] = UUID().uuidString
         app.launchEnvironment["PIVOT_QA_KEYCHAIN_ID"] = UUID().uuidString
         app.launch(); openCoach(app); return app
@@ -86,6 +87,44 @@ final class CalendarMutationInteractionTests: XCTestCase {
         let result = app.staticTexts["calendar-mutation-audit-result"]
         let finished = expectation(for: NSPredicate(format: "label == %@", "Modifica esterna QA simulata"), evaluatedWith: result)
         wait(for: [finished], timeout: 12)
+    }
+    private func prepareLinked(_ app: XCUIApplication) {
+        tap(app.buttons["linked-travel-prepare-qa"], app); tap(batch(app), app)
+        tap(app.buttons["coach-mutations-review"], app)
+        let added = app.staticTexts["coach-mutations-error"]
+        XCTAssertTrue(added.waitForExistence(timeout: 10)); XCTAssertTrue(added.label.contains("Ho incluso il viaggio"), added.label)
+        XCTAssertFalse(app.alerts["Confermare le modifiche selezionate?"].exists)
+        XCTAssertEqual(app.switches.matching(NSPredicate(format: "identifier BEGINSWITH %@", "coach-mutation-select-")).count, 2)
+    }
+    func testLinkedJourneyIsReviewedTogetherAndPersistsAfterRelaunch() {
+        let app = launch(linkedTravel: true); _ = audit(2, app)
+        prepareLinked(app)
+        tap(app.buttons["coach-mutations-review"], app)
+        let alert = app.alerts["Confermare le modifiche selezionate?"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 10))
+        XCTAssertTrue(alert.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "2 modifiche")).firstMatch.exists)
+        alert.buttons["Annulla"].tap()
+        XCTAssertTrue(alert.waitForNonExistence(timeout: 5))
+        confirmBatch(app)
+        tapNavigation(app.navigationBars["Modifiche proposte"].buttons["Chiudi"], app)
+        _ = audit(2, app)
+        let linked = app.staticTexts["linked-travel-audit"]; tap(linked, app)
+        XCTAssertEqual(linked.label, "1 collegamenti · sincronizzato")
+        app.terminate(); app.launch(); openCoach(app)
+        _ = audit(2, app); tap(linked, app)
+        XCTAssertEqual(linked.label, "1 collegamenti · sincronizzato")
+    }
+    func testExternallyChangedLinkedPairIsRefusedWithoutLosingMoneyOrCreatingCopies() {
+        let app = launch(linkedTravel: true); prepareLinked(app)
+        tapNavigation(app.navigationBars["Modifiche proposte"].buttons["Chiudi"], app)
+        toggleExternalChange(app)
+        tap(batch(app), app); tap(app.buttons["coach-mutations-review"], app)
+        let error = app.staticTexts["coach-mutations-error"]
+        XCTAssertTrue(error.waitForExistence(timeout: 10)); XCTAssertFalse(app.alerts["Confermare le modifiche selezionate?"].exists)
+        tapNavigation(app.navigationBars["Modifiche proposte"].buttons["Chiudi"], app)
+        _ = audit(2, app)
+        let linked = app.staticTexts["linked-travel-audit"]; tap(linked, app)
+        XCTAssertEqual(linked.label, "1 collegamenti · da verificare")
     }
     func testDeletePreviewCancelAndSingleRestoreKeepMoneyAfterRelaunch() {
         let app = launch(); _ = audit(2, app)

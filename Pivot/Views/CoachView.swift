@@ -92,6 +92,12 @@ struct CoachView: View {
                     }
                 }.accessibilityIdentifier("calendar-restore-interlock-audit")
                 if let mutationAudit { Text(mutationAudit).accessibilityIdentifier("calendar-mutation-audit-result") }
+                if ProcessInfo.processInfo.arguments.contains("--linked-travel-test") {
+                    Button("Prepara proposta viaggio QA") { prepareLinkedTravelFixture() }
+                        .accessibilityIdentifier("linked-travel-prepare-qa")
+                    Text("\((store.data.calendarActivityLinks ?? []).count) collegamenti · " + linkedTravelFixtureStatus)
+                        .accessibilityIdentifier("linked-travel-audit")
+                }
             }
             #endif
             if store.data.actualWorkoutDraft != nil { WorkoutChatCard() }
@@ -317,6 +323,32 @@ struct CoachView: View {
             Button("Annulla", role: .cancel) { reuseText = nil }
         }
     }
+    #if DEBUG && targetEnvironment(simulator)
+    private var linkedTravelFixtureStatus: String {
+        guard let link = store.data.calendarActivityLinks?.first,
+              let activity = calendar.events.first(where: { CalendarSnapshotMatch.identity(link.activity, $0) }),
+              let travel = calendar.events.first(where: { CalendarSnapshotMatch.identity(link.travel, $0) }) else { return "da verificare" }
+        return CalendarSnapshotMatch.revision(link.activity, activity) && CalendarSnapshotMatch.revision(link.travel, travel)
+            && CalendarSnapshotMatch.instant(activity.start, travel.end) ? "sincronizzato" : "da verificare"
+    }
+    private func prepareLinkedTravelFixture() {
+        guard ProcessInfo.processInfo.arguments.contains("--linked-travel-test"),
+              let main = calendar.events.first(where: { $0.eventIdentifier == "mutation-qa-1" }),
+              let trip = calendar.events.first(where: { $0.eventIdentifier == "mutation-qa-2" }) else { return }
+        var options = CalendarCreationOptions(); options.location = main.location
+        options.travel = .init(minutes: 20, origin: "Partenza QA")
+        let id = UUID(uuidString: "AAAA0000-0000-0000-0000-000000000002")!
+        var next = store.data
+        guard CalendarActivityLinks.capture(id: id, receipt: .init(activity: main, travel: trip), options: options, data: &next, now: Date()) else { return }
+        let message = CoachMessage(dayKey: PivotDate.key(Date()), role: .coach, text: "Proposta viaggio QA")
+        var after = main; after.start = after.start.addingTimeInterval(7200); after.end = after.end.addingTimeInterval(7200)
+        let action = CoachCalendarMutation(kind: .update, source: main, after: after)
+        let batch = CoachCalendarBatch(messageID: message.id, dayKey: message.dayKey, createdAt: Date(), actions: [action])
+        next.coachState.messages.append(message)
+        var batches = next.coachState.calendarBatches ?? []; batches.append(batch); next.coachState.calendarBatches = batches
+        _ = store.change { $0 = next }
+    }
+    #endif
 
     private var onlineStatusCard: some View {
         PivotCard(tint: PivotTheme.blue) {

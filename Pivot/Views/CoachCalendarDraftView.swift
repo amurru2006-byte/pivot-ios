@@ -259,6 +259,13 @@ struct CoachCalendarDraftView: View {
                 }
                 let result = try await calendar.create(draft, calendarID: calendarID, expectedConflicts: conflicts, settings: store.data.settings,
                     options: options, creationID: savedDraftID, verifyOnly: verifyOnly)
+                // Both native identities and the completed draft are committed
+                // together. A failed acknowledgement keeps the pre-written
+                // uncertain marker; it must not imply that EventKit saved nothing.
+                guard let savedDraftID else { throw CalendarFailure.acknowledgementNotSaved }
+                var acknowledged = store.data
+                guard CoachDraftStore.completeCreation(id: savedDraftID, receipt: result.receipt, options: options, data: &acknowledged),
+                      store.change({ $0 = acknowledged }), await store.flushPendingWrites() else { throw CalendarFailure.acknowledgementNotSaved }
                 store.change {
                     $0.settings.preferredNewEventCalendarID = calendarID
                     if let hint = draft.calendarHint, !CoachCalendarDraft.normalizedCalendarHint(hint).isEmpty {
@@ -268,7 +275,7 @@ struct CoachCalendarDraftView: View {
                     }
                 }
                 _ = savePreferences()
-                onCreated(result.item, result.existing); dismiss()
+                onCreated(result.receipt.activity, result.existing); dismiss()
             } catch {
                 // A revalidation refusal proves no EventKit write began. Keep
                 // uncertain commit outcomes locked to read-only reconciliation.

@@ -13,6 +13,8 @@ struct CoachCalendarBatchView: View {
     @State private var review: CalendarMutationReview?
     @State private var confirming = false
     @State private var task: Task<Void, Never>?
+    @State private var travelTarget: CoachCalendarMutation?
+    @State private var travelChoices: [String: CalendarCreationTravel] = [:]
     private var batch: CoachCalendarBatch? { store.data.coachState.calendarBatches?.first { $0.id == batchID } }
 
     var body: some View {
@@ -39,6 +41,14 @@ struct CoachCalendarBatchView: View {
                                 Text(after.title).font(.headline)
                                 Text(DisplayDate.label(after.start, format: "d MMM yyyy HH:mm") + " – " + DisplayDate.label(after.end, format: "d MMM yyyy HH:mm")).font(.subheadline)
                                 if after.notes != action.source.notes { Text(after.notes.isEmpty ? "Note da rimuovere" : after.notes).font(.caption) }
+                                if let link = CalendarActivityLinks.link(for: action.source, data: store.data),
+                                   CalendarSnapshotMatch.identity(link.activity, action.source),
+                                   !CalendarSnapshotMatch.instant(after.start, action.source.start) {
+                                    Button("Verifica viaggio collegato") { travelTarget = action }
+                                        .accessibilityIdentifier("linked-travel-edit")
+                                    Text("Il viaggio sarà incluso nella verifica. Puoi confermare un tempo manuale o ricalcolare con Maps.")
+                                        .font(.caption).foregroundStyle(PivotTheme.muted)
+                                }
                             }
                         }
                     }
@@ -64,6 +74,7 @@ struct CoachCalendarBatchView: View {
                 .task {
                     guard !loaded, let batch else { return }; loaded = true
                     selected = Set(batch.actions.map(\.id))
+                    travelChoices = batch.linkedTravelChoices ?? [:]
                 }
                 .alert("Confermare le modifiche selezionate?", isPresented: $confirming) {
                     Button("Conferma modifiche", role: .destructive) { apply() }.accessibilityIdentifier("coach-mutations-confirm")
@@ -77,6 +88,15 @@ struct CoachCalendarBatchView: View {
                 }
                 .onChange(of: scenePhase) { _, phase in if phase == .background { task?.cancel(); confirming = false; review = nil } }
                 .onDisappear { task?.cancel() }
+                .sheet(item: $travelTarget) { action in
+                    if let after = action.after, let link = CalendarActivityLinks.link(for: action.source, data: store.data) {
+                        CalendarTravelEditor(options: travelOptions(link: link, destination: after.location), start: after.start,
+                            suggestedOrigin: link.settings.origin) { options in
+                            guard let travel = options.travel else { problem = "Conferma il viaggio, oppure scarta la proposta. Non lascio una metà del collegamento."; return }
+                            saveTravelChoice(travel, link: link)
+                        }
+                    }
+                }
         }.interactiveDismissDisabled(busy)
     }
     private func prepare(_ batch: CoachCalendarBatch) {
@@ -86,13 +106,45 @@ struct CoachCalendarBatchView: View {
         task = Task {
             defer { busy = false }
             do {
-                let value = try await calendar.reviewMutations(batchID: batch.id, actions: actions, settings: store.data.settings)
+                let expanded = try CalendarActivityLinks.expanded(actions, data: store.data, choices: travelChoices,
+                    now: Date(), mapsConsent: AppleMapsService.shared.consentGranted)
+                guard !store.locked, !store.isRestoring, self.batch?.status == .pending else { throw CalendarFailure.changed }
+                let oldSelectedIDs = Set(actions.map(\.id))
+                var updated = batch
+                // Retain unselected independent proposals; replace the selected
+                // group with the locally expanded, visibly reviewable pair.
+                updated.actions = batch.actions.filter { old in !oldSelectedIDs.contains(old.id) && !expanded.contains(where: { $0.source.id == old.source.id }) } + expanded
+                updated.linkedTravelChoices = travelChoices
+                guard updated.isValid, store.change({ data in
+                    if let index = data.coachState.calendarBatches?.firstIndex(where: { $0.id == batchID }) { data.coachState.calendarBatches?[index] = updated }
+                }) else { throw CalendarFailure.archiveNotSaved }
+                selected = Set(expanded.map(\.id))
+                if expanded != actions {
+                    problem = "Ho incluso il viaggio collegato. Controlla entrambi gli eventi qui sopra, poi premi di nuovo Verifica. Nessuna modifica applicata."
+                    return
+                }
+                let value = try await calendar.reviewMutations(batchID: batch.id, actions: expanded, settings: store.data.settings)
                 try Task.checkCancellation()
                 guard self.batch?.status == .pending else { throw CalendarFailure.changed }
                 review = value; confirming = true
             } catch is CancellationError { }
             catch { problem = error.localizedDescription }
         }
+    }
+    private func travelOptions(link: CalendarActivityLink, destination: String) -> CalendarCreationOptions {
+        var options = CalendarCreationOptions(); options.location = destination
+        options.travel = travelChoices[link.id.uuidString] ?? link.settings
+        return options
+    }
+    private func saveTravelChoice(_ travel: CalendarCreationTravel, link: CalendarActivityLink) {
+        guard var batch, batch.status == .pending else { return }
+        var choices = travelChoices; choices[link.id.uuidString] = travel
+        let removed = batch.actions.filter { CalendarSnapshotMatch.identity(link.travel, $0.source) }.map(\.id)
+        batch.actions.removeAll { removed.contains($0.id) }; batch.linkedTravelChoices = choices
+        guard batch.isValid, store.change({ data in
+            if let index = data.coachState.calendarBatches?.firstIndex(where: { $0.id == batchID }) { data.coachState.calendarBatches?[index] = batch }
+        }) else { problem = "Non riesco a salvare la scelta del viaggio."; return }
+        selected.subtract(removed); travelChoices = choices; review = nil
     }
     private func apply() {
         guard !busy, let review else { return }

@@ -54,11 +54,14 @@ struct CoachCalendarBatch: Codable, Identifiable, Equatable {
     var createdAt: Date
     var actions: [CoachCalendarMutation]
     var status: CoachCalendarBatchStatus = .pending
+    // Native review choices, deliberately absent from the model's response DTO.
+    var linkedTravelChoices: [String: CalendarCreationTravel]? = nil
     var isValid: Bool {
         (1...10).contains(actions.count) && createdAt.timeIntervalSinceReferenceDate.isFinite
             && dayKey == PivotDate.key(createdAt)
             && Set(actions.map(\.id)).count == actions.count && Set(actions.map { $0.source.id }).count == actions.count
             && actions.allSatisfy(\.isValid)
+            && (linkedTravelChoices.map { $0.count <= 10 && $0.allSatisfy { UUID(uuidString: $0.key) != nil && $0.value.isValid } } ?? true)
     }
     static func make(_ edits: [CoachCalendarEdit], sources: [String: CalendarItem], messageID: UUID,
         now: Date, data: AppData) throws -> Self {
