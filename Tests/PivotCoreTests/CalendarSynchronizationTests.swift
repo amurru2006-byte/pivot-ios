@@ -35,6 +35,20 @@ final class CalendarSynchronizationTests: XCTestCase {
         item.isAllDay = false; record.actualEnd = Date(timeIntervalSinceReferenceDate: .infinity)
         XCTAssertNil(CalendarSynchronization.explicitlyEditedTiming(for: record, event: item))
     }
+    func testSavingHealthObservationsDoesNotSilentlyCopyThemToCalendarButExplicitEditCanBeReviewed() throws {
+        let start = date("2026-10-20T13:30:00+02:00")
+        let item = event(start: start, end: start.addingTimeInterval(3600))
+        var record = EventRecord(id: item.id, snapshot: item, status: .completed,
+            actualStart: start.addingTimeInterval(60), actualEnd: start.addingTimeInterval(7200))
+        record.health = .init(id: "synthetic-health-source", start: record.actualStart!, end: record.actualEnd!,
+            type: "strength", durationSeconds: 7140, distanceKM: nil, activeCalories: nil, averageBPM: nil, elevationM: nil)
+        XCTAssertNil(CalendarSynchronization.actualTiming(for: record, event: item))
+        record.health = nil; record.healthSleep = SleepRecord()
+        XCTAssertNil(CalendarSynchronization.actualTiming(for: record, event: item))
+        XCTAssertNil(CalendarSynchronization.explicitlyEditedTiming(for: record, event: item))
+        record.calendarTimingNeedsConfirmation = true
+        XCTAssertNotNil(CalendarSynchronization.explicitlyEditedTiming(for: record, event: item), "A proposal still needs the separate Calendar confirmation")
+    }
     private func date(_ value: String) -> Date {
         ISO8601DateFormatter().date(from: value)!
     }

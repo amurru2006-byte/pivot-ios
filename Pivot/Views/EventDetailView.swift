@@ -53,13 +53,12 @@ struct EventDetailView: View {
         _record = State(initialValue: initial)
         _rule = State(initialValue: rule)
     }
-    var body: some View {
+    private var screenContent: some View {
         PivotScreen {
             hero
             #if DEBUG && targetEnvironment(simulator)
             if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--actual-time-sync-test") {
-                let raw = calendar.events.first { $0.id == sourceEvent.id }
-                Text("Calendario " + (raw.map { PivotDate.time($0.end) } ?? "assente") + " · inizio reale " + (record.actualStart.map(PivotDate.time) ?? "assente") + " · " + record.status.rawValue)
+                Text(timingAuditLabel)
                     .font(.caption).accessibilityIdentifier("activity-calendar-timing-audit")
             }
             #endif
@@ -117,7 +116,9 @@ struct EventDetailView: View {
                 }
             }
         }
-        .disabled(syncingCalendar)
+    }
+    var body: some View {
+        screenContent.disabled(syncingCalendar)
         .navigationTitle("Attività")
         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Salva") { Task { await finishEditing() } }.accessibilityIdentifier("activity-save").disabled(store.locked || syncingCalendar) } }
         .alert("Aggiornare gli orari nel Calendario?", isPresented: $confirmingCalendarTiming) {
@@ -126,12 +127,7 @@ struct EventDetailView: View {
                 guard let calendarTiming, let calendarSource else { return }
                 Task { await performCalendarSync(calendarTiming, source: calendarSource, closeWhenDone: calendarCloseAfterSync) }
             }.accessibilityIdentifier("activity-calendar-confirm")
-        } message: {
-            if let calendarTiming {
-                Text("Solo questa occorrenza: " + DisplayDate.label(calendarTiming.start, format: "d MMM HH:mm") + " – " + DisplayDate.label(calendarTiming.end, format: "d MMM HH:mm")
-                    + ((record.actualStart == nil || record.actualEnd == nil) ? ". L’orario non registrato resta quello previsto; non viene aggiunto come orario reale." : ""))
-            }
-        }
+        } message: { Text(calendarConfirmationMessage) }
         .onAppear {
             let firstAppearance = !loadedDraft
             if firstAppearance {
@@ -190,6 +186,21 @@ struct EventDetailView: View {
             if let url = try? store.studyPDFURL(document) { StudyPDFPreview(url: url, title: document.name) }
         }
     }
+    private var calendarConfirmationMessage: String {
+        guard let timing = calendarTiming else { return "" }
+        let start = DisplayDate.label(timing.start, format: "d MMM HH:mm")
+        let end = DisplayDate.label(timing.end, format: "d MMM HH:mm")
+        let fallback = record.actualStart == nil || record.actualEnd == nil
+        return "Solo questa occorrenza: \(start) – \(end)" + (fallback
+            ? ". L’orario non registrato resta quello previsto; non viene aggiunto come orario reale." : "")
+    }
+    #if DEBUG && targetEnvironment(simulator)
+    private var timingAuditLabel: String {
+        let end = calendar.events.first { $0.id == sourceEvent.id }.map { PivotDate.time($0.end) } ?? "assente"
+        let start = record.actualStart.map { PivotDate.time($0) } ?? "assente"
+        return "Calendario \(end) · inizio reale \(start) · \(record.status.rawValue)"
+    }
+    #endif
     private var hero: some View {
         PivotCard(tint: Color(calendarItem: event)) {
             HStack {
