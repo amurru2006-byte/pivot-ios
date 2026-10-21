@@ -45,7 +45,11 @@ final class PredictionInteractionTests: XCTestCase {
         tap(app.buttons["savings-forecast"], app)
         let upfront = app.textFields["forecast-upfront"]
         XCTAssertTrue(upfront.waitForExistence(timeout: 5)); upfront.tap(); upfront.typeText("100")
-        let weekly = app.textFields["forecast-weekly"]; weekly.tap(); weekly.typeText("50")
+        // The decimal keyboard toolbar can overlap this next row on a compact
+        // screen. Use the visible Done action before scrolling to its field;
+        // never type into a control that did not receive keyboard focus.
+        dismissKeyboard(app)
+        let weekly = app.textFields["forecast-weekly"]; tap(weekly, app); weekly.typeText("50")
         dismissKeyboard(app)
         XCTAssertTrue(app.staticTexts["forecast-remaining"].label.contains("800,00"))
         XCTAssertTrue(app.staticTexts["forecast-completion"].label.contains("16 settimane"))

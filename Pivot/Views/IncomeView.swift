@@ -736,12 +736,19 @@ struct ClientDetailView: View {
         Task {
             defer { changingActivity = false }
             if !active {
-                guard await calendar.refreshContactActivity(store: store, force: true) else {
-                    activityAlert = calendar.contactActivityProblem ?? "Attendi la verifica del calendario e riprova. Non ho disattivato il contatto."
+                let verified = await calendar.refreshContactActivity(store: store, force: true)
+                if let next = calendar.nextContactAppointment(client.id) {
+                    let appointment = "\(next.title) il \(DisplayDate.label(next.start, format: "d MMM yyyy 'alle' HH:mm"))"
+                    // A concurrent/stale scan is not permission to deactivate.
+                    // Still explain the positive evidence already displayed on
+                    // this screen, without claiming that it was just verified.
+                    activityAlert = verified
+                        ? "Hai già \(appointment). Il contatto resta attivo. Se la lezione non si terrà, modifica prima l’appuntamento."
+                        : "Nell’ultima lettura risulta \(appointment). La verifica del calendario non è ancora conclusa: il contatto resta attivo."
                     return
                 }
-                if let next = calendar.nextContactAppointment(client.id) {
-                    activityAlert = "Hai già \(next.title) il \(DisplayDate.label(next.start, format: "d MMM yyyy 'alle' HH:mm")). Il contatto resta attivo. Se la lezione non si terrà, modifica prima l’appuntamento."
+                guard verified else {
+                    activityAlert = calendar.contactActivityProblem ?? "Attendi la verifica del calendario e riprova. Non ho disattivato il contatto."
                     return
                 }
             }
