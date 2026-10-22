@@ -14,8 +14,18 @@ struct CoachDraftCard: View {
                 }
             }.buttonStyle(.plain).accessibilityIdentifier("coach-saved-draft-" + saved.id.uuidString)
         } else {
-            Label("Creato nel Calendario", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(PivotTheme.accent)
-                .accessibilityIdentifier("coach-draft-created-" + saved.id.uuidString)
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Creato nel Calendario", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(PivotTheme.accent)
+                    .accessibilityIdentifier("coach-draft-created-" + saved.id.uuidString)
+                if let options = saved.creationOptions, let travel = options.appleCalendarTravel {
+                    Label("Completa il tempo di percorrenza in Calendario Apple", systemImage: "calendar.badge.clock")
+                        .font(.subheadline).foregroundStyle(PivotTheme.amber).accessibilityIdentifier("coach-apple-travel-handoff")
+                    Text("Apri ‘\(saved.draft.title)’ → Modifica → Tempo di percorrenza.\nDa: \(travel.origin)\nA: \(options.location)\nStima: \(travel.minutes) min.")
+                        .font(.caption).foregroundStyle(PivotTheme.muted).textSelection(.enabled)
+                    Text("Pivot non può verificare la fascia Apple: se l’hai già completata, non aggiungere un secondo viaggio.")
+                        .font(.caption).foregroundStyle(PivotTheme.muted)
+                }
+            }
         }
     }
 }

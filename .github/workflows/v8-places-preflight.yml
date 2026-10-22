@@ -16,13 +16,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: Core, gateway e strumenti con soli dati sintetici
         run: |
+          bash -n Scripts/preview-ui.sh
           swift test
           node --test Backend/coach-gateway/worker.test.mjs
           python3 -m unittest discover -s Scripts -p 'test_*.py'
   places:
     needs: core
-    runs-on: macos-15
-    timeout-minutes: 60
+    # Standard hosted Intel runner: the first ARM allocation failed before
+    # any step, with a documented hosted-runner capacity error. No paid runner.
+    runs-on: macos-15-intel
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@v4
       - run: bash Scripts/prepare-ios-ci.sh

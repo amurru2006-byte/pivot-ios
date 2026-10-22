@@ -6,7 +6,7 @@ class UIReleaseShardTests(unittest.TestCase):
     def test_repository_coverage_is_complete_and_unique(self):
         plan = load_plan()
         self.assertEqual(sum(map(len, plan.values())), sum(map(len, discover_tests(ROOT).values())))
-        self.assertEqual({k: len(v) for k, v in plan.items()}, {"finance": 24, "workout": 20, "profile": 21, "pairing": 20})
+        self.assertEqual({k: len(v) for k, v in plan.items()}, {"finance": 24, "workout": 21, "profile": 21, "pairing": 20})
 
     def fixture(self):
         suites = {"ExampleTests": ["testA", "testB", "testC", "testD"]}

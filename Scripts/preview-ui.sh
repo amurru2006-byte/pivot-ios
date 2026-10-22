@@ -183,6 +183,8 @@ elif [ "$PIVOT_UI_ONLY_TESTING" = v8-083-controls-regression ]; then
   PIVOT_UI_TEST_COMMAND+=(
     -only-testing:PivotUITests/HistoricalIncomeInteractionTests/testLocalReviewCancelImportAndRelaunchKeepFundsSeparate
     -only-testing:PivotUITests/IncomeCorrectionInteractionTests/testContactDefaultsAndMultipleOriginsPersistAfterRelaunch
+    -only-testing:PivotUITests/PremiumCoachInteractionTests/testNaturalMissedWorkoutKeepsTomorrowAndAsksWhichSessionBeforeLocalRecovery
+    -only-testing:PivotUITests/PremiumCoachInteractionTests/testChatHandsRecoveryToRequestedDayWithoutCalendarWriteOrCloudConsent
     -only-testing:PivotUITests/IncomeCorrectionInteractionTests/testContactPeriodsGraphAndAddPartialReceiptKeepFullHistory
     -only-testing:PivotUITests/IncomeCorrectionInteractionTests/testCorrectionsPersistAndDoNotInventAnAdditionalReceipt
     -only-testing:PivotUITests/OnlineCoachInteractionTests/testRoutingPreferencesCanBeRememberedWithoutCreatingAnEvent
@@ -253,6 +255,23 @@ fi
 ' || PIVOT_UI_TEST_STATUS=$?
 if [ -n "$PIVOT_RELEASE_SHARD" ] && [ "$PIVOT_UI_TEST_STATUS" -eq 0 ]; then
   python3 Scripts/ui_release_shards.py --shard "$PIVOT_RELEASE_SHARD" --verify-log "$PIVOT_UI_LOG" || PIVOT_UI_TEST_STATUS=1
+fi
+if [ "$PIVOT_UI_ONLY_TESTING" = v8-088-places-regression ] && [ "$PIVOT_UI_TEST_STATUS" -eq 0 ]; then
+  python3 - "$PIVOT_UI_LOG" <<'PY' || PIVOT_UI_TEST_STATUS=1
+import sys
+from pathlib import Path
+sys.path.insert(0, 'Scripts')
+from ui_release_shards import ROOT, discover_tests, verify_log
+suites = discover_tests(ROOT)
+expected = [f'{suite}/{method}' for suite in ['SavedPlacesInteractionTests', 'CalendarCreationInteractionTests'] for method in suites[suite]]
+expected += [
+    'IncomeCorrectionInteractionTests/testContactDefaultsAndMultipleOriginsPersistAfterRelaunch',
+    'PremiumCoachInteractionTests/testNaturalMissedWorkoutKeepsTomorrowAndAsksWhichSessionBeforeLocalRecovery',
+    'PremiumCoachInteractionTests/testChatHandsRecoveryToRequestedDayWithoutCalendarWriteOrCloudConsent',
+]
+assert len(expected) == 7, 'Update the explicit preflight coverage before adding or dropping cases'
+print(f'Exact preflight cases verified: {verify_log(Path(sys.argv[1]).read_text(), expected)}')
+PY
 fi
 if [ -d "$PIVOT_UI_RESULT" ]; then
   xcrun xcresulttool export attachments --path "$PIVOT_UI_RESULT" --output-path "$PIVOT_PREVIEW_OUTPUT/Interactions" || {
