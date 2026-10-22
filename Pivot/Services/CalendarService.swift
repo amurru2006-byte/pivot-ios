@@ -27,6 +27,7 @@ final class CalendarService: ObservableObject {
     private var nextContactAppointments: [UUID: CalendarItem] = [:]
     private var contactFilter: CalendarFilter?
     private var contactRevision: UInt64 = 0
+    private let contactScanGate = ContactActivityScanGate()
     private let worker = CalendarWorker()
     private var inFlight: Task<CalendarSnapshot, Never>?
     private var lastFilter: CalendarFilter?
@@ -100,11 +101,16 @@ final class CalendarService: ObservableObject {
     /// Contact visibility has its own bounded history/future scan. Never extend
     /// the home agenda, start cloud requests or write Calendar events for this.
     @discardableResult func refreshContactActivity(store: PivotStore, force: Bool = false) async -> Bool {
-        guard !store.isLoading, !store.isRestoring, !store.locked, !checkingContactActivity else { return false }
+        guard !store.isLoading, !store.isRestoring, !store.locked, !Task.isCancelled else { return false }
         #if DEBUG && targetEnvironment(simulator)
         if ProcessInfo.processInfo.arguments.contains("--interaction-test"),
            !ProcessInfo.processInfo.arguments.contains("--contact-activity-test") { return false }
         #endif
+        guard await contactScanGate.acquire() else { return false }
+        defer { contactScanGate.release() }
+        // The store and settings can change while waiting for another read.
+        // Capture revisions only after acquiring the complete transaction.
+        guard !store.isLoading, !store.isRestoring, !store.locked, !Task.isCancelled else { return false }
         let filter = CalendarFilter(store.data.settings)
         let checkedRevision = invalidation
         let cached = !force && contactFilter == filter && contactRevision == invalidation
@@ -124,6 +130,7 @@ final class CalendarService: ObservableObject {
                 (ClientActivity.refreshed(data: data, scan: scan, now: now),
                  ClientActivity.nextAppointments(data: data, scan: scan, now: now))
             }.value
+            try Task.checkCancellation()
             guard !store.isRestoring, !store.locked, checkedRevision == invalidation,
                   version == store.data.updatedAt else { return false }
             contactActivity = scan; contactFilter = filter; contactRevision = checkedRevision
