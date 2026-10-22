@@ -5,13 +5,29 @@ import Foundation
 enum CoachPrivacy {
     static func knownLocations(events: [CalendarItem], data: AppData) -> [String] {
         var locations = Set<String>()
+        var explicitCatalogValues = Set<String>()
         for event in events { locations.insert(event.location) }
         for client in data.clients {
             guard let defaults = client.defaults else { continue }
             locations.insert(defaults.address)
             for origin in defaults.origins { locations.insert(origin.address) }
         }
-        return Array(locations).filter { $0.count >= 3 }
+        if let library = data.placeLibrary {
+            for place in library.favorites + library.recent.map({ SavedPlace($0.place) }) {
+                locations.insert(place.name); locations.insert(place.address)
+                explicitCatalogValues.insert(place.name); explicitCatalogValues.insert(place.address)
+                if let latitude = place.latitude, let longitude = place.longitude {
+                    // Only coordinate pairs, never individual numbers: otherwise
+                    // a latitude like 45 could erase a duration or an amount.
+                    for separator in [",", ", ", " "] {
+                        locations.insert("\(latitude)\(separator)\(longitude)")
+                        locations.insert("\(latitude)\(separator)\(longitude)".replacingOccurrences(of: ".", with: ","))
+                    }
+                }
+            }
+        }
+        return Array(locations).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && ($0.count >= 3 || explicitCatalogValues.contains($0)) }
     }
     static func text(_ text: String, events: [CalendarItem], data: AppData) -> String {
         var value = text

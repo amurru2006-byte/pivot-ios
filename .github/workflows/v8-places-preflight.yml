@@ -1,0 +1,42 @@
+name: Verifica luoghi e percorrenza assistita V8
+on:
+  push:
+    branches: ['codex/pivot-v8-088-places']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pivot-places-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Core, gateway e strumenti con soli dati sintetici
+        run: |
+          swift test
+          node --test Backend/coach-gateway/worker.test.mjs
+          python3 -m unittest discover -s Scripts -p 'test_*.py'
+  places:
+    needs: core
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash Scripts/prepare-ios-ci.sh
+      - name: Luoghi, dati dei contatti e conferma del viaggio senza rete reale
+        env:
+          PIVOT_UI_ONLY_TESTING: v8-088-places-regression
+        run: bash Scripts/preview-ui.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Pivot-places-preflight
+          path: |
+            build/online-privacy-build.log
+            build/online-privacy-tests.log
+            build/Previews/OnlinePrivacy/
+          retention-days: 2
+          if-no-files-found: ignore

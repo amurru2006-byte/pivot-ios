@@ -42,6 +42,8 @@ struct SettingsView: View {
                     settingsLink("AI online e privacy", subtitle: "Collegamento protetto e limiti", icon: "lock.shield") { OnlineCoachSettingsView() }
                     settingsLink("Tragitti e Apple Maps", subtitle: "Consenso, luoghi e tempi di viaggio", icon: "map.fill") { TravelCalculatorView() }
                         .accessibilityIdentifier("settings-travel")
+                    settingsLink("Luoghi salvati", subtitle: "Casa, Università e indirizzi abituali", icon: "mappin.and.ellipse") { SavedPlacesView() }
+                        .accessibilityIdentifier("settings-places")
                     settingsLink("Studio ed esami", subtitle: "Priorità e recuperi", icon: "graduationcap.fill") { studySettings }
                     settingsLink("Energia e riferimenti", subtitle: "Obiettivi dei valori da 0 a 10", icon: "chart.dots.scatter") { ratingSettings }
                     settingsLink("Prestazioni e salvataggio", subtitle: "Tempi di caricamento e stato dei dati", icon: "speedometer") { PerformanceView() }

@@ -26,6 +26,30 @@ struct LessonLogistics: Codable {
     var departure: ClientTravelOrigin? = nil
     var eventStartAtConfirmation: Date? = nil
     var eventEndAtConfirmation: Date? = nil
+    enum TravelFailure: LocalizedError {
+        case invalid
+        var errorDescription: String? { "La stima deve arrivare entro l’inizio della lezione. Controlla orario, indirizzi e durata (massimo 4 ore)." }
+    }
+    /// Copy the selected route as a whole. A duration alone must never be
+    /// attached to the old departure/destination or treated as a round trip.
+    func applying(_ estimate: TravelEstimate, for event: CalendarItem) throws -> LessonLogistics {
+        guard estimate.isValid, estimate.request.timing == .arriveBy, estimate.request.date == event.start,
+              let minutes = estimate.minutes, minutes <= 240,
+              !estimate.request.destination.address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              estimate.request.destination.address.count <= 500,
+              !estimate.request.origin.address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              estimate.request.origin.address.count <= 500 else { throw TravelFailure.invalid }
+        let sameOrigin = departure?.address == estimate.request.origin.address && departure?.mode == estimate.request.mode
+        let name = sameOrigin ? departure!.name : estimate.request.origin.name
+        let origin = ClientTravelOrigin(id: sameOrigin ? departure!.id : UUID(), name: name,
+            address: estimate.request.origin.address, mode: estimate.request.mode, beforeMinutes: minutes)
+        guard origin.isValid else { throw TravelFailure.invalid }
+        var value = self
+        if !sameOrigin || address != estimate.request.destination.address { value.travelAfterMinutes = 0 }
+        value.address = estimate.request.destination.address; value.departure = origin
+        value.travelBeforeMinutes = minutes; value.travelConfirmed = false; value.confirmedAt = nil
+        return value
+    }
     func isConfirmed(for event: CalendarItem) -> Bool {
         confirmedAt != nil
             && (eventTitleAtConfirmation.map { EventCoalescer.normalized($0) == EventCoalescer.normalized(event.title) } ?? true)

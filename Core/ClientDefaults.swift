@@ -49,6 +49,18 @@ struct ClientDefaults: Codable, Equatable {
     var place: LessonPlace = .undecided
     var address: String = ""
     var origins: [ClientTravelOrigin] = []
+    /// Only an unambiguous lesson with an explicit home-visit preference gets
+    /// a local suggestion. Never overwrite a draft/event location or infer that
+    /// calls, online lessons and arbitrary meetings take place at someone's home.
+    static func lessonDraftLocation(title: String, currentLocation: String, clients: [Client]) -> String {
+        guard currentLocation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              title.range(of: #"(?i)^\s*(?:lezione|ripetizioni|ripetizione)\b"#, options: .regularExpression) != nil,
+              title.range(of: #"(?i)\b(?:online|telefono|telefonica|videochiamata)\b"#, options: .regularExpression) == nil,
+              let client = StudentRecognition.recognize(title: title, clients: clients).client,
+              client.activityKind == .lesson, let defaults = client.defaults, defaults.isValid,
+              defaults.place == .studentHome else { return currentLocation }
+        return defaults.address
+    }
     var isValid: Bool {
         address.count <= 500 && origins.count <= 12
             && Set(origins.map(\.id)).count == origins.count

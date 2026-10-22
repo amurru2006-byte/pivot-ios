@@ -406,6 +406,8 @@ struct AppData: Codable {
     var calendarActionArchive: [ArchivedCalendarMutation]? = nil
     var calendarRestorations: [CalendarRestorationLink]? = nil
     var calendarActivityLinks: [CalendarActivityLink]? = nil
+    // Local, explicit place shortcuts/history; absent in older backups.
+    var placeLibrary: PlaceLibrary? = nil
 }
 
 struct ActivityDraft: Codable {

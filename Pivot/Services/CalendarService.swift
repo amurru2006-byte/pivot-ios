@@ -370,7 +370,7 @@ private actor CalendarWorker {
                         options: CalendarCreationOptions, creationID: UUID, mapsConsent: Bool) throws -> [CalendarItem] {
         guard draft.problem(now: Date(), calendarID: calendarID) == nil else { throw CalendarFailure.notWritable }
         if let message = options.problem(draft: draft, now: Date(), mapsConsent: mapsConsent) { throw CalendarFailure.invalidCreationOptions(message) }
-        let parts = options.parts(draft: draft, creationID: creationID)
+        let parts = options.occupiedParts(draft: draft, creationID: creationID)
         guard let start = parts.first?.start, let end = parts.last?.end else { throw CalendarFailure.notWritable }
         #if DEBUG && targetEnvironment(simulator)
         if creationFixture {
@@ -970,10 +970,13 @@ private actor CalendarWorker {
         let anchor = recurring ? event.occurrenceDate : nil
         let suffix = recurring ? "|\(Int((anchor ?? event.startDate).timeIntervalSince1970))" : ""
         let key = "\(event.calendar.calendarIdentifier)|\(external ?? eventID)\(suffix)"
+        let writtenLocation = event.location ?? ""
+        let location = writtenLocation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? (event.structuredLocation?.title ?? writtenLocation) : writtenLocation
         return CalendarItem(id: key, eventIdentifier: eventID, externalIdentifier: external,
             calendarIdentifier: event.calendar.calendarIdentifier, calendarTitle: event.calendar.title,
             title: event.title ?? "Evento", start: event.startDate, end: event.endDate,
-            location: event.location ?? "", notes: CalendarNoteText.plain(event.notes ?? ""),
+            location: location, notes: CalendarNoteText.plain(event.notes ?? ""),
             colorHex: Self.hex(event.calendar.cgColor), isAllDay: event.isAllDay,
             writable: event.calendar.allowsContentModifications,
             kind: Self.isTravelMarker(event.url) ? .other : .classify(title: event.title ?? "", calendar: event.calendar.title),
