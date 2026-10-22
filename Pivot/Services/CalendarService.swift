@@ -131,6 +131,13 @@ final class CalendarService: ObservableObject {
             contactActivityProblem = scan.complete ? nil : "Lettura del calendario incompleta: nessuna disattivazione automatica."
             if result.0 != store.data.clients { guard store.change({ $0.clients = result.0 }) else { return false } }
             return scan.complete
+        } catch is CancellationError {
+            // Navigating away can cancel the list's refresh while a contact's
+            // explicit verification is waiting. Cancellation is not revocation
+            // or evidence that previously observed appointments disappeared.
+            // Retain the bounded last observation for the explanatory warning;
+            // false still forbids deactivation without a completed fresh scan.
+            return false
         } catch {
             contactActivity = nil
             nextContactAppointments = [:]
