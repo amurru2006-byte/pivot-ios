@@ -73,19 +73,15 @@ final class TrainingConcernInteractionTests: XCTestCase {
         XCTAssertEqual(toggle.value as? String, value ? "0" : "1", app.debugDescription)
         let before = XCTAttachment(screenshot: app.screenshot())
         before.name = "concern-resolved-before-tap"; before.lifetime = .keepAlways; add(before)
-        // The failure hierarchy exposes a labelled 361x52 wrapper Switch and
-        // a separate 63x28 UIKit Switch inside it. Query and tap that native
-        // control instead of guessing coordinates on the labelled wrapper.
+        // Preserve the native child and the resulting status assertions, but
+        // touch its visible thumb instead of the unreliable AX activation point.
         let control = toggle.switches.firstMatch
         XCTAssertTrue(control.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertLessThan(control.frame.width, toggle.frame.width, app.debugDescription)
         XCTAssertTrue(control.isHittable, app.debugDescription)
-        control.tap()
+        tapVisibleSwitchOnce(toggle, to: value, in: app)
         let after = XCTAttachment(screenshot: app.screenshot())
         after.name = "concern-resolved-after-tap"; after.lifetime = .keepAlways; add(after)
-        let selected = NSPredicate(format: "value == %@", value ? "1" : "0")
-        expectation(for: selected, evaluatedWith: toggle)
-        waitForExpectations(timeout: 8)
         XCTAssertEqual(control.value as? String, value ? "1" : "0", app.debugDescription)
         XCTAssertEqual(app.staticTexts["concern-state"].label, value ? "Stato: non più presente" : "Stato: da tenere presente")
     }

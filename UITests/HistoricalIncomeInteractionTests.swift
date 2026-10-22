@@ -33,7 +33,7 @@ final class HistoricalIncomeInteractionTests: XCTestCase {
         for index in 0..<2 {
             let control = confirmations.element(boundBy: index)
             scrollControlIntoView(control, in: app)
-            if control.switches.firstMatch.exists { control.switches.firstMatch.tap() } else { control.tap() }
+            tapVisibleSwitchOnce(control, to: true, in: app)
         }
         scrollControlIntoView(ready, in: app); ready.tap()
         scrollControlIntoView(review, in: app); XCTAssertTrue(review.isEnabled); review.tap()
@@ -41,7 +41,7 @@ final class HistoricalIncomeInteractionTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["history-annual-after"].label.contains("28,00"))
         let paid = app.switches["history-paid-confirmation"]
         scrollControlIntoView(paid, in: app)
-        if paid.switches.firstMatch.exists { paid.switches.firstMatch.tap() } else { paid.tap() }
+        tapVisibleSwitchOnce(paid, to: true, in: app)
         let confirm = app.buttons["history-confirm-import"]
         scrollControlIntoView(confirm, in: app); XCTAssertTrue(confirm.isEnabled); confirm.tap()
         XCTAssertTrue(app.staticTexts["history-message"].waitForExistence(timeout: 15))
@@ -79,8 +79,7 @@ final class HistoricalIncomeInteractionTests: XCTestCase {
         scrollControlIntoView(review, in: app); review.tap()
         let paid = app.switches["history-paid-confirmation"]
         XCTAssertTrue(paid.waitForExistence(timeout: 8)); scrollControlIntoView(paid, in: app)
-        let actualSwitch = paid.switches.firstMatch
-        if actualSwitch.exists { actualSwitch.tap() } else { paid.tap() }
+        tapVisibleSwitchOnce(paid, to: true, in: app)
         scrollControlIntoView(confirm, in: app); XCTAssertTrue(confirm.isEnabled); confirm.tap()
         let result = app.staticTexts["history-message"]
         XCTAssertTrue(result.waitForExistence(timeout: 15)); XCTAssertTrue(result.label.contains("2 lezioni"))

@@ -49,8 +49,7 @@ final class BackupPrivacyInteractionTests: XCTestCase {
         XCTAssertFalse(save.isEnabled)
         let acknowledgement = app.switches["backup-password-saved"]
         scrollControlIntoView(acknowledgement, in: app)
-        let actualSwitch = acknowledgement.switches.firstMatch
-        if actualSwitch.exists { actualSwitch.tap() } else { acknowledgement.tap() }
+        tapVisibleSwitchOnce(acknowledgement, to: true, in: app)
         XCTAssertEqual(acknowledgement.value as? String, "1")
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "backup-confirmed-fields-and-acknowledgement"; screenshot.lifetime = .keepAlways; add(screenshot)

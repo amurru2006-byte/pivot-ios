@@ -9,12 +9,7 @@ final class SavingsEvidenceInteractionTests: XCTestCase {
         let control = app.switches[id]
         scrollControlIntoView(control, in: app)
         XCTAssertEqual(control.value as? String, "0")
-        // SwiftUI exposes a labelled switch containing the actual native
-        // switch. Tap that control's centre, not a label-relative coordinate.
-        let native = control.switches.firstMatch
-        if native.exists { native.tap() } else { control.tap() }
-        let enabled = expectation(for: NSPredicate(format: "value == %@", "1"), evaluatedWith: control)
-        wait(for: [enabled], timeout: 5)
+        tapVisibleSwitchOnce(control, to: true, in: app)
     }
     private func open(seeded: Bool) -> XCUIApplication {
         continueAfterFailure = false

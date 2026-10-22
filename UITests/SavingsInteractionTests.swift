@@ -25,8 +25,7 @@ final class SavingsInteractionTests: XCTestCase {
         tap("weekly-save")
         XCTAssertTrue(app.staticTexts["weekly-next"].waitForExistence(timeout: 8))
         scrollControlIntoView(automatic, in: app)
-        let native = automatic.switches.firstMatch
-        if native.exists { native.tap() } else { automatic.tap() }
+        tapVisibleSwitchOnce(automatic, to: true, in: app)
         XCTAssertEqual(automatic.value as? String, "1"); tap("weekly-save")
         app.buttons["Chiudi"].tap()
         XCTAssertTrue(app.staticTexts["savings-reserved-total"].label.contains("0,00"))
