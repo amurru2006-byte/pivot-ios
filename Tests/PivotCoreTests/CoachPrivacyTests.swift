@@ -27,6 +27,34 @@ final class CoachPrivacyTests: XCTestCase {
         XCTAssertEqual(CoachPrivacy.text(text, events: [], data: AppData()), text)
     }
 
+    func testSavedAndRecentlyUsedPlaceNamesAddressesAndCoordinatePairsAreMinimized() throws {
+        var library = PlaceLibrary()
+        try library.save(name: "Etichetta privata QA", address: "Indirizzo privato QA 42")
+        let resolved = TravelPlace(name: "Nome recente privato QA", address: "Indirizzo recente privato QA 8",
+                                   latitude: 45.123456, longitude: 9.654321)
+        try library.recordUse(resolved, now: now)
+        var data = AppData(); data.placeLibrary = library
+        let text = "Da Etichetta privata QA, Indirizzo privato QA 42 a Nome recente privato QA, Indirizzo recente privato QA 8, 45.123456, 9.654321. Ho 45 euro e 9 minuti."
+        let filtered = CoachPrivacy.text(text, events: [], data: data)
+        for secret in ["Etichetta privata QA", "Indirizzo privato QA", "Nome recente privato QA", "Indirizzo recente privato QA", "45.123456", "9.654321"] {
+            XCTAssertFalse(filtered.contains(secret), filtered)
+        }
+        XCTAssertTrue(filtered.contains("Ho 45 euro e 9 minuti."), filtered)
+        let snapshot = try CoachV8Snapshot.make(message: text, events: [], data: data, now: now, purpose: "conversation")
+        let sent = String(decoding: snapshot.encodedRequest, as: UTF8.self)
+        for secret in ["Etichetta privata QA", "Indirizzo privato QA", "Nome recente privato QA", "45.123456", "9.654321", "placeLibrary", "latitude", "longitude"] {
+            XCTAssertFalse(sent.contains(secret), sent)
+        }
+        XCTAssertEqual(data.placeLibrary, library, "Privacy filtering must not erase the local catalog")
+    }
+
+    func testExplicitShortPlaceLabelsArePrivateWithoutRedactingOtherWords() throws {
+        var library = PlaceLibrary()
+        try library.save(name: "HQ", address: "Via sintetica HQ 8")
+        var data = AppData(); data.placeLibrary = library
+        XCTAssertEqual(CoachPrivacy.text("HQ domani, non HQaltro", events: [], data: data), "[luogo] domani, non HQaltro")
+    }
+
     func testNameMatchingDoesNotRedactSubstringsOfOtherWords() {
         var data = AppData(); data.clients = [.init(name: "Anna", rateCents: 1000)]
         XCTAssertEqual(CoachPrivacy.text("Anna torna domani, non a capodanno", events: [], data: data), "[contatto 1] torna domani, non a capodanno")

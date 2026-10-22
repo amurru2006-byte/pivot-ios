@@ -32,6 +32,8 @@
   ],
   "profile": [
     "CalendarTimingInteractionTests",
+    "SavedPlacesInteractionTests",
+    "CalendarCreationInteractionTests/testAppleManualJourneyCreatesOnlyActivityAndClearlyRequiresCalendarCompletion",
     "CalendarCreationInteractionTests/testMapsEstimateRequiresConsentCanBeUsedThenRemovedWithoutWriting",
     "PivotInteractionTests/testSerie7RankPopupUsesTheReceivedSecondCrestAndDoesNotRepeat",
     "PivotInteractionTests/testSerie7SevenRankSlotsAndManualProfilePersistWithoutInventedBirthDate",

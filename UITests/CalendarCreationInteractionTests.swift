@@ -45,6 +45,7 @@ final class CalendarCreationInteractionTests: XCTestCase {
         let origin = app.textFields["creation-travel-origin"]
         tap(origin, app); origin.typeText("Partenza QA"); done("creation-travel-keyboard-done", app)
         tap(app.buttons["creation-travel-minutes-30"], app)
+        tapVisibleSwitchOnce(app.switches["creation-travel-separate"], to: true, in: app)
         shot("calendar-native-travel-manual-selection", app)
         app.buttons["creation-travel-done"].tap()
         XCTAssertTrue(app.staticTexts["creation-travel-preview"].waitForExistence(timeout: 8))
@@ -67,6 +68,30 @@ final class CalendarCreationInteractionTests: XCTestCase {
         // after the old deadline. Keep the two-event/one-trip/no-money checks.
         XCTAssertTrue(app.navigationBars["Nuovo impegno"].waitForNonExistence(timeout: 45))
         tap(audit, app); XCTAssertEqual(audit.label, "2 eventi · 1 spostamenti · 0 incassi")
+    }
+    func testAppleManualJourneyCreatesOnlyActivityAndClearlyRequiresCalendarCompletion() {
+        let app = launch(savedDraft: true)
+        tap(app.textFields["creation-location"], app)
+        app.textFields["creation-location"].typeText("Destinazione QA")
+        done("coach-draft-keyboard-done", app)
+        tap(app.buttons["creation-travel-open"], app)
+        tap(app.textFields["creation-travel-origin"], app)
+        app.textFields["creation-travel-origin"].typeText("Partenza QA")
+        done("creation-travel-keyboard-done", app)
+        XCTAssertEqual(app.switches["creation-travel-separate"].value as? String, "0")
+        tap(app.buttons["creation-travel-minutes-30"], app)
+        app.buttons["creation-travel-done"].tap()
+        XCTAssertTrue(app.staticTexts["creation-apple-travel-manual"].waitForExistence(timeout: 8))
+        app.buttons["creation-top-save"].tap()
+        let alert = app.alerts["Creare questo impegno nel Calendario?"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 10))
+        XCTAssertTrue(alert.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Aggiungerò un evento")).firstMatch.exists)
+        XCTAssertTrue(alert.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "va completata in Calendario Apple")).firstMatch.exists)
+        alert.buttons.matching(identifier: "coach-create-confirm").firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Nuovo impegno"].waitForNonExistence(timeout: 45))
+        let audit = app.staticTexts["creation-events-audit"]; tap(audit, app)
+        XCTAssertEqual(audit.label, "1 eventi · 0 spostamenti · 0 incassi")
+        shot("apple-manual-travel-one-event-not-a-native-write", app)
     }
     func testMapsEstimateRequiresConsentCanBeUsedThenRemovedWithoutWriting() {
         // Calendar creation through chat is covered by the separate native

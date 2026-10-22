@@ -21,6 +21,9 @@ struct TravelCalculatorView: View {
     @State private var result: TravelEstimate?
     @State private var message: String?
     @State private var task: Task<Void, Never>?
+    @State private var choosingOrigin = false
+    @State private var choosingDestination = false
+    @State private var savingPlace: SavedPlace?
     private let nextStart: Date?
     private let context: TravelEventContext?
     private let onUse: ((TravelEstimate) -> Void)?
@@ -63,8 +66,14 @@ struct TravelCalculatorView: View {
                 Text("Richieste sintetiche: \(maps.requestCount)").font(.caption).accessibilityIdentifier("travel-test-count")
             }
         }.navigationTitle("Tragitti")
-            .onChange(of: originText) { _, _ in origin = nil; originResults = []; invalidate() }
-            .onChange(of: destinationText) { _, _ in destination = nil; destinationResults = []; invalidate() }
+            .onChange(of: originText) { _, text in
+                if text != origin?.address { origin = nil }
+                originResults = []; invalidate()
+            }
+            .onChange(of: destinationText) { _, text in
+                if text != destination?.address { destination = nil }
+                destinationResults = []; invalidate()
+            }
             .onChange(of: mode) { _, _ in invalidate() }
             .onChange(of: timing) { _, _ in invalidate() }
             .onChange(of: date) { _, _ in invalidate() }
@@ -73,6 +82,15 @@ struct TravelCalculatorView: View {
             .onChange(of: calendar.events) { _, _ in checkContext() }
             .onChange(of: store.data.updatedAt) { _, _ in checkContext() }
             .onDisappear { task?.cancel(); maps.cancelPending() }
+            .sheet(isPresented: $choosingOrigin) {
+                NavigationStack { SavedPlacesView { choose($0, isOrigin: true) } }
+            }
+            .sheet(isPresented: $choosingDestination) {
+                NavigationStack { SavedPlacesView { choose($0, isOrigin: false) } }
+            }
+            .sheet(item: $savingPlace) { place in
+                NavigationStack { SavedPlaceEditor(place: place, editingID: nil) }
+            }
     }
     private var privacyCard: some View {
         PivotCard {
@@ -97,15 +115,21 @@ struct TravelCalculatorView: View {
         TextField(isOrigin ? "Luogo di partenza" : "Destinazione", text: isOrigin ? $originText : $destinationText)
             .textInputAutocapitalization(.words).autocorrectionDisabled()
             .accessibilityIdentifier(isOrigin ? "travel-origin" : "travel-destination")
+        Button {
+            invalidate()
+            if isOrigin { choosingOrigin = true } else { choosingDestination = true }
+        } label: { Label("Scegli dai tuoi luoghi", systemImage: "bookmark") }
+            .frame(minHeight: 44).accessibilityIdentifier(isOrigin ? "travel-saved-origin" : "travel-saved-destination")
         if let chosen {
             Label("\(chosen.name) · \(chosen.address)", systemImage: "checkmark.circle").font(.caption).foregroundStyle(PivotTheme.accent)
+            Button("Salva questo luogo") { savingPlace = SavedPlace(chosen) }
+                .frame(minHeight: 44).accessibilityIdentifier(isOrigin ? "travel-save-origin" : "travel-save-destination")
         }
         Button(isOrigin ? "Cerca partenza" : "Cerca destinazione") { search(isOrigin: isOrigin) }
             .frame(minHeight: 44).disabled(maps.busy).accessibilityIdentifier(isOrigin ? "travel-search-origin" : "travel-search-destination")
         ForEach(results) { place in
             Button {
-                if isOrigin { origin = place; originResults = [] } else { destination = place; destinationResults = [] }
-                result = nil; message = nil
+                choose(SavedPlace(place), isOrigin: isOrigin)
             } label: {
                 VStack(alignment: .leading) { Text(place.name); Text(place.address).font(.caption).foregroundStyle(PivotTheme.muted) }
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -130,12 +154,36 @@ struct TravelCalculatorView: View {
                     guard contextIsCurrent, let request, value.isUsable(for: request, consent: maps.consentGranted, now: Date()) else {
                         message = "La stima è scaduta o i dati sono cambiati. Ricalcola il tragitto."; return
                     }
+                    rememberPlaces(value)
                     onUse(value); dismiss()
                 }.buttonStyle(PivotPrimaryButton()).accessibilityIdentifier("travel-use")
+            } else {
+                Button("Ricorda questi luoghi") {
+                    guard contextIsCurrent, let request, value.isUsable(for: request, consent: maps.consentGranted, now: Date()) else {
+                        message = "La stima è scaduta o i dati sono cambiati. Ricalcola il tragitto."; return
+                    }
+                    rememberPlaces(value)
+                }.frame(minHeight: 44).accessibilityIdentifier("travel-remember-places")
             }
         }
     }
     private func invalidate() { task?.cancel(); maps.cancelPending(); result = nil; message = nil }
+    private func choose(_ place: SavedPlace, isOrigin: Bool) {
+        guard place.isValid else { message = "Questo luogo non è valido. Controllalo nei luoghi salvati."; return }
+        invalidate()
+        if isOrigin { originText = place.address; origin = place.resolvedPlace; originResults = [] }
+        else { destinationText = place.address; destination = place.resolvedPlace; destinationResults = [] }
+        if place.resolvedPlace == nil { message = "Indirizzo inserito. Premi Cerca per scegliere il risultato Maps prima di calcolare." }
+    }
+    private func rememberPlaces(_ value: TravelEstimate) {
+        do {
+            var library = store.data.placeLibrary ?? PlaceLibrary()
+            let now = Date()
+            try library.recordUse(value.request.origin, now: now)
+            if value.request.origin != value.request.destination { try library.recordUse(value.request.destination, now: now) }
+            if !store.change({ $0.placeLibrary = library }) { message = store.error }
+        } catch { message = error.localizedDescription }
+    }
     private var contextIsCurrent: Bool {
         guard let context else { return true }
         return calendar.hasAccess && context.isCurrent(events: calendar.events, data: store.data)

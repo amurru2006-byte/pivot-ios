@@ -27,6 +27,7 @@ struct CoachCalendarDraftView: View {
     @State private var options = CalendarCreationOptions()
     @State private var needsVerification = false
     @State private var showTravel = false
+    @State private var showPlaces = false
     @FocusState private var focusedField: CoachCalendarDraftField?
 
     private var choices: [CalendarChoice] {
@@ -98,6 +99,9 @@ struct CoachCalendarDraftView: View {
                         if calendarID.isEmpty { problem = "Il calendario scelto per questa bozza non è più disponibile. Scegline uno prima di confermare." }
                     } else { calendarID = suggestion.calendarID ?? "" }
                     options = initialOptions; needsVerification = initialNeedsVerification
+                    if savedDraftID == nil || store.data.coachState.calendarDrafts?.contains(where: { $0.id == savedDraftID && $0.creationOptions == nil }) == true {
+                        options.location = ClientDefaults.lessonDraftLocation(title: draft.title, currentLocation: options.location, clients: store.data.clients)
+                    }
                     topic = CoachCalendarRouting.suggestedTopic(title: draft.title, hint: draft.calendarHint)
                     loaded = true
                 }
@@ -112,6 +116,11 @@ struct CoachCalendarDraftView: View {
                 .sheet(isPresented: $showTravel) {
                     CalendarTravelEditor(options: options, start: draft.start, suggestedOrigin: suggestedOrigin) { options = $0 }
                 }
+                .sheet(isPresented: $showPlaces) {
+                    NavigationStack { SavedPlacesView { place in
+                        options.location = place.address; options.travel = nil; options.appleCalendarTravel = nil
+                    } }
+                }
         }.interactiveDismissDisabled(busy)
     }
     private var identitySection: some View {
@@ -121,6 +130,8 @@ struct CoachCalendarDraftView: View {
             TextField("Posizione", text: $options.location)
                 .focused($focusedField, equals: .location).autocorrectionDisabled()
                 .accessibilityLabel("Posizione dell’evento").accessibilityIdentifier("creation-location")
+            Button { focusedField = nil; showPlaces = true } label: { Label("Scegli dai tuoi luoghi", systemImage: "bookmark") }
+                .accessibilityIdentifier("creation-saved-location")
         }
     }
     private var timingSection: some View {
@@ -139,9 +150,9 @@ struct CoachCalendarDraftView: View {
             if draft.endEstimated { Text("La fine è una stima: controllala prima di confermare.").foregroundStyle(PivotTheme.amber) }
             Button { focusedField = nil; showTravel = true } label: {
                 HStack {
-                    Label("Tempo di percorrenza", systemImage: options.travel?.symbolName ?? "arrow.triangle.turn.up.right.diamond")
+                    Label("Tempo di percorrenza", systemImage: options.plannedTravel?.symbolName ?? "arrow.triangle.turn.up.right.diamond")
                     Spacer()
-                    Text(options.travel.map { "\($0.minutes) min" } ?? "Nessuno").foregroundStyle(.secondary)
+                    Text(options.plannedTravel.map { "\($0.minutes) min" } ?? "Nessuno").foregroundStyle(.secondary)
                     Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
                 }.foregroundStyle(.primary)
             }.accessibilityIdentifier("creation-travel-open")
@@ -176,9 +187,10 @@ struct CoachCalendarDraftView: View {
     private var confirmationText: String {
         let prefix = historical ? "Stai registrando un evento nel passato. " : ""
         let count = options.travel == nil ? "Aggiungerò un evento. " : "Aggiungerò due eventi nello stesso calendario: attività e Spostamento. "
-        let warning = conflicts.isEmpty ? "Nessuna sovrapposizione rilevata nei calendari inclusi per questi orari, compreso il viaggio scelto." :
+        let manual = options.appleCalendarTravel == nil ? "" : "La fascia Tempo di percorrenza va completata in Calendario Apple; Pivot non può verificarne il contenuto. "
+        let warning = conflicts.isEmpty ? "Nessuna sovrapposizione rilevata nei calendari inclusi per questi orari e la stima scelta. Le fasce di percorrenza Apple non sono leggibili da Pivot." :
             "Si sovrappone a: " + conflicts.map(\.title).joined(separator: ", ") + ". Conferma solo se vuoi mantenere la sovrapposizione."
-        return prefix + count + warning
+        return prefix + count + manual + warning
     }
     private func closeDraft() {
         guard !busy, persistDraft() else { return }

@@ -17,6 +17,36 @@ final class CalendarCreationOptionsTests: XCTestCase {
         let parts = CalendarCreationOptions().parts(draft: draft, creationID: UUID())
         XCTAssertEqual(parts.count, 1); XCTAssertEqual(parts[0].start, draft.start); XCTAssertEqual(parts[0].end, draft.end)
     }
+    func testAppleManualTravelReservesTimeButExportsOnlyTheActivity() throws {
+        var value = options; value.appleCalendarTravel = value.travel; value.travel = nil
+        let id = UUID(), written = value.parts(draft: draft, creationID: UUID())
+        XCTAssertEqual(written.count, 1); XCTAssertFalse(written[0].isTravel)
+        XCTAssertEqual(written[0].start, draft.start); XCTAssertEqual(written[0].end, draft.end)
+        let occupied = value.occupiedParts(draft: draft, creationID: id)
+        XCTAssertEqual(occupied.count, 2); XCTAssertEqual(occupied[0].start, draft.start!.addingTimeInterval(-1800))
+        var earlier = item(occupied[0]); earlier.id = "earlier-qa"
+        XCTAssertEqual(CalendarCreationBundle.conflicts(parts: occupied, events: [earlier]).count, 1)
+        XCTAssertTrue(CalendarCreationBundle.conflicts(parts: written, events: [earlier]).isEmpty)
+        let restored = try JSONDecoder().decode(CalendarCreationOptions.self, from: JSONEncoder().encode(value))
+        XCTAssertEqual(restored, value); XCTAssertNil(restored.travel)
+        var data = AppData()
+        XCTAssertTrue(CalendarActivityLinks.capture(id: id, receipt: .init(activity: item(written[0]), travel: nil), options: value, data: &data, now: now))
+        XCTAssertNil(data.calendarActivityLinks)
+    }
+    func testAppleManualTravelUsesSameMapsValidationAndCannotMixExports() {
+        var value = mappedOptions; value.appleCalendarTravel = value.travel; value.travel = nil
+        XCTAssertNil(value.problem(draft: draft, now: now, mapsConsent: true))
+        XCTAssertNotNil(value.problem(draft: draft, now: now, mapsConsent: false))
+        var changed = draft; changed.start!.addTimeInterval(60)
+        XCTAssertNotNil(value.problem(draft: changed, now: now, mapsConsent: true))
+        value.travel = value.appleCalendarTravel
+        XCTAssertFalse(value.isValid); XCTAssertTrue(value.occupiedParts(draft: draft, creationID: UUID()).isEmpty)
+    }
+    func testLegacySeparateTravelDoesNotMigrateSilentlyToAppleManual() throws {
+        let decoded = try JSONDecoder().decode(CalendarCreationOptions.self, from: JSONEncoder().encode(options))
+        XCTAssertNil(decoded.appleCalendarTravel)
+        XCTAssertEqual(decoded.parts(draft: draft, creationID: UUID()).count, 2)
+    }
     func testSeparateTravelIsContiguousAndDoesNotInflateActivityOrIncome() {
         let parts = options.parts(draft: draft, creationID: UUID())
         XCTAssertEqual(parts.count, 2); XCTAssertEqual(parts[0].title, "Spostamento")

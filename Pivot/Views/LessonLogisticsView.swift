@@ -11,6 +11,8 @@ struct LessonLogisticsView: View {
     @State private var selectedOriginID: UUID?
     @State private var updateUsualEstimate = false
     @State private var message: String?
+    @State private var choosingOrigin = false
+    @State private var choosingDestination = false
     private var contact: Client? { StudentRecognition.existingClient(named: logistics.studentName, clients: store.data.clients) }
     private var origins: [ClientTravelOrigin] { contact?.defaults?.origins ?? [] }
     private var contactFields: some View {
@@ -23,14 +25,24 @@ struct LessonLogisticsView: View {
                     Picker("Metodo di pagamento previsto", selection: Binding(get: { logistics.paymentMethod ?? .unspecified }, set: { logistics.paymentMethod = $0 })) {
                         ForEach(ClientPaymentMethod.allCases, id: \.self) { Text($0.label).tag($0) }
                     }.accessibilityIdentifier("lesson-payment-method")
-                    Picker("Chi si sposta?", selection: Binding(get: { logistics.place }, set: { logistics.place = $0; invalidateTravel() })) {
+                    Picker("Chi si sposta?", selection: Binding(get: { logistics.place }, set: {
+                        logistics.place = $0
+                        if $0 == .studentHome, logistics.address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            logistics.address = contact?.defaults?.address ?? ""
+                        }
+                        invalidateTravel()
+                    })) {
                         ForEach(LessonPlace.allCases, id: \.self) { Text($0.label).tag($0) }
                     }
                     TextField("Indirizzo / luogo (facoltativo)", text: Binding(get: { logistics.address }, set: { logistics.address = $0; invalidateTravel() }))
+                    Button { choosingDestination = true } label: { Label("Scegli destinazione salvata", systemImage: "bookmark") }
+                        .frame(minHeight: 44).accessibilityIdentifier("lesson-saved-destination")
         }
     }
     private var departureFields: some View {
         Group {
+                    Button { choosingOrigin = true } label: { Label("Scegli da dove parti", systemImage: "bookmark") }
+                        .frame(minHeight: 44).accessibilityIdentifier("lesson-saved-origin")
                     if !origins.isEmpty {
                         Picker("Partenza di questa lezione", selection: Binding<UUID?>(get: { selectedOriginID }, set: { id in
                             selectedOriginID = id
@@ -66,12 +78,14 @@ struct LessonLogisticsView: View {
                     NavigationLink {
                         TravelCalculatorView(origin: logistics.departure?.address ?? "", destination: logistics.address,
                                              mode: logistics.departure?.mode ?? .transit,
-                                             date: max(event.start, Date().addingTimeInterval(300)), timing: .arriveBy,
+                                             date: event.start, timing: .arriveBy,
                                              nextStart: event.start, context: .init(events: [event])) { estimate in
-                            guard let minutes = estimate.minutes, minutes <= 240 else { message = "Il viaggio non è valido o supera 4 ore: controlla il luogo scelto e i tempi."; return }
-                            logistics.travelBeforeMinutes = minutes
-                            invalidateTravel()
-                            message = "Stima di andata inserita. Controlla anche il viaggio successivo e conferma i tempi di questa lezione."
+                            do {
+                                logistics = try logistics.applying(estimate, for: event)
+                                if selectedOriginID != logistics.departure?.id { selectedOriginID = nil }
+                                invalidateTravel()
+                                message = "Partenza, destinazione e stima di andata aggiornate. Controlla anche il viaggio successivo e conferma i tempi di questa lezione."
+                            } catch { message = error.localizedDescription }
                         }
                     } label: { Label("Calcola l’andata con Apple Maps", systemImage: "map") }
                         .frame(minHeight: 44).accessibilityIdentifier("lesson-apple-maps")
@@ -83,6 +97,10 @@ struct LessonLogisticsView: View {
                             .accessibilityIdentifier("lesson-update-estimate")
                     }
                     Text("Conferma anche se il viaggio è zero. Non inventiamo un tragitto da un indirizzo incompleto.").font(.caption).foregroundStyle(PivotTheme.muted)
+                    DisclosureGroup("Hai già impostato il viaggio in Calendario Apple?") {
+                        Text("Pivot legge la destinazione, ma Apple non espone qui partenza e durata della fascia di percorrenza. Riporta il tempo già impostato oppure calcolalo con Maps. La conferma aggiorna la pianificazione di Pivot: non crea uno Spostamento e non modifica la fascia Apple.")
+                            .font(.caption).foregroundStyle(PivotTheme.muted)
+                    }
                     if logistics.travelConfirmed {
                         Text("Parti alle \(PivotDate.time(event.start.addingTimeInterval(-Double(logistics.travelBeforeMinutes) * 60)))").foregroundStyle(PivotTheme.accent)
                     }
@@ -120,6 +138,24 @@ struct LessonLogisticsView: View {
                 }
                 .onChange(of: logistics.travelConfirmed) { _, value in if !value { updateUsualEstimate = false } }
         }.interactiveDismissDisabled(onDefer != nil)
+            .sheet(isPresented: $choosingOrigin) {
+                NavigationStack { SavedPlacesView { place in
+                    guard place.address.count <= 500, place.name.count <= 120 else {
+                        message = "Per questa lezione usa un nome entro 120 caratteri e un indirizzo entro 500. Il luogo salvato non è stato modificato."; return
+                    }
+                    logistics.departure = ClientTravelOrigin(name: place.name, address: place.address)
+                    selectedOriginID = nil; logistics.travelBeforeMinutes = 0; logistics.travelAfterMinutes = 0; invalidateTravel()
+                } }
+            }
+            .sheet(isPresented: $choosingDestination) {
+                NavigationStack { SavedPlacesView { place in
+                    guard place.address.count <= 500 else {
+                        message = "L’indirizzo supera i 500 caratteri disponibili per la lezione. Controllalo senza troncarlo."; return
+                    }
+                    logistics.address = place.address
+                    logistics.travelBeforeMinutes = 0; logistics.travelAfterMinutes = 0; invalidateTravel()
+                } }
+            }
     }
     private var validDeparture: Bool { logistics.departure?.isValid ?? true }
     private func invalidateTravel() { logistics.travelConfirmed = false; logistics.confirmedAt = nil; updateUsualEstimate = false }

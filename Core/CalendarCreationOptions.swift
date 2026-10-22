@@ -6,15 +6,20 @@ struct CalendarCreationOptions: Codable, Equatable {
     var availability = 0 // EventKit busy; free is 1. No private EventKit keys.
     var alertMinutes: Int? = nil
     var travel: CalendarCreationTravel? = nil
+    // A local planning estimate; NOT evidence that Apple's private native
+    // travel-time field has been read or written. Legacy separate trips remain.
+    var appleCalendarTravel: CalendarCreationTravel? = nil
+    var plannedTravel: CalendarCreationTravel? { travel ?? appleCalendarTravel }
 
     var isValid: Bool {
         location.count <= 1000 && [0, 1].contains(availability)
             && (alertMinutes.map { [0, 5, 10, 15, 30, 60, 120, 1440].contains($0) } ?? true)
-            && (travel?.isValid ?? true)
+            && (travel?.isValid ?? true) && (appleCalendarTravel?.isValid ?? true)
+            && (travel == nil || appleCalendarTravel == nil)
     }
     func problem(draft: CoachCalendarDraft, now: Date, mapsConsent: Bool) -> String? {
         guard isValid else { return "Controlla luogo, avviso e tempo di percorrenza." }
-        guard let travel else { return nil }
+        guard let travel = plannedTravel else { return nil }
         guard let start = draft.start else { return "Imposta prima l’inizio dell’evento." }
         guard !location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !travel.origin.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -47,6 +52,14 @@ struct CalendarCreationOptions: Codable, Equatable {
             title: "Spostamento", start: departure, end: start, location: location, notes: note,
             availability: 0, alertMinutes: nil, isTravel: true)
         return [trip, main]
+    }
+    /// Reserve travel for conflict detection without exporting a second event
+    /// when the user will complete native travel in Apple Calendar.
+    func occupiedParts(draft: CoachCalendarDraft, creationID: UUID) -> [CalendarCreationPart] {
+        guard isValid else { return [] }
+        var planning = self
+        planning.travel = plannedTravel; planning.appleCalendarTravel = nil
+        return planning.parts(draft: draft, creationID: creationID)
     }
 }
 
