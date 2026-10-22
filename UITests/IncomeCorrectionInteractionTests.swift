@@ -207,12 +207,7 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
         let hasReceipt = app.switches["income-manual-has-receipt"]
         scrollControlIntoView(hasReceipt, in: app)
         XCTAssertEqual(hasReceipt.value as? String, "0")
-        // iOS exposes a nested value-only AX switch whose tap can be ignored.
-        // Tap the visible physical thumb once, just as on the phone, and require
-        // the real state transition before looking for the conditional field.
-        hasReceipt.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
-        let paid = expectation(for: NSPredicate(format: "value == %@", "1"), evaluatedWith: hasReceipt)
-        wait(for: [paid], timeout: 5)
+        tapVisibleSwitchOnce(hasReceipt, to: true, in: app)
         XCTAssertTrue(app.textFields["income-manual-received"].waitForExistence(timeout: 5))
         replace(app.textFields["income-manual-received"], with: "15", app: app)
         let save = app.buttons["income-manual-save"]

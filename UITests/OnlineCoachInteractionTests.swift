@@ -112,9 +112,9 @@ final class OnlineCoachInteractionTests: XCTestCase {
         let preferences = app.buttons["Preferenze calendario"]
         scrollControlIntoView(preferences, in: app); preferences.tap()
         let account = app.switches["coach-routing-remember-account"]
-        scrollControlIntoView(account, in: app); if account.switches.firstMatch.exists { account.switches.firstMatch.tap() } else { account.tap() }
+        tapVisibleSwitchOnce(account, to: true, in: app)
         let remember = app.switches["coach-routing-remember-topic"]
-        scrollControlIntoView(remember, in: app); if remember.switches.firstMatch.exists { remember.switches.firstMatch.tap() } else { remember.tap() }
+        tapVisibleSwitchOnce(remember, to: true, in: app)
         let topic = app.textFields["coach-routing-topic"]
         scrollControlIntoView(topic, in: app); topic.tap(); let current = topic.value as? String ?? ""
         topic.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count) + "Persona QA")

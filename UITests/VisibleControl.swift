@@ -1,6 +1,33 @@
 import XCTest
 
 extension XCTestCase {
+    /// One real touch at the visible native thumb. Nested SwiftUI AX switch
+    /// activation points can be stale even while both wrappers are hittable.
+    /// Never retry the touch or set state through a fixture to make a test pass.
+    func tapVisibleSwitchOnce(_ element: XCUIElement, to enabled: Bool, in app: XCUIApplication,
+                              file: StaticString = #filePath, line: UInt = #line) {
+        scrollControlIntoView(element, in: app, file: file, line: line)
+        let before = enabled ? "0" : "1", after = enabled ? "1" : "0"
+        guard element.value as? String == before, element.isEnabled, element.isHittable,
+              let snapshot = try? element.snapshot() else {
+            XCTFail("Switch must be visible, enabled and in its expected initial state", file: file, line: line); return
+        }
+        var nodes: [any XCUIElementSnapshot] = [snapshot], pending = snapshot.children
+        while let node = pending.popLast() { nodes.append(node); pending.append(contentsOf: node.children) }
+        guard let thumb = nodes.last(where: { $0.elementType == .switch && $0.frame.width > 0 && $0.frame.height > 0 })?.frame,
+              snapshot.frame.width > 0, snapshot.frame.height > 0 else {
+            XCTFail("Cannot locate the native switch thumb", file: file, line: line); return
+        }
+        let dx = (thumb.midX - snapshot.frame.minX) / snapshot.frame.width
+        let dy = (thumb.midY - snapshot.frame.minY) / snapshot.frame.height
+        guard dx.isFinite, dy.isFinite, (0...1).contains(dx), (0...1).contains(dy) else {
+            XCTFail("Switch thumb is outside its visible wrapper", file: file, line: line); return
+        }
+        element.coordinate(withNormalizedOffset: CGVector(dx: dx, dy: dy)).tap()
+        let changed = expectation(for: NSPredicate(format: "value == %@", after), evaluatedWith: element)
+        wait(for: [changed], timeout: 8)
+        XCTAssertEqual(element.value as? String, after, file: file, line: line)
+    }
     func attachFailureDiagnostics(_ name: String) {
         guard (testRun?.failureCount ?? 0) > 0 else { return }
         let app = XCUIApplication()
