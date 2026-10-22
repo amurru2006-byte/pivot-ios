@@ -61,6 +61,16 @@ struct CoachRecoveryRequest: Codable, Equatable {
         // request to a recovery command. Unrecognized prose stays in normal chat.
         let excluded: Set<String> = ["non", "senza", "se", "forse", "dolore", "infortunio", "febbre", "male", "medico", "cancella", "elimina", "crea", "registra"]
         guard recovery, excluded.isDisjoint(with: tokens), text.count <= 1500, now.timeIntervalSinceReferenceDate.isFinite else { return nil }
+        if clause.workoutStatement {
+            // The statement was about training, but a different noun after
+            // "recover" must not silently select an old gym session. Complex
+            // prose stays in conversation rather than guessing the activity.
+            let supported: Set<String> = ["recupera", "recuperare", "recuperarlo", "recuperarla", "recuperiamo",
+                "palestra", "allenamento", "squat", "bench", "deadlift", "oggi", "stasera", "stamattina", "domani", "dopodomani",
+                "domenica", "lunedi", "martedi", "mercoledi", "giovedi", "venerdi", "sabato", "mattina", "mattino", "pomeriggio", "sera", "serata",
+                "questa", "settimana", "la", "il", "l", "lo", "un", "una", "mio", "mia", "di", "nel", "nella", "per", "in", "a", "grazie", "favore"]
+            guard tokens.isSubset(of: supported) else { return nil }
+        }
         let afterTomorrow = tokens.contains("dopodomani")
         let explicitDays = [tokens.contains("oggi") || tokens.contains("stasera") || tokens.contains("stamattina"), tokens.contains("domani"), afterTomorrow]
         guard explicitDays.filter({ $0 }).count <= 1 else { return nil }
