@@ -91,6 +91,8 @@ final class CalendarCreationInteractionTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Nuovo impegno"].waitForNonExistence(timeout: 45))
         let audit = app.staticTexts["creation-events-audit"]; tap(audit, app)
         XCTAssertEqual(audit.label, "1 eventi · 0 spostamenti · 0 incassi")
+        tap(app.staticTexts["coach-apple-travel-handoff"], app)
+        XCTAssertTrue(app.staticTexts["coach-apple-travel-handoff"].exists)
         shot("apple-manual-travel-one-event-not-a-native-write", app)
     }
     func testMapsEstimateRequiresConsentCanBeUsedThenRemovedWithoutWriting() {

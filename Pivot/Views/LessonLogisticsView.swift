@@ -88,7 +88,11 @@ struct LessonLogisticsView: View {
                             } catch { message = error.localizedDescription }
                         }
                     } label: { Label("Calcola l’andata con Apple Maps", systemImage: "map") }
-                        .frame(minHeight: 44).accessibilityIdentifier("lesson-apple-maps")
+                        .frame(minHeight: 44).disabled(event.start < Date()).accessibilityIdentifier("lesson-apple-maps")
+                    if event.start < Date() {
+                        Text("Per una lezione passata indica il tempo effettivo: Maps non ricostruisce il viaggio di allora.")
+                            .font(.caption).foregroundStyle(PivotTheme.muted)
+                    }
                     Toggle("Ho verificato i tempi di viaggio", isOn: $logistics.travelConfirmed)
                         .accessibilityIdentifier("lesson-travel-confirm")
                     if selectedOriginID != nil, logistics.travelConfirmed,

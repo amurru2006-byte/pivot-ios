@@ -148,6 +148,25 @@ final class PremiumCoachInteractionTests: XCTestCase {
         tap(app.buttons["coach-clear-draft-focus"], app)
         XCTAssertFalse(app.staticTexts["coach-focused-draft"].exists)
     }
+    func testNaturalMissedWorkoutKeepsTomorrowAndAsksWhichSessionBeforeLocalRecovery() {
+        let app = launch(["--recovery-forecast-test"])
+        enter("Non sono riuscito ad allenarmi, recuperiamo domani sera", app)
+        XCTAssertFalse(app.buttons["coach-online-approve"].exists)
+        let link = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "coach-recovery-request-")).firstMatch
+        tap(link, app)
+        XCTAssertTrue(app.staticTexts["prediction-recovery-requested-day"].waitForExistence(timeout: 8))
+        let picker = app.buttons["prediction-recovery-target"]
+        XCTAssertFalse((picker.label + " " + (picker.value as? String ?? "")).contains("Allenamento QA da recuperare"), "A missed day was not stated; do not guess the old session")
+        tap(picker, app)
+        tap(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Allenamento QA da recuperare")).firstMatch, app)
+        tapVisibleSwitchOnce(app.switches["prediction-recovery-preparation"], to: true, in: app)
+        tap(app.buttons["prediction-recovery-search"], app)
+        let stage = app.buttons.matching(identifier: "prediction-recovery-stage").firstMatch
+        XCTAssertTrue(stage.waitForExistence(timeout: 10)); XCTAssertFalse(stage.isEnabled)
+        XCTAssertFalse(app.staticTexts["Da applicare al Calendario"].exists)
+        XCTAssertFalse(app.buttons["coach-online-approve"].exists)
+        capture("natural-recovery-asks-session-before-pending-calendar-change", app)
+    }
     func testChatHandsRecoveryToRequestedDayWithoutCalendarWriteOrCloudConsent() {
         let app = launch(["--recovery-forecast-test"])
         enter("Vorrei recuperare la palestra domani sera", app)

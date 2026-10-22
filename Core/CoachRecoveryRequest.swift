@@ -30,16 +30,39 @@ struct CoachRecoveryRequest: Codable, Equatable {
         return max(0, min(horizonDays, days))
     }
 
+    /// A stated missed day is not the requested recovery day. Keep it anchored
+    /// to the original request even when the conversation is reopened later.
+    var sourceDay: Date? {
+        guard requestedAt.timeIntervalSinceReferenceDate.isFinite, let instruction,
+              let offset = Self.recoveryClause(EventCoalescer.normalized(instruction)).sourceOffset else { return nil }
+        return PivotDate.calendar.date(byAdding: .day, value: offset, to: PivotDate.calendar.startOfDay(for: requestedAt))
+    }
+
+    private static func recoveryClause(_ text: String) -> (text: String, workoutStatement: Bool, sourceOffset: Int?) {
+        guard let verb = text.range(of: #"\b(?:recupera|recuperare|recuperarlo|recuperarla|recuperiamo)\b"#, options: .regularExpression) else { return (text, false, nil) }
+        var prefix = String(text[..<verb.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        for greeting in ["ciao pivot ", "pivot ", "allora "] {
+            if prefix.hasPrefix(greeting) { prefix.removeFirst(greeting.count); break }
+        }
+        // Only these explicit first-person statements may contain "non".
+        // Do not strip generic negations, medical conditions or hypotheticals.
+        let pattern = #"^(?:(oggi|ieri|stamattina) )?(?:non sono riuscit[oa] ad allenarmi|non sono andat[oa] in palestra|ho saltato (?:la palestra|l allenamento))$"#
+        guard prefix.range(of: pattern, options: .regularExpression) != nil else { return (text, false, nil) }
+        let offset: Int? = prefix.hasPrefix("ieri ") ? -1 : (prefix.hasPrefix("oggi ") || prefix.hasPrefix("stamattina ")) ? 0 : nil
+        return (String(text[verb.lowerBound...]), true, offset)
+    }
+
     static func parse(_ text: String, now: Date) -> Self? {
-        let clean = EventCoalescer.normalized(text)
+        let clause = recoveryClause(EventCoalescer.normalized(text))
+        let clean = clause.text.replacingOccurrences(of: "dopo domani", with: "dopodomani")
         let tokens = Set(clean.split(separator: " ").map(String.init))
-        let recovery = ["recupera", "recuperare", "recuperarlo", "recuperarla"].contains { tokens.contains($0) }
+        let recovery = ["recupera", "recuperare", "recuperarlo", "recuperarla", "recuperiamo"].contains { tokens.contains($0) }
         // Do not reduce conditions, medical statements or a mixed create/delete
         // request to a recovery command. Unrecognized prose stays in normal chat.
         let excluded: Set<String> = ["non", "senza", "se", "forse", "dolore", "infortunio", "febbre", "male", "medico", "cancella", "elimina", "crea", "registra"]
         guard recovery, excluded.isDisjoint(with: tokens), text.count <= 1500, now.timeIntervalSinceReferenceDate.isFinite else { return nil }
-        let afterTomorrow = tokens.contains("dopodomani") || clean.contains("dopo domani")
-        let explicitDays = [tokens.contains("oggi") || tokens.contains("stasera") || tokens.contains("stamattina"), tokens.contains("domani") && !afterTomorrow, afterTomorrow]
+        let afterTomorrow = tokens.contains("dopodomani")
+        let explicitDays = [tokens.contains("oggi") || tokens.contains("stasera") || tokens.contains("stamattina"), tokens.contains("domani"), afterTomorrow]
         guard explicitDays.filter({ $0 }).count <= 1 else { return nil }
         // Weekdays mean the next occurrence within the explicit seven-day
         // horizon. Same-weekday/"next week" ambiguities stay in normal chat.
@@ -67,7 +90,7 @@ struct CoachRecoveryRequest: Codable, Equatable {
         let bands = proposedBands.compactMap { $0 }
         guard bands.count <= 1 else { return nil }
         return .init(requestedAt: now, dayOffset: offset,
-                     band: bands.first, workoutOnly: !tokens.isDisjoint(with: ["palestra", "allenamento", "squat", "bench", "deadlift"]),
+                     band: bands.first, workoutOnly: clause.workoutStatement || !tokens.isDisjoint(with: ["palestra", "allenamento", "squat", "bench", "deadlift"]),
                      instruction: text, horizonDays: thisWeek ? remainingThisWeek : nil)
     }
 
@@ -82,13 +105,17 @@ struct CoachRecoveryRequest: Codable, Equatable {
 
     func resolving(text: String, events: [CalendarItem], data: AppData, now: Date) -> Self {
         var result = self
-        let values = Self.candidates(events: events, data: data, now: now, workoutOnly: workoutOnly)
+        let declaredDay = sourceDay
+        let values = Self.candidates(events: events, data: data, now: now, workoutOnly: workoutOnly).filter { event in
+            declaredDay.map { event.occurs(on: $0) } ?? true
+        }
         let query = " " + EventCoalescer.normalized(text) + " "
         let named = values.filter {
             let title = EventCoalescer.normalized($0.title)
             return title.count >= 4 && query.contains(" " + title + " ")
         }
-        let selected = named.isEmpty ? (workoutOnly ? values : []) : named
+        let statedWithoutDay = instruction.map { Self.recoveryClause(EventCoalescer.normalized($0)).workoutStatement } == true && declaredDay == nil
+        let selected = named.isEmpty ? (workoutOnly && !statedWithoutDay ? values : []) : named
         result.targetID = selected.count == 1 ? selected.first?.id : nil
         return result
     }

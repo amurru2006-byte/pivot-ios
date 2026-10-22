@@ -21,7 +21,10 @@ struct RecoveryForecastView: View {
     @State private var task: Task<Void, Never>?
     private var candidates: [CalendarItem] {
         let now = Date()
-        return CoachRecoveryRequest.candidates(events: calendar.events, data: store.data, now: now, workoutOnly: initialRequest?.workoutOnly == true)
+        let declaredDay = initialRequest?.sourceDay
+        return CoachRecoveryRequest.candidates(events: calendar.events, data: store.data, now: now, workoutOnly: initialRequest?.workoutOnly == true).filter { event in
+            declaredDay.map { event.occurs(on: $0) } ?? true
+        }
     }
     var body: some View {
         PivotScreen {

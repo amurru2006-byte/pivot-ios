@@ -63,6 +63,41 @@ final class CoachRecoveryRequestTests: XCTestCase {
             XCTAssertNil(CoachRecoveryRequest.parse(text, now: now), text)
         }
     }
+    func testStatedMissedTodayIsNotConfusedWithRecoveryTomorrow() throws {
+        let text = "Oggi non sono riuscito ad allenarmi, recuperiamo domani sera"
+        let request = try XCTUnwrap(CoachRecoveryRequest.parse(text, now: now))
+        XCTAssertTrue(request.workoutOnly); XCTAssertEqual(request.dayOffset, 1); XCTAssertEqual(request.band, .evening)
+        XCTAssertEqual(request.sourceDay.map(PivotDate.key), PivotDate.key(now))
+        var old = event("old"); old.start.addTimeInterval(-86400); old.end.addTimeInterval(-86400)
+        XCTAssertEqual(request.resolving(text: text, events: [event("today"), old], data: AppData(), now: now).targetID, "today")
+        XCTAssertNil(request.resolving(text: text, events: [old], data: AppData(), now: now).targetID)
+        var data = AppData(); data.coachState.messages = [.init(dayKey: PivotDate.key(now), role: .coach, text: "Recupero locale QA", recoveryRequest: request)]
+        let restored = try XCTUnwrap(BackupCodec.decode(BackupCodec.encode(data)).coachState.messages[0].recoveryRequest)
+        XCTAssertEqual(restored, request); XCTAssertEqual(restored.sourceDay.map(PivotDate.key), "2026-10-19")
+    }
+    func testStatedMissedYesterdayKeepsItsDateAndDoesNotChooseBetweenTwoWorkouts() throws {
+        let text = "Ieri non sono andato in palestra, recuperiamo venerdì sera"
+        let request = try XCTUnwrap(CoachRecoveryRequest.parse(text, now: now))
+        XCTAssertEqual(request.sourceDay.map(PivotDate.key), "2026-10-18")
+        XCTAssertEqual(request.dayOffset, 4)
+        var first = event("one"); first.start.addTimeInterval(-86400); first.end.addTimeInterval(-86400)
+        var second = first; second.id = "two"; second.eventIdentifier = "two"; second.title = "Bench QA"
+        XCTAssertNil(request.resolving(text: text, events: [first, second], data: AppData(), now: now).targetID)
+        let later = now.addingTimeInterval(86400)
+        XCTAssertEqual(request.resolving(text: text, events: [first, event("today")], data: AppData(), now: later).targetID, "one")
+        XCTAssertEqual(request.sourceDay.map(PivotDate.key), "2026-10-18")
+    }
+    func testNaturalRecoveryStillRejectsNegationsMedicalConditionsAndHypotheses() throws {
+        for text in ["Non recuperiamo palestra domani", "Se oggi non sono riuscito ad allenarmi, recuperiamo domani",
+                     "Oggi non sono riuscito ad allenarmi per dolore, recuperiamo domani", "Oggi non sono riuscito ad allenarmi, non recuperiamo domani",
+                     "Oggi non sono riuscito ad allenarmi, recuperiamo domani se sto bene", "Oggi non sono andato in palestra, recuperiamo domani con febbre",
+                     "Oggi non sono riuscito ad allenarmi, recuperiamo domani e dopodomani", "Oggi non sono riuscito ad allenarmi, recuperiamo domani venerdì"] {
+            XCTAssertNil(CoachRecoveryRequest.parse(text, now: now), text)
+        }
+        let withoutDay = try XCTUnwrap(CoachRecoveryRequest.parse("Non sono riuscito ad allenarmi, recuperiamo domani", now: now))
+        XCTAssertNil(withoutDay.sourceDay)
+        XCTAssertNil(withoutDay.resolving(text: withoutDay.instruction!, events: [event("one")], data: AppData(), now: now).targetID)
+    }
     func testAUniqueNamedTargetIsResolvedButTwoEquivalentSessionsRequireChoice() throws {
         let values = [event("one", title: "Squat QA"), event("two", title: "Bench QA")]
         let request = try XCTUnwrap(CoachRecoveryRequest.parse("Recupera Squat QA domani", now: now))
