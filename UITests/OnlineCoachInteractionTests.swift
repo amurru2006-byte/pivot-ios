@@ -79,9 +79,18 @@ final class OnlineCoachInteractionTests: XCTestCase {
     func testSavedDraftCanCloseReopenAndRetainEditsAfterRelaunch() {
         let app = actionApp(); preparePersistentDraft(in: app)
         let title = app.textFields["coach-create-title"]
-        title.tap(); let previous = title.value as? String ?? ""
+        XCTAssertTrue(title.waitForExistence(timeout: 8))
+        scrollControlIntoView(title, in: app)
+        XCTAssertTrue(title.isEnabled)
+        // The sheet's navigation bar exists before its text field necessarily
+        // accepts focus. Touch the visible field once and wait for its native
+        // keyboard/toolbar before dispatching typing; never retry the edit.
+        title.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["coach-draft-keyboard-done"].waitForExistence(timeout: 8))
+        let previous = title.value as? String ?? ""
         title.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previous.count) + "Titolo modificato QA")
-        if app.buttons["Fine"].waitForExistence(timeout: 2) { app.buttons["Fine"].tap() }
+        app.buttons["coach-draft-keyboard-done"].tap()
         closeDraft(in: app)
         let card = savedDraftCard(in: app)
         scrollControlIntoView(card, in: app, maxSwipes: 15); XCTAssertTrue(card.exists); card.tap()
