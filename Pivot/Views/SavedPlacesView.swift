@@ -32,7 +32,7 @@ struct SavedPlacesView: View {
                         Menu {
                             Button("Modifica", systemImage: "pencil") { editing = place }
                             Button("Rimuovi dai salvati", systemImage: "trash", role: .destructive) { removing = place }
-                        } label: { Image(systemName: "ellipsis.circle").frame(minWidth: 44, minHeight: 44) }
+                        } label: { Image(systemName: "ellipsis.circle").frame(minWidth: 44, minHeight: 44).contentShape(Rectangle()) }
                             .accessibilityLabel("Opzioni per \(place.name)").accessibilityIdentifier("place-actions-\(place.id)")
                     }
                 }
@@ -93,7 +93,7 @@ struct SavedPlacesView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(place.name).foregroundStyle(PivotTheme.text)
                 Text(place.address).font(.caption).foregroundStyle(.secondary)
-            }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityIdentifier("place-select-\(place.name)")
     }
     private func modify(_ action: (inout PlaceLibrary) throws -> Void) {

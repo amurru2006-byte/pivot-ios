@@ -1,8 +1,33 @@
 import unittest
-from ui_release_shards import discover_tests, expand_plan, load_plan, verify_log, ROOT
+from ui_release_shards import discover_tests, expand_plan, load_plan, places_preflight, verify_log, ROOT
 
 
 class UIReleaseShardTests(unittest.TestCase):
+    def test_places_preflight_selects_and_verifies_same_seven_cases(self):
+        cases = places_preflight(discover_tests(ROOT))
+        self.assertEqual(len(cases), 7)
+        self.assertEqual(len(set(cases)), 7)
+        self.assertEqual(sum(c.startswith("PremiumCoachInteractionTests/") for c in cases), 2)
+        log = "\n".join(f"Test Case '-[PivotUITests.{suite} {method}]' passed (1.0 seconds)."
+                        for suite, method in (case.split("/") for case in cases))
+        self.assertEqual(verify_log(log, cases), 7)
+        with self.assertRaises(ValueError): verify_log("\n".join(log.splitlines()[:-1]), cases)
+
+    def test_places_preflight_rejects_drift_before_native_build(self):
+        suites = discover_tests(ROOT)
+        suites["SavedPlacesInteractionTests"].append("testNewUnreviewedCase")
+        with self.assertRaises(ValueError): places_preflight(suites)
+        suites = discover_tests(ROOT)
+        suites["PremiumCoachInteractionTests"].remove("testNaturalMissedWorkoutKeepsTomorrowAndAsksWhichSessionBeforeLocalRecovery")
+        with self.assertRaises(ValueError): places_preflight(suites)
+
+    def test_places_selection_is_generated_before_build_and_shared_with_verifier(self):
+        source = (ROOT / "Scripts/preview-ui.sh").read_text(encoding="utf-8")
+        self.assertLess(source.index("--preflight places)"), source.index("if xcodebuild"))
+        selection = source.split('elif [ "$PIVOT_UI_ONLY_TESTING" = v8-088-places-regression ]; then', 1)[1].split("elif", 1)[0]
+        self.assertIn('done <<< "$PIVOT_PLACES_FLAGS"', selection)
+        self.assertIn('--preflight places --verify-log "$PIVOT_UI_LOG"', source)
+
     def test_repository_coverage_is_complete_and_unique(self):
         plan = load_plan()
         self.assertEqual(sum(map(len, plan.values())), sum(map(len, discover_tests(ROOT).values())))
