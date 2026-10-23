@@ -95,7 +95,8 @@ def chart_preflight(suites):
 
 def calendar_controls_preflight(suites):
     cases = ["OnlineCoachInteractionTests/testRoutingPreferencesCanBeRememberedWithoutCreatingAnEvent",
-             "CalendarMutationInteractionTests/testTitleUpdateAndUndoLeaveOtherEventAndReceiptsUntouched"]
+             "CalendarMutationInteractionTests/testTitleUpdateAndUndoLeaveOtherEventAndReceiptsUntouched",
+             "TrainingConcernInteractionTests/testPainLinksTwoMovementsWithoutStartingWorkoutResolvesAndPersists"]
     if any(case.split("/")[1] not in suites.get(case.split("/")[0], []) for case in cases):
         raise ValueError("missing_calendar_control_regression")
     return cases

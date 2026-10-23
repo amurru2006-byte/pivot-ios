@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: bash Scripts/prepare-ios-ci.sh
-      - name: Singolo tocco preferenze e conferma dati dopo modifica esterna
+      - name: Singolo tocco preferenze e infortuni, conferma dati dopo modifica esterna
         env:
           PIVOT_UI_ONLY_TESTING: v8-088-calendar-controls-regression
         run: bash Scripts/preview-ui.sh
