@@ -69,6 +69,14 @@ final class SavedPlacesInteractionTests: XCTestCase {
         let audit = app.staticTexts["creation-events-audit"]
         tap(audit, in: app)
         XCTAssertEqual(audit.label, "0 eventi · 0 spostamenti · 0 incassi")
+        // Settings routes to these complete screens without wrapping another
+        // ScrollView around their own. Do not read or replace protected fields.
+        openSettings(app)
+        tap(app.buttons["settings-online"], in: app)
+        let status = app.descendants(matching: .any).matching(identifier: "online-coach-configuration-status").firstMatch
+        XCTAssertTrue(status.waitForExistence(timeout: 8)); XCTAssertTrue(status.isHittable)
+        let privacy = XCTAttachment(screenshot: app.screenshot())
+        privacy.name = "settings-online-screen-owns-its-scroll-layout"; privacy.lifetime = .keepAlways; add(privacy)
     }
 
     private func openSettings(_ app: XCUIApplication) {
