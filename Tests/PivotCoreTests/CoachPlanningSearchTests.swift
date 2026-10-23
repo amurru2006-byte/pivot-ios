@@ -119,8 +119,36 @@ final class CoachPlanningSearchTests: XCTestCase {
     func testInconsistentTravelBudgetCannotReplaceConfirmedLogistics() throws {
         let selected = try selection()
         var invalid = budget; invalid.travelBeforeMinutes = 0
-        let values = try CoachPlanningSearch.alternatives(for: selected, budget: invalid, access: access,
-            events: [target], data: data, now: now)
+        XCTAssertThrowsError(try CoachPlanningSearch.alternatives(for: selected, budget: invalid, access: access,
+            events: [target], data: data, now: now)) { error in
+            XCTAssertEqual(error as? CoachPlanningSearch.Failure, .reviewRequired)
+        }
+    }
+    func testInvalidBudgetComponentsRequireReviewWithoutComputingOverflowOrChangingData() throws {
+        let appData = data, selected = try selection(data: appData), before = try BackupCodec.encode(appData)
+        var invalids: [CalendarTimeBudget] = []
+        var value = budget; value.activityMinutes = 0; invalids.append(value)
+        value = budget; value.activityMinutes = Int.max; invalids.append(value)
+        value = budget; value.preparationMinutes = -1; invalids.append(value)
+        value = budget; value.preparationMinutes = Int.max; invalids.append(value)
+        value = budget; value.travelBeforeMinutes = Int.max; invalids.append(value)
+        value = budget; value.travelAfterMinutes = -1; invalids.append(value)
+        value = budget; value.marginMinutes = Int.max; invalids.append(value)
+        value = budget; value.activityMinutes = 1440; invalids.append(value)
+        for invalid in invalids {
+            XCTAssertThrowsError(try CoachPlanningSearch.alternatives(for: selected, budget: invalid, access: access,
+                events: [target], data: appData, now: now)) { error in
+                XCTAssertEqual(error as? CoachPlanningSearch.Failure, .reviewRequired)
+            }
+        }
+        XCTAssertEqual(try BackupCodec.encode(appData), before)
+    }
+    func testNoVerifiedWindowWithAValidBudgetIsNotAnInvalidBudgetError() throws {
+        var blocker = target; blocker.id = "full-day-qa"; blocker.eventIdentifier = "native-full-day-qa"
+        blocker.start = at("2026-10-22T08:00:00+02:00"); blocker.end = at("2026-10-22T22:00:00+02:00")
+        let appData = data, events = [target, blocker], selected = try selection(events: events, data: appData)
+        let values = try CoachPlanningSearch.alternatives(for: selected, budget: budget, access: access,
+            events: events, data: appData, now: now)
         XCTAssertTrue(values.isEmpty)
     }
 }
