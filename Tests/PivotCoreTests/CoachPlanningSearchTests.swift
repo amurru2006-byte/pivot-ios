@@ -11,6 +11,7 @@ final class CoachPlanningSearchTests: XCTestCase {
     }
     private var data: AppData {
         var value = AppData()
+        value.updatedAt = now
         value.settings.quietEndHour = 8; value.settings.quietStartHour = 22
         value.rules[target.id] = .init(flexibility: .movable, minimumMinutes: 60,
             travelBeforeMinutes: 20, travelAfterMinutes: 20, travelConfirmed: true)
@@ -85,13 +86,19 @@ final class CoachPlanningSearchTests: XCTestCase {
     func testSearchRevalidatesPermissionExpiryAndNewPendingWorkEvenWithoutRevisionBump() throws {
         let selected = try selection()
         XCTAssertThrowsError(try CoachPlanningSearch.alternatives(for: selected, budget: budget,
-            access: .init(calendar: false, online: true), events: [target], data: data, now: now))
+            access: .init(calendar: false, online: true), events: [target], data: data, now: now)) { error in
+            XCTAssertEqual(error as? CoachPlanningSelection.Failure, .accessRevoked)
+        }
         XCTAssertThrowsError(try CoachPlanningSearch.alternatives(for: selected, budget: budget,
-            access: access, events: [target], data: data, now: now.addingTimeInterval(121)))
+            access: access, events: [target], data: data, now: now.addingTimeInterval(121))) { error in
+            XCTAssertEqual(error as? CoachPlanningSelection.Failure, .staleContext)
+        }
         var changed = data
         changed.moves = [.init(source: target, proposedStart: target.start.addingTimeInterval(86400), proposedEnd: target.end.addingTimeInterval(86400))]
         XCTAssertThrowsError(try CoachPlanningSearch.alternatives(for: selected, budget: budget,
-            access: access, events: [target], data: changed, now: now))
+            access: access, events: [target], data: changed, now: now)) { error in
+            XCTAssertEqual(error as? CoachPlanningSelection.Failure, .pendingReview)
+        }
     }
     func testUnknownTravelCannotBecomeZeroAndMultipleTargetsCannotBeIndependentOverlappingPlans() throws {
         var unknown = data; unknown.rules[target.id]?.travelConfirmed = false
@@ -109,7 +116,7 @@ final class CoachPlanningSearchTests: XCTestCase {
             XCTAssertEqual(error as? CoachPlanningSearch.Failure, .jointPlanningRequired)
         }
     }
-    func testUnconfirmedPreparationCannotBeReplacedByAnInconsistentBudget() throws {
+    func testInconsistentTravelBudgetCannotReplaceConfirmedLogistics() throws {
         let selected = try selection()
         var invalid = budget; invalid.travelBeforeMinutes = 0
         let values = try CoachPlanningSearch.alternatives(for: selected, budget: invalid, access: access,
