@@ -47,8 +47,8 @@ final class CoachPlanningSearchTests: XCTestCase {
     }
     func testEntireEnvelopeMustFitAndAnExactFitIsAccepted() {
         let start = at("2026-10-22T18:00:00+02:00")
-        XCTAssertTrue(find([.init(start: start, duration: 90 * 60)]).isEmpty)
-        let exact = find([.init(start: start, duration: 125 * 60)])
+        XCTAssertTrue(find([.init(start: start, duration: 90.0 * 60)]).isEmpty)
+        let exact = find([.init(start: start, duration: 125.0 * 60)])
         XCTAssertEqual(exact.count, 1); XCTAssertEqual(exact.first?.occupiedEnd, start.addingTimeInterval(7500))
     }
     func testSeparateAllowedRangesDoNotBridgeAForbiddenGapOrDuplicateAlternatives() throws {
