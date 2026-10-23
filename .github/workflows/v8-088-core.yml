@@ -1,7 +1,7 @@
 name: Verifica locale recuperi V8 senza rilascio
 on:
   push:
-    branches: ['codex/pivot-v8-088-core']
+    branches: ['codex/pivot-v8-088-core', 'codex/pivot-v8-planning-core']
   workflow_dispatch:
 permissions:
   contents: read
