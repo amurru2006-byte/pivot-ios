@@ -2,6 +2,39 @@ import XCTest
 
 /// Real controls and persistence, with synthetic calendar/provider fixtures only.
 final class PremiumCoachInteractionTests: XCTestCase {
+    func testRecoveryDateCorrectionRetainsTargetAndExcludedDayAfterRelaunchWithoutCalendarWrite() {
+        let app = launch(["--recovery-forecast-test"])
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(identifier: "Europe/Rome")!
+        let target = calendar.date(byAdding: .day, value: 3, to: Date())!
+        let names = ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"]
+        let name = names[calendar.component(.weekday, from: target) - 1]
+        enter("Vorrei recuperare la palestra domani sera", app)
+        let links = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "coach-recovery-request-"))
+        XCTAssertTrue(links.firstMatch.waitForExistence(timeout: 10))
+        enter("Domani no, meglio \(name) pomeriggio", app)
+        let two = expectation(for: NSPredicate(format: "count == 2"), evaluatedWith: links)
+        wait(for: [two], timeout: 10)
+        XCTAssertFalse(app.buttons["coach-online-approve"].exists)
+        app.terminate(); app.launch(); openCoach(app)
+        XCTAssertTrue(links.element(boundBy: 1).waitForExistence(timeout: 10))
+        tap(links.element(boundBy: 1), app)
+        let day = app.staticTexts["prediction-recovery-requested-day"]
+        XCTAssertTrue(day.waitForExistence(timeout: 8))
+        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "it_IT"); formatter.timeZone = calendar.timeZone; formatter.dateFormat = "d MMM yyyy"
+        XCTAssertEqual(day.label, "Giorno richiesto: " + formatter.string(from: target))
+        let picker = app.buttons["prediction-recovery-target"]
+        XCTAssertTrue((picker.label + " " + (picker.value as? String ?? "")).contains("Allenamento QA da recuperare"))
+        let band = app.buttons["prediction-recovery-band"]
+        XCTAssertTrue((band.label + " " + (band.value as? String ?? "")).localizedCaseInsensitiveContains("pomeriggio"))
+        XCTAssertTrue(app.staticTexts["prediction-recovery-excluded-days"].exists)
+        tap(app.buttons["prediction-recovery-expand-days"], app)
+        XCTAssertTrue(day.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["prediction-recovery-excluded-days"].exists)
+        XCTAssertFalse(app.staticTexts["Da applicare al Calendario"].exists)
+        XCTAssertFalse(app.buttons["coach-online-approve"].exists)
+        capture("recovery-date-refinement-persists-with-target-and-exclusions", app)
+    }
+
     override func tearDown() { attachFailureDiagnostics(name); super.tearDown() }
     private func launch(_ flags: [String]) -> XCUIApplication {
         continueAfterFailure = false

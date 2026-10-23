@@ -10,6 +10,10 @@ struct CoachRecoveryRequest: Codable, Equatable {
     var targetID: String? = nil
     var instruction: String? = nil
     var horizonDays: Int? = nil
+    // Local conversation state only. Offsets stay anchored to requestedAt,
+    // including across midnight/DST; the original stated missed day is retained.
+    var excludedDayOffsets: [Int]? = nil
+    var latestRefinement: String? = nil
 
     var isValid: Bool {
         requestedAt.timeIntervalSinceReferenceDate.isFinite
@@ -18,9 +22,62 @@ struct CoachRecoveryRequest: Codable, Equatable {
             && (instruction.map { !$0.isEmpty && $0.count <= 1500 } ?? true)
             && (horizonDays.map { (1...7).contains($0) } ?? true)
             && (horizonDays.map { horizon in dayOffset.map { $0 < horizon } ?? true } ?? true)
+            && (excludedDayOffsets.map { values in
+                values.count <= 7 && Set(values).count == values.count && values.allSatisfy { (0...6).contains($0) }
+                    && (dayOffset.map { !values.contains($0) } ?? true)
+            } ?? true)
+            && (latestRefinement.map { !$0.isEmpty && $0.count <= 1500 } ?? true)
     }
     var day: Date? {
         dayOffset.flatMap { PivotDate.calendar.date(byAdding: .day, value: $0, to: PivotDate.calendar.startOfDay(for: requestedAt)) }
+    }
+    var excludedDays: [Date] {
+        (excludedDayOffsets ?? []).compactMap { PivotDate.calendar.date(byAdding: .day, value: $0, to: PivotDate.calendar.startOfDay(for: requestedAt)) }
+    }
+
+    /// Only a direct continuation of the latest recovery reply can reuse its
+    /// target. Unrelated chat, conditions, injuries and unparsed constraints
+    /// remain in ordinary conversation; this is not general LLM interpretation.
+    static func followUp(_ text: String, messages: [CoachMessage], now: Date) -> Self? {
+        guard let last = messages.last, last.role == .coach, let request = last.recoveryRequest,
+              now.timeIntervalSince(last.createdAt).isFinite, (0...86400).contains(now.timeIntervalSince(last.createdAt)) else { return nil }
+        return request.refining(text, now: now)
+    }
+
+    func refining(_ text: String, now: Date) -> Self? {
+        guard isValid, now.timeIntervalSinceReferenceDate.isFinite, now >= requestedAt,
+              remainingHorizon(at: now).map({ $0 > 0 }) ?? true, text.count <= 1500 else { return nil }
+        let clean = EventCoalescer.normalized(text).replacingOccurrences(of: "dopo domani", with: "dopodomani")
+        let days = "oggi|domani|dopodomani|domenica|lunedi|martedi|mercoledi|giovedi|venerdi|sabato"
+        let pattern = "^(?:(?:non (\(days))|(\(days)) no) (?:meglio|facciamo|preferisco)|(?:no )?(?:meglio|facciamo|preferisco)) (\(days))(?: (mattina|mattino|pomeriggio|sera|serata))?$"
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: clean, range: NSRange(clean.startIndex..., in: clean)) else { return nil }
+        func part(_ index: Int) -> String? {
+            guard let range = Range(match.range(at: index), in: clean) else { return nil }
+            return String(clean[range])
+        }
+        func anchoredOffset(_ token: String) -> Int? {
+            guard let parsed = Self.parse("Recupera palestra " + token, now: now), let date = parsed.day,
+                  let offset = PivotDate.calendar.dateComponents([.day], from: PivotDate.calendar.startOfDay(for: requestedAt), to: date).day,
+                  (0...6).contains(offset) else { return nil }
+            return offset
+        }
+        guard let token = part(3), let selected = anchoredOffset(token) else { return nil }
+        var result = self
+        var excluded = Set(excludedDayOffsets ?? [])
+        if let denied = part(1) ?? part(2) {
+            guard let offset = anchoredOffset(denied) else { return nil }
+            excluded.insert(offset)
+        }
+        guard !excluded.contains(selected) else { return nil }
+        result.dayOffset = selected
+        result.excludedDayOffsets = excluded.isEmpty ? nil : excluded.sorted()
+        // A new date without a new band keeps the previously explicit choice.
+        if let band = part(4) {
+            result.band = ["mattina", "mattino"].contains(band) ? .morning : band == "pomeriggio" ? .afternoon : .evening
+        }
+        result.latestRefinement = text
+        return result.isValid ? result : nil
     }
     func remainingHorizon(at now: Date) -> Int? {
         guard let horizonDays else { return nil }

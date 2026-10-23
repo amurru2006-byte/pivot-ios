@@ -11,7 +11,8 @@ enum CalendarRecoveryWindows {
     /// Fits the full budget around every other appointment and its confirmed buffers.
     /// It prepares windows only; it does not apply changes or relax CoachPlanner's guard.
     static func find(target: CalendarItem, budget: CalendarTimeBudget, events: [CalendarItem], data: AppData,
-                     otherBudgets: [String: CalendarTimeBudget] = [:], now: Date, days: Int = 3) -> [CalendarRecoveryWindow] {
+                     otherBudgets: [String: CalendarTimeBudget] = [:], now: Date, days: Int = 3,
+                     excludingDays: [Date] = []) -> [CalendarRecoveryWindow] {
         let rule = EventRule.effective(for: target, data: data)
         let canonical = EventCoalescer.unique(events, data: data)
         guard let current = canonical.first(where: { $0.id == target.id }),
@@ -22,6 +23,7 @@ enum CalendarRecoveryWindows {
               !(data.moves.contains { !$0.syncedToCalendar && $0.source.id == target.id }),
               ![Completion.running, .completed, .partial].contains(data.records[target.id]?.status ?? .pending),
               now.timeIntervalSinceReferenceDate.isFinite,
+              excludingDays.count <= 7, excludingDays.allSatisfy({ $0.timeIntervalSinceReferenceDate.isFinite }),
               (0...23).contains(data.settings.quietEndHour), (0...23).contains(data.settings.quietStartHour),
               data.settings.quietEndHour < data.settings.quietStartHour else { return [] }
         let effective = Planner.plannedEvents(events, data: data).filter { $0.id != target.id }
@@ -30,6 +32,9 @@ enum CalendarRecoveryWindows {
         var windows: [CalendarRecoveryWindow] = []
         for offset in 0..<count {
             let day = calendar.date(byAdding: .day, value: offset, to: calendar.startOfDay(for: now))!
+            // Exclude before collecting the first three results, not after:
+            // otherwise an excluded early day could hide valid later windows.
+            if excludingDays.contains(where: { calendar.isDate($0, inSameDayAs: day) }) { continue }
             let start = calendar.date(bySettingHour: data.settings.quietEndHour, minute: 0, second: 0, of: day)!
             let end = calendar.date(bySettingHour: data.settings.quietStartHour, minute: 0, second: 0, of: day)!
             var cursor = max(now, start)

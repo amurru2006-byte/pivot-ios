@@ -5,7 +5,7 @@ import Foundation
 enum RecoveryForecast {
     static func options(targetID: String, events: [CalendarItem], data: AppData, now: Date,
                         days: Int = 7, preferredBand: TrainingDurationTimeBand? = nil,
-                        preparationIncluded: Bool = false, onDay: Date? = nil) -> [CoachOption] {
+                        preparationIncluded: Bool = false, onDay: Date? = nil, excludingDays: [Date] = []) -> [CoachOption] {
         guard preparationIncluded, (1...7).contains(days), now.timeIntervalSinceReferenceDate.isFinite,
               let target = EventCoalescer.unique(events, data: data).first(where: { $0.id == targetID }),
               target.end <= now, target.writable,
@@ -36,7 +36,7 @@ enum RecoveryForecast {
             guard PivotDate.calendar.isDate(earliest, inSameDayAs: onDay) else { return [] }
         }
         let windows = CalendarRecoveryWindows.find(target: target, budget: budget, events: events,
-                                                  data: searchData, now: earliest, days: onDay == nil ? days : 1)
+                                                  data: searchData, now: earliest, days: onDay == nil ? days : 1, excludingDays: excludingDays)
         return windows.enumerated().compactMap { index, window in
             let move = PlanMove(source: target, proposedStart: window.activityStart,
                                 proposedEnd: window.activityStart.addingTimeInterval(seconds))
