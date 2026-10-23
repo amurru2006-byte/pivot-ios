@@ -2,25 +2,34 @@
 import re
 import unittest
 from pathlib import Path
+from compiled_iphone import project_version
 
 
 def check_sources(project, package, workflow):
-    versions = re.findall(r'^\s+MARKETING_VERSION:\s*"(\d+\.\d+\.\d+)"\s*$', project, re.M)
-    builds = re.findall(r'^\s+CURRENT_PROJECT_VERSION:\s*"([1-9]\d*)"\s*$', project, re.M)
-    if len(versions) != 1 or len(builds) != 1:
-        raise ValueError('invalid_project_version')
-    version, build = versions[0], builds[0]
-    app_versions = re.findall(r"CFBundleShortVersionString'\]\s*==\s*'([^']+)'", package)
-    app_builds = re.findall(r"CFBundleVersion'\]\s*==\s*'([^']+)'", package)
-    if len(app_versions) != 2 or app_versions != [version, version] or app_builds != [build, build]:
+    version, build = project_version(project)
+    assignment = "version, build = project_version(Path('project.yml').read_text())"
+    required = [
+        "assert info['CFBundleShortVersionString'] == version",
+        "assert info['CFBundleVersion'] == build",
+        "assert widget['CFBundleShortVersionString'] == version and widget['CFBundleVersion'] == build",
+    ]
+    if package.count(assignment) != 2 or any(part not in package for part in required):
         raise ValueError('package_version_mismatch')
-    if f"version='{version}', build={build}" not in package:
+    if "dict(version=version, build=int(build), candidate=True," not in package:
         raise ValueError('manifest_version_mismatch')
-    for source in [package, workflow]:
-        archives = re.findall(r'Pivot-\d+\.\d+\.\d+\.ipa', source)
-        manifests = re.findall(r'Pivot-\d+\.\d+\.\d+-manifest\.json', source)
-        if not archives or not manifests or any(value != f'Pivot-{version}.ipa' for value in archives) or any(value != f'Pivot-{version}-manifest.json' for value in manifests):
-            raise ValueError('artifact_version_mismatch')
+    shell_version = 'print(project_version(Path("project.yml").read_text())[0])'
+    if shell_version not in package or '"../Pivot-$PIVOT_VERSION.ipa"' not in package \
+            or "Path(f'build/Pivot-{version}.ipa')" not in package \
+            or "Path(f'build/Pivot-{version}-manifest.json')" not in package:
+        raise ValueError('artifact_version_mismatch')
+    candidate = workflow.split('name: Pivot-V8-iPhone-candidate', 1)
+    if len(candidate) != 2:
+        raise ValueError('missing_candidate_upload')
+    upload = candidate[1].split('retention-days:', 1)[0]
+    archives = re.findall(r'build/Pivot-[^\s]+\.ipa', upload)
+    manifests = re.findall(r'build/Pivot-[^\s]+-manifest\.json', upload)
+    if archives != ['build/Pivot-*.*.*.ipa'] or manifests != ['build/Pivot-*.*.*-manifest.json']:
+        raise ValueError('uploaded_artifact_mismatch')
     return version, int(build)
 
 
@@ -36,18 +45,17 @@ class ReleaseMetadataTests(unittest.TestCase):
         self.assertRegex(version, r'^\d+\.\d+\.\d+$')
         self.assertGreater(build, 0)
 
-    def test_project_only_bump_is_rejected(self):
+    def test_single_source_version_bump_is_used_by_every_candidate_check(self):
         changed = re.sub(r'MARKETING_VERSION: "[^"]+"', 'MARKETING_VERSION: "99.1.1"', self.project)
-        with self.assertRaises(ValueError):
-            check_sources(changed, self.package, self.workflow)
+        self.assertEqual(check_sources(changed, self.package, self.workflow)[0], '99.1.1')
 
     def test_app_widget_build_mismatch_is_rejected(self):
-        changed = re.sub(r"CFBundleVersion'\] == '\d+'", "CFBundleVersion'] == '99999'", self.package, count=1)
+        changed = self.package.replace("CFBundleVersion'] == build", "CFBundleVersion'] == '99999'", 1)
         with self.assertRaises(ValueError):
             check_sources(self.project, changed, self.workflow)
 
     def test_wrong_uploaded_artifact_is_rejected(self):
-        changed = re.sub(r'Pivot-\d+\.\d+\.\d+\.ipa', 'Pivot-99.1.1.ipa', self.workflow)
+        changed = self.workflow.replace('Pivot-*.*.*.ipa', 'Pivot-99.1.1.ipa')
         with self.assertRaises(ValueError):
             check_sources(self.project, self.package, changed)
 

@@ -16,6 +16,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Seleziona strumenti
         run: |
+          bash -n Scripts/preview-ui.sh Scripts/package-v8-candidate.sh
           PIVOT_XCODE=$(find /Applications -maxdepth 1 -name 'Xcode_*.app' | sort -V | tail -n 1)
           if [ -n "$PIVOT_XCODE" ]; then sudo xcode-select -s "$PIVOT_XCODE/Contents/Developer"; fi
           swift --version
@@ -141,8 +142,8 @@ jobs:
         with:
           name: Pivot-V8-iPhone-candidate
           path: |
-            build/Pivot-0.8.7.ipa
-            build/Pivot-0.8.7-manifest.json
+            build/Pivot-*.*.*.ipa
+            build/Pivot-*.*.*-manifest.json
             build/packaged-entitlements.plist
             build/ui-release-verification.json
           retention-days: 1

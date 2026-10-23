@@ -42,7 +42,7 @@ struct SettingsView: View {
                     settingsLink("AI online e privacy", subtitle: "Collegamento protetto e limiti", icon: "lock.shield") { OnlineCoachSettingsView() }
                     settingsLink("Tragitti e Apple Maps", subtitle: "Consenso, luoghi e tempi di viaggio", icon: "map.fill") { TravelCalculatorView() }
                         .accessibilityIdentifier("settings-travel")
-                    settingsLink("Luoghi salvati", subtitle: "Casa, Università e indirizzi abituali", icon: "mappin.and.ellipse") { SavedPlacesView() }
+                    settingsLink("Luoghi salvati", subtitle: "Casa, Università e indirizzi abituali", icon: "mappin.and.ellipse", wrapInScreen: false) { SavedPlacesView() }
                         .accessibilityIdentifier("settings-places")
                     settingsLink("Studio ed esami", subtitle: "Priorità e recuperi", icon: "graduationcap.fill") { studySettings }
                     settingsLink("Energia e riferimenti", subtitle: "Obiettivi dei valori da 0 a 10", icon: "chart.dots.scatter") { ratingSettings }
@@ -241,8 +241,13 @@ struct SettingsView: View {
         }
     }
     }
-    private func settingsLink<Content: View>(_ title: String, subtitle: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
-        NavigationLink { PivotScreen { content() }.navigationTitle(title) } label: {
+    private func settingsLink<Content: View>(_ title: String, subtitle: String, icon: String, wrapInScreen: Bool = true, @ViewBuilder content: () -> Content) -> some View {
+        NavigationLink {
+            // A List owns its scrolling and needs a bounded full-height parent.
+            // Wrapping it in PivotScreen's ScrollView collapses its content.
+            if wrapInScreen { PivotScreen { content() }.navigationTitle(title) }
+            else { content() }
+        } label: {
             HStack(spacing: 14) {
                 Image(systemName: icon).font(.title3).foregroundStyle(PivotTheme.accent).frame(width: 46, height: 46).background(PivotTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
                 VStack(alignment: .leading, spacing: 4) {

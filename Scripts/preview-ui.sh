@@ -7,6 +7,7 @@ PIVOT_UI_LOG=build/interaction-tests.log
 PIVOT_UI_RESULT=build/interaction-tests.xcresult
 PIVOT_SIM_ENTITLEMENTS=build/simulator-entitlements.plist
 PIVOT_RELEASE_SHARD=
+PIVOT_PLACES_GROUP=
 case "$PIVOT_UI_ONLY_TESTING" in
   '') ;;
   v8-release-finance|v8-release-workout|v8-release-profile|v8-release-pairing)
@@ -26,7 +27,7 @@ case "$PIVOT_UI_ONLY_TESTING" in
     PIVOT_UI_RESULT=build/online-privacy-tests.xcresult
     PIVOT_SIM_ENTITLEMENTS=build/online-privacy-simulator-entitlements.plist
     ;;
-  v8-088-places-regression|v8-087-linked-travel-regression|v8-086-presentation-regression|v8-086-rest-audio-regression|v8-086-contact-save-regression|PivotUITests/PremiumCoachInteractionTests|PivotUITests/PremiumCoachInteractionTests/testMemoryOptInPersistsAppearsInExactDisclosureAndCanBeRevoked)
+  v8-088-places-regression|v8-088-places-controls-regression|v8-087-linked-travel-regression|v8-086-presentation-regression|v8-086-rest-audio-regression|v8-086-contact-save-regression|PivotUITests/PremiumCoachInteractionTests|PivotUITests/PremiumCoachInteractionTests/testMemoryOptInPersistsAppearsInExactDisclosureAndCanBeRevoked)
     PIVOT_PREVIEW_OUTPUT=build/Previews/OnlinePrivacy
     PIVOT_UI_BUILD_LOG=build/online-privacy-build.log
     PIVOT_UI_LOG=build/online-privacy-tests.log
@@ -58,7 +59,12 @@ cat build/selected-simulator.json
 # Validate the focused selection before building, and reuse that exact list
 # for result verification. A missing selected case must not waste an iOS build.
 if [ "$PIVOT_UI_ONLY_TESTING" = v8-088-places-regression ]; then
-  PIVOT_PLACES_FLAGS=$(python3 Scripts/ui_release_shards.py --preflight places)
+  PIVOT_PLACES_GROUP=places
+elif [ "$PIVOT_UI_ONLY_TESTING" = v8-088-places-controls-regression ]; then
+  PIVOT_PLACES_GROUP=places-controls
+fi
+if [ -n "$PIVOT_PLACES_GROUP" ]; then
+  PIVOT_PLACES_FLAGS=$(python3 Scripts/ui_release_shards.py --preflight "$PIVOT_PLACES_GROUP")
 fi
 # The simulator still uses the real Security framework for the protected-QR
 # persistence test. Unsigned builds have no private Keychain access group.
@@ -216,7 +222,7 @@ elif [ "$PIVOT_UI_ONLY_TESTING" = v8-contacts-regression ]; then
     -only-testing:PivotUITests/IncomeCorrectionInteractionTests
     -only-testing:PivotUITests/PivotInteractionTests/testIncomeSummarySwipesToChart
   )
-elif [ "$PIVOT_UI_ONLY_TESTING" = v8-088-places-regression ]; then
+elif [ -n "$PIVOT_PLACES_GROUP" ]; then
   while IFS= read -r PIVOT_TEST_FLAG; do
     PIVOT_UI_TEST_COMMAND+=("$PIVOT_TEST_FLAG")
   done <<< "$PIVOT_PLACES_FLAGS"
@@ -257,8 +263,8 @@ fi
 if [ -n "$PIVOT_RELEASE_SHARD" ] && [ "$PIVOT_UI_TEST_STATUS" -eq 0 ]; then
   python3 Scripts/ui_release_shards.py --shard "$PIVOT_RELEASE_SHARD" --verify-log "$PIVOT_UI_LOG" || PIVOT_UI_TEST_STATUS=1
 fi
-if [ "$PIVOT_UI_ONLY_TESTING" = v8-088-places-regression ] && [ "$PIVOT_UI_TEST_STATUS" -eq 0 ]; then
-  python3 Scripts/ui_release_shards.py --preflight places --verify-log "$PIVOT_UI_LOG" || PIVOT_UI_TEST_STATUS=1
+if [ -n "$PIVOT_PLACES_GROUP" ] && [ "$PIVOT_UI_TEST_STATUS" -eq 0 ]; then
+  python3 Scripts/ui_release_shards.py --preflight "$PIVOT_PLACES_GROUP" --verify-log "$PIVOT_UI_LOG" || PIVOT_UI_TEST_STATUS=1
 fi
 if [ -d "$PIVOT_UI_RESULT" ]; then
   xcrun xcresulttool export attachments --path "$PIVOT_UI_RESULT" --output-path "$PIVOT_PREVIEW_OUTPUT/Interactions" || {

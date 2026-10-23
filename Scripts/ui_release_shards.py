@@ -55,7 +55,7 @@ def load_plan(root=ROOT):
     return expand_plan(spec, discover_tests(root))
 
 
-def places_preflight(suites):
+def places_preflight(suites, controls_only=False):
     """One selection for both xcodebuild and verification, never two drifting lists."""
     cases = [f"{suite}/{method}" for suite in ["SavedPlacesInteractionTests", "CalendarCreationInteractionTests"]
              for method in suites[suite]]
@@ -68,6 +68,11 @@ def places_preflight(suites):
     discovered = {f"{suite}/{method}" for suite, methods in suites.items() for method in methods}
     if len(cases) != 8 or len(set(cases)) != len(cases) or not set(cases) <= discovered:
         raise ValueError("update_explicit_places_preflight_coverage")
+    if controls_only:
+        cases = [case for case in cases if case.startswith("SavedPlacesInteractionTests/") or
+                 case == "PremiumCoachInteractionTests/testRecoveryDateCorrectionRetainsTargetAndExcludedDayAfterRelaunchWithoutCalendarWrite"]
+        if len(cases) != 2:
+            raise ValueError("update_explicit_places_controls_coverage")
     return cases
 
 
@@ -90,7 +95,7 @@ def read_log(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--shard", choices=sorted(SHARDS))
-    parser.add_argument("--preflight", choices=["places"])
+    parser.add_argument("--preflight", choices=["places", "places-controls"])
     parser.add_argument("--verify-log", type=Path)
     parser.add_argument("--verify-all-logs", type=Path)
     args = parser.parse_args()
@@ -98,7 +103,7 @@ def main():
     if args.preflight:
         if args.shard or args.verify_all_logs:
             parser.error("Choose either preflight or release shard verification")
-        cases = places_preflight(discover_tests(ROOT))
+        cases = places_preflight(discover_tests(ROOT), controls_only=args.preflight == "places-controls")
         if args.verify_log:
             print(f"Verified {verify_log(read_log(args.verify_log), cases)} preflight tests, no skips")
         else:

@@ -17,6 +17,7 @@ final class SavedPlacesInteractionTests: XCTestCase {
         openSettings(app)
         tap(app.buttons["settings-places"], in: app)
         XCTAssertTrue(app.navigationBars["Luoghi"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["places-empty"].waitForExistence(timeout: 5), "The initial list must be visible, not collapsed inside another scroll view")
         toolbarTap(app.buttons["places-add"])
         XCTAssertTrue(app.navigationBars["Salva luogo"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["place-save"].isEnabled)
