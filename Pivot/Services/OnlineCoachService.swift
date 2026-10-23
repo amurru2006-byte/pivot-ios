@@ -182,6 +182,7 @@ final class OnlineCoachService: ObservableObject {
     }
     func ask(_ snapshot: CoachV8Snapshot) async throws -> CoachV8Response {
         try Task.checkCancellation()
+        guard !snapshot.encodedRequest.isEmpty else { throw CoachV8Error.invalidResponse }
         if let failure, let seconds = failure.remaining(at: Date()), seconds > 0 { throw failure }
         #if DEBUG && targetEnvironment(simulator)
         if actionFixture {
