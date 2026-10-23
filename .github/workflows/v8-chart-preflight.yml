@@ -1,0 +1,43 @@
+name: Diagnosi scorrimento grafico V8 senza rilascio
+on:
+  push:
+    branches: ['codex/pivot-v8-chart-preflight']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pivot-chart-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Core e strumenti con soli dati sintetici
+        run: |
+          bash -n Scripts/preview-ui.sh Scripts/package-v8-candidate.sh
+          swift test
+          node --test Backend/coach-gateway/worker.test.mjs
+          python3 -m unittest discover -s Scripts -p 'test_*.py'
+  chart:
+    needs: core
+    runs-on: macos-15
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash Scripts/prepare-ios-ci.sh
+      - name: Gesto verticale sul grafico e singola selezione colonne
+        env:
+          PIVOT_UI_ONLY_TESTING: v8-088-chart-controls-regression
+        run: bash Scripts/preview-ui.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Pivot-chart-preflight
+          path: |
+            build/online-privacy-build.log
+            build/online-privacy-tests.log
+            build/Previews/OnlinePrivacy/
+          retention-days: 2
+          if-no-files-found: error

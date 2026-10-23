@@ -118,8 +118,8 @@ async function rejectionClass(response) {
 
 export function validRequest(x, now) {
   const v2 = x?.version === 2;
-  const v3 = x?.version === 3;
-  if (!exactKeys(x, v3 ? [...KEYS,'purpose','draftContext','references','historyOmittedCount'] : v2 ? [...KEYS,'purpose'] : KEYS) || ![1,2,3].includes(x.version) ||
+  const v3 = x?.version >= 3, v4 = x?.version === 4;
+  if (!exactKeys(x, v3 ? [...KEYS,'purpose','draftContext','references','historyOmittedCount',...(v4?['planningContext']:[])] : v2 ? [...KEYS,'purpose'] : KEYS) || ![1,2,3,4].includes(x.version) ||
       (v2 && !['conversation','rewrite'].includes(x.purpose)) || (v3 && x.purpose !== 'conversation') ||
       !/^[a-f0-9-]{36}$/i.test(x.requestID ?? '') || !string(x.message, v2 || v3 ? 12_000 : 1500) || !x.message.trim() ||
       !/^\d{4}-\d{2}-\d{2}$/.test(x.dayKey ?? '') || !string(x.now, 40) ||
@@ -140,13 +140,60 @@ export function validRequest(x, now) {
         Math.max(1, Math.floor((Date.parse(e.end) - Date.parse(e.start))/60_000)) !== e.durationMinutes ||
         (e.category === 'lunch' && e.kind !== 'meal') || (e.category === 'gym' && e.kind !== 'workout')) return false;
     ids.add(e.id);
+    if (v4 && !/^e(?:[0-9]|[1-3][0-9]|4[0-7])$/.test(e.id)) return false;
   }
   if (v3 && (!Array.isArray(x.draftContext) || x.draftContext.length > 1 || !x.draftContext.every(d => validDraft(d,false)) ||
       !Array.isArray(x.references) || x.references.length > 48 || new Set(x.references).size !== x.references.length ||
       !x.references.every(id => x.events.some(e => e.id === id)) ||
       !Number.isInteger(x.historyOmittedCount) || x.historyOmittedCount < 0 || x.historyOmittedCount > 1_000_000)) return false;
+  if (v4 && (!Array.isArray(x.planningContext) || x.planningContext.length > 1 ||
+      !x.planningContext.every(intent=>validPlanning(intent,x)))) return false;
   return x.history.every(m => exactKeys(m,['role','text']) && ['user','assistant'].includes(m.role) && string(m.text,v3 ? 12_000 : 400)) &&
     x.memories.every(m => string(m,240));
+}
+
+const PLANNING_KEYS = ['eventIDs','allowedDayOffsets','excludedDayOffsets','band','earliestMinute','latestMinute','afterEventID'];
+function validPlanning(x, request) {
+  if (!exactKeys(x,PLANNING_KEYS) || !Array.isArray(x.eventIDs) || x.eventIDs.length < 1 || x.eventIDs.length > 3 ||
+      new Set(x.eventIDs).size !== x.eventIDs.length || !x.eventIDs.every(id=>request.events.some(e=>e.id===id)) ||
+      !Array.isArray(x.allowedDayOffsets) || x.allowedDayOffsets.length < 1 || x.allowedDayOffsets.length > 7 ||
+      !Array.isArray(x.excludedDayOffsets) || x.excludedDayOffsets.length > 7 ||
+      [x.allowedDayOffsets,x.excludedDayOffsets].some(days=>new Set(days).size!==days.length || !days.every(d=>Number.isInteger(d)&&d>=0&&d<=6)) ||
+      x.allowedDayOffsets.some(d=>x.excludedDayOffsets.includes(d)) ||
+      ![null,'morning','afternoon','evening'].includes(x.band) ||
+      !(x.earliestMinute===null || Number.isInteger(x.earliestMinute)&&x.earliestMinute>=0&&x.earliestMinute<=1439) ||
+      !(x.latestMinute===null || Number.isInteger(x.latestMinute)&&x.latestMinute>=1&&x.latestMinute<=1440) ||
+      !(x.afterEventID===null || request.events.some(e=>e.id===x.afterEventID)&&!x.eventIDs.includes(x.afterEventID))) return false;
+  const bands={morning:[0,720],afternoon:[720,1080],evening:[1080,1440]};
+  const [lower,upper]=bands[x.band]??[0,1440];
+  return Math.max(lower,x.earliestMinute??0) < Math.min(upper,x.latestMinute??1440);
+}
+
+// Check original JSON at every object level BEFORE JSON.parse collapses keys.
+// Grammar and scalar types remain the responsibility of JSON.parse/validators.
+function parseUniqueObjectJSON(text) {
+  if (typeof text!=='string' || !text.trimStart().startsWith('{') || text.length>32_000) throw new SyntaxError('json_integrity');
+  const stack=[];
+  for(let i=0;i<text.length;i++) {
+    const c=text[i];
+    if(c==='"') {
+      const start=i++;
+      while(i<text.length) { if(text[i]==='\\') {i+=2;continue;} if(text[i]==='"') break; i++; }
+      if(i>=text.length) throw new SyntaxError('json_integrity');
+      let next=i+1; while(next<text.length && /[\t\n\r ]/.test(text[next])) next++;
+      if(text[next]===':') {
+        const keys=stack.at(-1), key=JSON.parse(text.slice(start,i+1));
+        if(!(keys instanceof Set) || keys.has(key)) throw new SyntaxError('json_integrity');
+        keys.add(key);
+      }
+    } else if(c==='{') stack.push(new Set());
+    else if(c==='[') stack.push(null);
+    else if(c==='}') {if(!(stack.pop() instanceof Set)) throw new SyntaxError('json_integrity');}
+    else if(c===']') {if(stack.length===0 || stack.pop()!==null) throw new SyntaxError('json_integrity');}
+    if(stack.length>32) throw new SyntaxError('json_integrity');
+  }
+  if(stack.length) throw new SyntaxError('json_integrity');
+  return JSON.parse(text);
 }
 
 const validTime = t => t === null || (string(t,40) && /(?:Z|[+-]\d{2}:\d{2})$/.test(t) && Number.isFinite(Date.parse(t)));
@@ -173,12 +220,13 @@ export function validResponse(x, request) {
   return responseFailureClass(x,request) === null;
 }
 export function responseFailureClass(x, request) {
-  const v2 = request.version >= 2, v3 = request.version === 3;
+  const v2 = request.version >= 2, v3 = request.version >= 3, v4=request.version===4;
   const fields = v2 ? ['version','requestID','mode','eventIDs','reply','draft','rewrittenMessage'] : ['version','requestID','mode','eventIDs','reply'];
   if (v3) fields.push('actions');
+  if (v4) fields.push('planning');
   if (!exactKeys(x,fields)) return 'response_fields';
-  if (x.version !== request.version || ![1,2,3].includes(x.version) || x.requestID !== request.requestID) return 'response_identity';
-  if (!(v3 ? ['conversation','clarify','plan','create','actions'] : v2 ? ['conversation','clarify','plan','create','rewrite'] : ['conversation','clarify','plan']).includes(x.mode)) return 'response_mode';
+  if (x.version !== request.version || ![1,2,3,4].includes(x.version) || x.requestID !== request.requestID) return 'response_identity';
+  if (!(v3 ? ['conversation','clarify','plan','create','actions',...(v4?['recover']:[])] : v2 ? ['conversation','clarify','plan','create','rewrite'] : ['conversation','clarify','plan']).includes(x.mode)) return 'response_mode';
   if (typeof x.reply !== 'string') return 'response_text_type';
   if (!x.reply.trim()) return 'response_text_empty';
   if (x.reply.length > 1000) return 'response_text_bounds';
@@ -188,6 +236,7 @@ export function responseFailureClass(x, request) {
   if (x.mode === 'plan' ? x.eventIDs.length < 1 || x.eventIDs.length > 2 : x.eventIDs.length !== 0) return 'response_mode_ids';
   if (v3 && (!Array.isArray(x.actions) || x.actions.length > 10 || new Set(x.actions.map(a=>a?.eventID)).size !== x.actions.length ||
       !x.actions.every(a=>validEdit(a,request)) || (x.mode === 'actions' ? x.actions.length === 0 : x.actions.length !== 0))) return 'response_actions';
+  if(v4 && (x.mode==='recover' ? !validPlanning(x.planning,request) : x.planning!==null)) return 'response_planning';
   if (v2) {
     if (x.mode === 'rewrite') {
       if (request.purpose !== 'rewrite' || x.draft !== null || !string(x.rewrittenMessage,12_000) || !x.rewrittenMessage.trim()) return 'response_rewrite';
@@ -204,6 +253,17 @@ export function responseFailureClass(x, request) {
 
 function schema(request) {
   const ids = request.events.filter(e => e.category !== 'other').map(e => e.id);
+  if (request.version === 4) {
+    const value=schema({...request,version:3}), allIDs=request.events.map(e=>e.id);
+    const alias=allIDs.length?{type:'string',enum:allIDs}:{type:'string'};
+    value.required.push('planning'); value.properties.mode.enum.push('recover');
+    value.properties.planning={anyOf:[{type:'null'},{type:'object',additionalProperties:false,required:PLANNING_KEYS,properties:{
+      eventIDs:{type:'array',items:alias},allowedDayOffsets:{type:'array',items:{type:'integer'}},excludedDayOffsets:{type:'array',items:{type:'integer'}},
+      band:{type:['string','null'],enum:[null,'morning','afternoon','evening']},earliestMinute:{type:['integer','null']},latestMinute:{type:['integer','null']},
+      afterEventID:{anyOf:[{type:'null'},alias]}
+    }}]};
+    return value;
+  }
   if (request.version === 3) {
     const value = schema({...request,version:2});
     value.required.push('actions');
@@ -263,6 +323,14 @@ MODIFICA/CANCELLAZIONE: mode=actions, da1a10 actions, una per alias esistente un
 Se si chiedono sia cancellazioni/modifiche sia un nuovo impegno, usa mode=actions e mantieni il nuovo in draft: le due anteprime richiedono conferme distinte, non fingere una transazione unica. Se non c'è alcuna azione valida ma c'è il nuovo impegno, usa create e spiega il limite senza perdere la bozza.
 PIANIFICAZIONE: mode=plan solo per organizzare OGGI pranzo/palestra presenti con1o2 alias lunch/gym nell'ordine richiesto. Ambiguità => clarify. Il telefono calcola spazi e conflitti, non il modello. Recuperi multigiorno e Maps sono strumenti locali separati, non fingere di averli eseguiti. Non dedurre completamenti da orari passati o pending. Per semplice conversazione mode=conversation,draft=null,actions=[],eventIDs=[].`;
 
+const INSTRUCTIONS_V4 = INSTRUCTIONS_V3.replace(
+  'Campi obbligatori: mode,eventIDs,reply,draft,rewrittenMessage,actions.',
+  'Campi obbligatori: mode,eventIDs,reply,draft,rewrittenMessage,actions,planning.'
+) + `
+RECUPERO MULTIGIORNO: per cercare alternative a una o più attività ESISTENTI puoi usare mode=recover,eventIDs=[],draft=null,actions=[],planning con esattamente eventIDs,allowedDayOffsets,excludedDayOffsets,band,earliestMinute,latestMinute,afterEventID. In ogni altro mode planning=null. Non proporre orari liberi: il telefono li calcola dopo aver controllato durata completa, preparazione, viaggi e conferme.
+planning.eventIDs contiene da1a3 alias esistenti delle attività desiderate, non titoli inventati. Se l'identità è ambigua fai UNA domanda, mode=clarify e planning=null; non scegliere arbitrariamente. allowedDayOffsets è una lista non vuota di giorni consentiti0...6 rispetto a OGGI in Europe/Rome; excludedDayOffsets0...6, senza sovrapposizione. band è null oppure morning/afternoon/evening; earliestMinute0...1439 e latestMinute1...1440 sono limiti espliciti della fascia, o null. afterEventID è null o l'alias di un ALTRO evento che deve precedere l'attività. Non inventare durate, indirizzi, tempi dei mezzi, pausa tra allenamenti o cause mediche.
+planningContext può contenere l'ultima richiesta, già riferita alla data di questa chiamata e ai suoi alias attuali. In una correzione conserva attività e vincoli non cambiati: "domani no, meglio giovedì" esclude domani e sceglie giovedì, senza perdere il target. Un giorno escluso torna consentito solo se l'utente lo riammette esplicitamente. Non trascinare il piano su una richiesta distinta. "Dopo cena" senza un orario o riferimento noto richiede un chiarimento, non le20 inventate. Vincoli fuori dai7giorni richiedono chiarimento. Un orario trascorso non dimostra che l'attività sia stata saltata. Non dire che alternative, notifiche o modifiche siano già state eseguite.`;
+
 export async function handle(request, env, dependencies = {}) {
   // Workers' native fetch requires the global receiver; Node mocks did not.
   const fetchProvider = dependencies.fetchProvider ?? ((input, init) => globalThis.fetch(input, init));
@@ -279,7 +347,7 @@ export async function handle(request, env, dependencies = {}) {
   if (request.headers.get('Content-Type')?.split(';')[0].trim() !== 'application/json') return reply(415,'content_type');
   if (Number(request.headers.get('Content-Length') ?? 0) > MAX_BYTES) return reply(413,'payload_too_large');
   let body;
-  try { body = JSON.parse(await readLimited(request.body,MAX_BYTES)); }
+  try { const raw=await readLimited(request.body,MAX_BYTES); body=JSON.parse(raw); if(body?.version===4) body=parseUniqueObjectJSON(raw); }
   catch (error) { return reply(error.message === 'size' ? 413 : 400,'invalid_request'); }
   if (!validRequest(body,clock())) return reply(400,'invalid_request');
   try {
@@ -298,10 +366,11 @@ export async function handle(request, env, dependencies = {}) {
       method:'POST', signal:controller.signal, redirect:'manual',
       headers:{ Authorization:`Bearer ${providerKey}`, 'Content-Type':'application/json' },
       body:JSON.stringify({ model:MODEL, stream:false, max_completion_tokens:body.version===2 && body.purpose==='rewrite'?6000:2400, reasoning_effort:'low', temperature:0,
-        messages:[{ role:'system', content:body.version===3?INSTRUCTIONS_V3:body.version===2?INSTRUCTIONS_V2:INSTRUCTIONS }, { role:'user',content:JSON.stringify({
+        messages:[{ role:'system', content:body.version===4?INSTRUCTIONS_V4:body.version===3?INSTRUCTIONS_V3:body.version===2?INSTRUCTIONS_V2:INSTRUCTIONS }, { role:'user',content:JSON.stringify({
           now:body.now,dayKey:body.dayKey,message:body.message,events:body.events,history:body.history,memories:body.memories,
           ...(body.version>=2?{purpose:body.purpose}:{}),
-          ...(body.version===3?{draftContext:body.draftContext,references:body.references,historyOmittedCount:body.historyOmittedCount}:{})
+          ...(body.version>=3?{draftContext:body.draftContext,references:body.references,historyOmittedCount:body.historyOmittedCount}:{}),
+          ...(body.version===4?{planningContext:body.planningContext}:{})
         }) }],
         response_format:{ type:'json_schema',json_schema:{ name:`pivot_coach_v${body.version}`,strict:true,schema:schema(body) } }
       })
@@ -320,9 +389,10 @@ export async function handle(request, env, dependencies = {}) {
     const payload = JSON.parse(await readLimited(upstream.body,32_000));
     if (payload.choices?.[0]?.finish_reason !== 'stop') return reply(502,'invalid_response',
       payload.choices?.[0]?.finish_reason === 'length' ? 'output_incomplete' : 'output_not_complete');
-    const generated = JSON.parse(payload.choices[0].message.content);
+    const generated = body.version===4?parseUniqueObjectJSON(payload.choices[0].message.content):JSON.parse(payload.choices[0].message.content);
     const expectedFields=body.version>=2?['mode','eventIDs','reply','draft','rewrittenMessage']:['mode','eventIDs','reply'];
-    if (body.version===3) expectedFields.push('actions');
+    if (body.version>=3) expectedFields.push('actions');
+    if (body.version===4) expectedFields.push('planning');
     if (!exactKeys(generated,expectedFields)) return reply(502,'invalid_response','response_fields');
     // Identity is bound by the trusted server, never generated/copied by the model.
     const result = {version:body.version,requestID:body.requestID,...generated};
@@ -331,7 +401,8 @@ export async function handle(request, env, dependencies = {}) {
     // A model selects candidates; it cannot author claims that Calendar changed.
     const safeResult = result.mode === 'plan' ? { ...result, reply:PLAN_REPLY } :
       result.mode === 'create' ? {...result,reply:'Ho preparato una bozza. Controlla calendario, date e note prima di confermare: nessun evento è stato creato.'} :
-      result.mode === 'actions' ? {...result,reply:'Ho preparato le modifiche da controllare. Apri l’anteprima e conferma soltanto quelle che vuoi applicare: il Calendario non è ancora cambiato.'} : result;
+      result.mode === 'actions' ? {...result,reply:'Ho preparato le modifiche da controllare. Apri l’anteprima e conferma soltanto quelle che vuoi applicare: il Calendario non è ancora cambiato.'} :
+      result.mode === 'recover' ? {...result,reply:'Ho interpretato la richiesta di recupero. Controlliamo attività, vincoli e tempi sul telefono prima di cercare alternative: nessun evento è stato spostato.'} : result;
     return Response.json(safeResult,{ headers:{ 'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
       'X-Pivot-Gateway-Revision':'20261019-reviewed-actions' } });
   } catch (error) {

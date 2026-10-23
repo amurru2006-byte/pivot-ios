@@ -7,6 +7,7 @@ enum CoachV8Planner {
         guard snapshot.isCurrent(events: events, data: data, now: now) else { throw CoachV8Error.staleContext }
         // Validate even typed responses, not only network JSON.
         guard response.version == snapshot.request.version, response.requestID == snapshot.request.requestID,
+              response.mode != .recover, response.planning == nil,
               response.reply.count <= 1000, !response.reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               Set(response.eventIDs).count == response.eventIDs.count,
               (response.mode == .plan ? (1...2).contains(response.eventIDs.count) : response.eventIDs.isEmpty) else {
@@ -14,7 +15,7 @@ enum CoachV8Planner {
         }
         guard response.mode == .plan else {
             if response.mode == .actions {
-                guard response.version == 3, let actions = response.actions else { throw CoachV8Error.invalidResponse }
+                guard [3, 4].contains(response.version), let actions = response.actions else { throw CoachV8Error.invalidResponse }
                 _ = try CoachCalendarBatch.make(actions, sources: snapshot.sources, messageID: UUID(), now: now, data: data,
                     calendarScope: snapshot.calendarScope)
                 return .init(reply: "Ho preparato le modifiche da controllare. Apri l’anteprima e conferma soltanto quelle che vuoi applicare: il Calendario non è ancora cambiato.", options: [])

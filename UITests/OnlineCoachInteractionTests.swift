@@ -121,9 +121,9 @@ final class OnlineCoachInteractionTests: XCTestCase {
         let preferences = app.buttons["Preferenze calendario"]
         scrollControlIntoView(preferences, in: app); preferences.tap()
         let account = app.switches["coach-routing-remember-account"]
-        tapVisibleSwitchOnce(account, to: true, in: app)
+        tapVisibleSwitchOnce(account, to: true, in: app, useAppCoordinates: true)
         let remember = app.switches["coach-routing-remember-topic"]
-        tapVisibleSwitchOnce(remember, to: true, in: app)
+        tapVisibleSwitchOnce(remember, to: true, in: app, useAppCoordinates: true)
         let topic = app.textFields["coach-routing-topic"]
         scrollControlIntoView(topic, in: app); topic.tap(); let current = topic.value as? String ?? ""
         topic.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count) + "Persona QA")

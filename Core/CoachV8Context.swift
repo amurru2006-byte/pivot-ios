@@ -16,6 +16,8 @@ struct CoachV8Request: Codable {
     var draftContext: [CoachCalendarDraft]? = nil
     var references: [String]? = nil
     var historyOmittedCount: Int? = nil
+    // V4 only: at most one prior, alias-only set of planning constraints.
+    var planningContext: [CoachPlanningIntent]? = nil
 
     struct Event: Codable {
         var id: String
@@ -49,14 +51,17 @@ struct CoachV8Response: Decodable {
     var draft: CoachCalendarDraft? = nil
     var rewrittenMessage: String? = nil
     var actions: [CoachCalendarEdit]? = nil
-    enum Mode: String, Decodable { case conversation, clarify, plan, create, rewrite, actions }
+    var planning: CoachPlanningIntent? = nil
+    enum Mode: String, Decodable { case conversation, clarify, plan, create, rewrite, actions, recover }
 
     static func decode(_ bytes: Data, for request: CoachV8Request) throws -> Self {
         var keys: Set<String> = request.version >= 2
             ? ["version", "requestID", "mode", "eventIDs", "reply", "draft", "rewrittenMessage"]
             : ["version", "requestID", "mode", "eventIDs", "reply"]
-        if request.version == 3 { keys.insert("actions") }
+        if request.version >= 3 { keys.insert("actions") }
+        if request.version == 4 { keys.insert("planning") }
         guard bytes.count <= (request.version >= 2 ? 32_000 : 8192),
+              request.version != 4 || CoachJSONIntegrity.hasUniqueObjectKeys(bytes),
               let object = try JSONSerialization.jsonObject(with: bytes) as? [String: Any],
               Set(object.keys) == keys else {
             throw CoachV8Error.invalidResponse
@@ -73,10 +78,10 @@ struct CoachV8Response: Decodable {
             throw CoachV8Error.invalidResponse
         }
         if request.version == 1 {
-            guard value.mode != .create, value.mode != .rewrite, value.mode != .actions else { throw CoachV8Error.invalidResponse }
+            guard value.mode != .create, value.mode != .rewrite, value.mode != .actions, value.mode != .recover else { throw CoachV8Error.invalidResponse }
         } else {
-            guard [2, 3].contains(request.version) else { throw CoachV8Error.invalidResponse }
-            if request.version == 3 {
+            guard [2, 3, 4].contains(request.version) else { throw CoachV8Error.invalidResponse }
+            if request.version >= 3 {
                 guard let actions = value.actions, actions.count <= 10,
                       Set(actions.map(\.eventID)).count == actions.count,
                       actions.allSatisfy({ $0.valid(now: request.now) }) else { throw CoachV8Error.invalidResponse }
@@ -86,7 +91,7 @@ struct CoachV8Response: Decodable {
                     guard rawActions.allSatisfy({ Set($0.keys) == Set(["kind", "eventID", "title", "start", "end", "notes"]) }) else { throw CoachV8Error.invalidResponse }
                 } else { throw CoachV8Error.invalidResponse }
             } else if value.mode == .actions { throw CoachV8Error.invalidResponse }
-            if value.mode == .create || (request.version == 3 && [.clarify, .actions].contains(value.mode) && value.draft != nil) {
+            if value.mode == .create || (request.version >= 3 && [.clarify, .actions].contains(value.mode) && value.draft != nil) {
                 guard request.purpose == "conversation", let draft = value.draft,
                       value.mode != .create || !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                       draft.title.count <= 160, draft.notes.count <= 3000,
@@ -103,6 +108,14 @@ struct CoachV8Response: Decodable {
                       value.rewrittenMessage == nil else { throw CoachV8Error.invalidResponse }
             }
         }
+        if request.version == 4 {
+            guard request.purpose == "conversation", value.mode != .rewrite else { throw CoachV8Error.invalidResponse }
+            if value.mode == .recover {
+                guard let planning = value.planning, let raw = object["planning"] as? [String: Any],
+                      Set(raw.keys) == Set(["eventIDs", "allowedDayOffsets", "excludedDayOffsets", "band", "earliestMinute", "latestMinute", "afterEventID"]),
+                      planning.isValid(knownAliases: Set(request.events.map(\.id))) else { throw CoachV8Error.invalidResponse }
+            } else { guard value.planning == nil else { throw CoachV8Error.invalidResponse } }
+        } else if value.mode == .recover { throw CoachV8Error.invalidResponse }
         return value
     }
 }
@@ -164,10 +177,10 @@ struct CoachV8Snapshot {
                 && item.healthDerived != true && (item.role == .user || item.role == .coach)
                 && (data.coachState.contextStartedAt.map { item.createdAt >= $0 } ?? true)
         }
-        let version = purpose == nil ? 1 : (purpose == "conversation" && protocolVersion == 3 ? 3 : 2)
-        let history = eligibleHistory.suffix(version == 3 ? 20 : 6).map {
+        let version = purpose == nil ? 1 : (purpose == "conversation" && [3, 4].contains(protocolVersion) ? protocolVersion : 2)
+        let history = eligibleHistory.suffix(version >= 3 ? 20 : 6).map {
             let text = CoachPrivacy.text($0.text, events: events, data: data)
-            return CoachV8Request.Message(role: $0.role == .user ? "user" : "assistant", text: version == 3 ? text : String(text.prefix(400)))
+            return CoachV8Request.Message(role: $0.role == .user ? "user" : "assistant", text: version >= 3 ? text : String(text.prefix(400)))
         }
         let sharedMemories: [String]
         if purpose == "conversation" {
@@ -178,7 +191,7 @@ struct CoachV8Snapshot {
                                      message: CoachPrivacy.text(clean, events: events, data: data), events: summaries, history: history,
                                      memories: sharedMemories)
         var focusedDraft: CoachSavedCalendarDraft?
-        if version == 3 {
+        if version >= 3 {
             let selected = CoachConversationFocus.draft(in: data.coachState, dayKey: PivotDate.key(now))
             if data.coachState.focusedCalendarDraftID != nil { focusedDraft = selected }
             request.draftContext = selected.map { saved in
@@ -197,6 +210,7 @@ struct CoachV8Snapshot {
                 return title.count >= 4 && (" " + mentions + " ").contains(" " + title + " ")
             }
             request.historyOmittedCount = eligibleHistory.count - history.count
+            if version == 4 { request.planningContext = [] }
             // Drop whole oldest turns, never silently cut facts halfway through
             // a sentence. The disclosure and model see how many were omitted.
             while !request.history.isEmpty {

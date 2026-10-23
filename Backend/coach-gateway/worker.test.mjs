@@ -319,6 +319,94 @@ const fixtureV3 = () => ({...fixture(),version:3,purpose:'conversation',draftCon
 const deletion = (eventID='e0') => ({kind:'delete',eventID,title:null,start:null,end:null,notes:null});
 const responseV3 = () => ({mode:'actions',eventIDs:[],reply:'Ho cancellato tutto',draft:null,rewrittenMessage:null,actions:[deletion()]});
 
+const fixtureV4 = () => ({...fixtureV3(),version:4,planningContext:[]});
+const planningV4 = () => ({eventIDs:['e0'],allowedDayOffsets:[1],excludedDayOffsets:[2],band:'afternoon',earliestMinute:null,latestMinute:null,afterEventID:null});
+const responseV4 = () => ({mode:'recover',eventIDs:[],reply:'Ho già spostato tutto alle18',draft:null,rewrittenMessage:null,actions:[],planning:planningV4()});
+
+test('v4 interprets only bounded planning constraints with one call and no new provider tools', async () => {
+  const body=fixtureV4(); body.planningContext=[planningV4()]; let calls=0;
+  const response=await handle(request(body),await environment(),{clock,fetchProvider:async(url,init)=>{
+    calls++; const sent=JSON.parse(init.body), dto=JSON.parse(sent.messages[1].content);
+    assert.equal(sent.response_format.json_schema.name,'pivot_coach_v4');
+    assert.equal(sent.response_format.json_schema.strict,true); assert.equal(Object.hasOwn(sent,'tools'),false);
+    assert.equal(sent.model,'openai/gpt-oss-120b'); assert.equal(sent.max_completion_tokens,2400);
+    assert.deepEqual(sent.response_format.json_schema.schema.required,['mode','eventIDs','reply','draft','rewrittenMessage','actions','planning']);
+    assert.deepEqual(dto.planningContext,body.planningContext);
+    assert.deepEqual(Object.keys(dto.planningContext[0]).sort(),Object.keys(planningV4()).sort());
+    assert.equal(Object.hasOwn(dto,'requestID'),false);
+    return upstream(responseV4());
+  }});
+  assert.equal(response.status,200); assert.equal(calls,1);
+  const result=await response.json(); assert.equal(result.version,4); assert.equal(result.requestID,body.requestID);
+  assert.deepEqual(result.planning,planningV4()); assert.deepEqual(result.eventIDs,[]); assert.deepEqual(result.actions,[]);
+  assert.equal(result.reply.includes('alle18'),false); assert.equal(result.reply.includes('nessun evento è stato spostato'),true);
+});
+
+test('v4 request context rejects private fields unknown aliases duplicate targets and contradictory days before provider', async () => {
+  const changes=[x=>x.planningContext=[{...planningV4(),nativeID:'private'}],
+    x=>x.planningContext=[{...planningV4(),eventIDs:['e99']}],x=>x.planningContext=[planningV4(),planningV4()],
+    x=>x.planningContext=[{...planningV4(),eventIDs:['e0','e0']}],
+    x=>x.planningContext=[{...planningV4(),excludedDayOffsets:[1]}],x=>x.planningContext=[{...planningV4(),allowedDayOffsets:[7]}],
+    x=>x.planningContext=[{...planningV4(),allowedDayOffsets:[]}],x=>x.planningContext=[{...planningV4(),earliestMinute:true}],
+    x=>x.planningContext=[{...planningV4(),latestMinute:600}],x=>x.planningContext=[{...planningV4(),afterEventID:'e0'}],
+    x=>x.events[0].id='e48',x=>x.purpose='rewrite',x=>delete x.planningContext];
+  for(const change of changes) {
+    const body=fixtureV4(); change(body);
+    assert.equal(validRequest(body,now),false);
+    assert.equal((await handle(request(body),await environment(),{clock,fetchProvider:forbidden})).status,400);
+  }
+});
+
+test('v4 original request bytes reject duplicate fields even with Unicode escaping inside context arrays', async () => {
+  const body=fixtureV4();body.planningContext=[planningV4()];const raw=JSON.stringify(body);
+  for(const value of [raw.replace('"version":4','"version":4,"version":4'),
+    raw.replace('"allowedDayOffsets":[1]','"allowedDayOffsets":[1],"allowedDayOff\\u0073ets":[1]')]) {
+    assert.notEqual(value,raw);
+    assert.equal((await handle(request(value),await environment(),{clock,fetchProvider:forbidden})).status,400);
+  }
+});
+
+test('v4 provider output rejects duplicate original keys instead of accepting collapsed planner fields', async () => {
+  const raw=JSON.stringify(responseV4());
+  for(const value of [raw.replace('"mode":"recover"','"mode":"conversation","mode":"recover"'),
+    raw.replace('"eventIDs":["e0"]','"eventIDs":["e0"],"event\\u0049Ds":["e0"]'),
+    raw.replace('"planning":','"planning":null,"planning":')]) {
+    assert.notEqual(value,raw);
+    const response=await handle(request(fixtureV4()),await environment(),{clock,fetchProvider:async()=>Response.json({choices:[{finish_reason:'stop',message:{content:value}}]})});
+    assert.equal(response.status,502);assert.deepEqual(await response.json(),{error:'invalid_response'});
+  }
+});
+
+test('v4 response rejects unsupported metadata invalid intent and hidden actions across modes', async () => {
+  const values=[{...responseV4(),planning:{...planningV4(),location:'private'}},
+    {...responseV4(),planning:{...planningV4(),eventIDs:['e99']}},{...responseV4(),planning:null},
+    {...responseV4(),planning:{...planningV4(),allowedDayOffsets:[true]}},
+    {...responseV4(),planning:{...planningV4(),earliestMinute:Number.MAX_SAFE_INTEGER}},
+    {...responseV4(),planning:{...planningV4(),afterEventID:'e0'}},
+    {...responseV4(),actions:[deletion()]},{...responseV4(),eventIDs:['e0']},
+    {...responseV4(),mode:'conversation'},{...responseV4(),mode:'plan',eventIDs:['e0']},
+    {...responseV4(),draft:{title:'hidden',start:null,end:null,calendarHint:null,notes:'',endEstimated:false}}];
+  for(const value of values) {
+    const response=await handle(request(fixtureV4()),await environment(),{clock,fetchProvider:async()=>upstream(value)});
+    assert.equal(response.status,502,JSON.stringify(value));
+  }
+});
+
+test('v4 keeps conversation and explicit edits while v3 still rejects recovery and planning fields', async () => {
+  for(const value of [{...responseV4(),mode:'conversation',planning:null}, {...responseV3(),planning:null}]) {
+    assert.equal((await handle(request(fixtureV4()),await environment(),{clock,fetchProvider:async()=>upstream(value)})).status,200);
+  }
+  assert.equal((await handle(request(fixtureV3()),await environment(),{clock,fetchProvider:async()=>upstream(responseV4())})).status,502);
+  const old={...fixtureV3(),planningContext:[]};
+  assert.equal((await handle(request(old),await environment(),{clock,fetchProvider:forbidden})).status,400);
+});
+
+test('v4 integrity bound rejects excessive nested response depth without exposing raw output', async () => {
+  const raw='{"a":'+ '['.repeat(33)+'0'+']'.repeat(33)+'}';
+  const response=await handle(request(fixtureV4()),await environment(),{clock,fetchProvider:async()=>Response.json({choices:[{finish_reason:'stop',message:{content:raw}}]})});
+  assert.equal(response.status,502); assert.deepEqual(await response.json(),{error:'invalid_response'});
+});
+
 test('v3 passes whole earlier turns and partial draft facts without calendar metadata', async () => {
   const body=fixtureV3();
   body.history=[{role:'user',text:'Dettagli già forniti. '.repeat(30)+'dalle11:50 alle19:35'}];
