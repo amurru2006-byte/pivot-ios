@@ -1,0 +1,43 @@
+name: Verifica pianificazione conversazionale V8
+on:
+  push:
+    branches: ['codex/pivot-v8-planning-ui']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pivot-planning-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confini, sessioni e ricerca senza rete reale
+        run: |
+          bash -n Scripts/preview-ui.sh Scripts/package-v8-candidate.sh
+          swift test
+          node --test Backend/coach-gateway/worker.test.mjs
+          python3 -m unittest discover -s Scripts -p 'test_*.py'
+  planning-ui:
+    needs: core
+    runs-on: macos-15
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash Scripts/prepare-ios-ci.sh
+      - name: Continuita e alternative con calendario e provider sintetici
+        env:
+          PIVOT_UI_ONLY_TESTING: v8-089-planning-regression
+        run: bash Scripts/preview-ui.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Pivot-planning-preflight
+          path: |
+            build/online-privacy-build.log
+            build/online-privacy-tests.log
+            build/Previews/OnlinePrivacy/
+          retention-days: 2
+          if-no-files-found: ignore

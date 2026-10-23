@@ -198,6 +198,13 @@ struct CoachView: View {
                     .focused($composerFocused)
                     .accessibilityIdentifier("coach-message-input")
                     .lineLimit(2...6).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 14))
+                if let id = state.focusedPlanningSessionID,
+                   let plan = state.planningSessions?.first(where: { $0.id == id }) {
+                    Label("Piano in corso: " + plan.sourceTitles, systemImage: "calendar.badge.clock")
+                        .font(.subheadline).accessibilityIdentifier("coach-focused-planning")
+                    Button("Nuovo argomento") { clearDraftFocus() }.frame(minHeight: 44)
+                        .disabled(isPlanning).accessibilityIdentifier("coach-clear-planning-focus")
+                }
                 HStack {
                     Button {
                         if dictation.isListening { finishDictation() }
@@ -318,6 +325,8 @@ struct CoachView: View {
                     if coach.calendarDrafts?.contains(where: { $0.id == coach.focusedCalendarDraftID && $0.dayKey == key }) == true {
                         coach.focusedCalendarDraftID = nil; coach.omitPreviousDraft = true
                     }
+                    coach.planningSessions?.removeAll { $0.dayKey == key }
+                    if let id = coach.focusedPlanningSessionID, coach.planningSessions?.contains(where: { $0.id == id }) != true { coach.focusedPlanningSessionID = nil }
                     coach.messages.removeAll { $0.dayKey == key }; coach.calendarDrafts?.removeAll { $0.dayKey == key }; coach.calendarBatches?.removeAll { $0.dayKey == key }; data.coachState = coach
                 }
                 if key == PivotDate.key(Date()) { store.onlineConversationPermission.revoke() }
@@ -373,7 +382,7 @@ struct CoachView: View {
             }
             #endif
             if onlineCoach.isConfigured && !useLocal {
-                Text("Chat, riordino del testo e bozze anche per eventi passati. Puoi chiedere modifiche o cancellazioni agli eventi nell’intervallo scelto: controlli l’elenco e confermi. Le copie originali sono nello storico modifiche. La ricerca dei recuperi su più giorni resta locale; i viaggi collegati richiedono una verifica separata.")
+                Text("Chat, bozze, modifiche e cancellazioni da confermare. Per recuperare fino a tre attività puoi discutere giorni e fascia: l’AI interpreta la richiesta, Pivot confronta gli spazi reali. I viaggi collegati richiedono una verifica separata.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
                 Picker("Contesto calendario", selection: $calendarScope) {
                     ForEach(CoachCalendarScope.allCases) { scope in Text(scope.label).tag(scope) }
@@ -506,9 +515,24 @@ struct CoachView: View {
             CoachDraftCard(saved: saved) { calendarDraft = saved }
             if CoachConversationFocus.eligible(saved, state: state, dayKey: PivotDate.key(Date())) {
                 Button("Continua questa bozza in chat") {
-                    if store.change({ $0.coachState.focusedCalendarDraftID = saved.id; $0.coachState.omitPreviousDraft = false; $0.coachState.contextStartedAt = nil }) { composerFocused = true }
+                    if store.change({ $0.coachState.focusedCalendarDraftID = saved.id; $0.coachState.focusedPlanningSessionID = nil; $0.coachState.omitPreviousDraft = false; $0.coachState.contextStartedAt = nil }) { composerFocused = true }
                 }.frame(minHeight: 44).disabled(isPlanning || store.locked)
                     .accessibilityIdentifier("coach-continue-draft-" + saved.id.uuidString)
+            }
+        }
+        if let plan = state.planningSessions?.first(where: { $0.messageID == item.id }) {
+            NavigationLink { CoachPlanningSessionView(sessionID: plan.id) } label: {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Piano di recupero", systemImage: "calendar.badge.clock").font(.headline)
+                    Text(plan.sourceTitles).font(.subheadline)
+                    Text(plan.status == .draft ? "Controlla giorni, durate e alternative" : "Apri il riepilogo").font(.caption)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("coach-planning-card")
+            if plan.isActive(at: Date()) {
+                Button("Continua questo piano in chat") {
+                    store.change { $0.coachState.focusedPlanningSessionID = plan.id; $0.coachState.focusedCalendarDraftID = nil; $0.coachState.contextStartedAt = nil }
+                    composerFocused = true
+                }.frame(minHeight: 44).disabled(isPlanning || store.locked).accessibilityIdentifier("coach-continue-planning")
             }
         }
         if let recovery = item.recoveryRequest {
@@ -551,6 +575,7 @@ struct CoachView: View {
     private func clearDraftFocus() {
         store.change {
             $0.coachState.focusedCalendarDraftID = nil; $0.coachState.omitPreviousDraft = true
+            $0.coachState.focusedPlanningSessionID = nil
             $0.coachState.contextStartedAt = Date()
         }
     }
@@ -601,6 +626,7 @@ struct CoachView: View {
         approvedReviewAwaitingDismissal = nil
         guard scenePhase == .active, !isPlanning, !store.locked, !store.isRestoring, !useLocal, onlineCoach.isConfigured else { return }
         store.onlineConversationPermission.authorize(dayKey: review.snapshot.request.dayKey)
+        store.onlineConversationPermission.authorizePlanningSources(review.snapshot.additionalPlanningSourceIDs, dayKey: review.snapshot.request.dayKey)
         turnGeneration += 1
         let generation = turnGeneration
         isPlanning = true
@@ -618,7 +644,7 @@ struct CoachView: View {
         historyDay = now
         let parsedRecovery = CoachRecoveryRequest.parse(clean, now: now)
         let refinedRecovery = parsedRecovery == nil ? CoachRecoveryRequest.followUp(clean, messages: store.data.coachState.messages, now: now) : nil
-        if targetID == nil, contextEventID == nil, let recovery = parsedRecovery ?? refinedRecovery {
+        if (!onlineCoach.isConfigured || useLocal), targetID == nil, contextEventID == nil, let recovery = parsedRecovery ?? refinedRecovery {
             await calendar.refresh(settings: store.data.settings)
             guard !Task.isCancelled, !store.locked, !store.isRestoring else { return }
             // A follow-up retains the explicit original target (or the missing
@@ -727,12 +753,12 @@ struct CoachView: View {
                 let outbound = preparedRewrite?.message ?? clean
                 let snapshot = try await Task.detached(priority: .userInitiated) {
                     try CoachV8Snapshot.make(message: outbound, events: events, data: snapshotData, now: now, purpose: purpose,
-                        protocolVersion: 3, calendarScope: scope)
+                        protocolVersion: 4, calendarScope: scope)
                 }.value
                 rewriteDraft = preparedRewrite
                 try Task.checkCancellation()
                 guard snapshot.isCurrent(events: calendar.events, data: store.data, now: Date()) else { throw CoachV8Error.staleContext }
-                if store.onlineConversationPermission.allows(dayKey: snapshot.request.dayKey) {
+                if store.onlineConversationPermission.allowsPlanningSources(snapshot.additionalPlanningSourceIDs, dayKey: snapshot.request.dayKey) {
                     authorizedSnapshot = snapshot
                 } else {
                     onlineReview = .init(snapshot: snapshot, originalMessage: clean, rewrite: preparedRewrite)
@@ -741,7 +767,7 @@ struct CoachView: View {
             }
             guard let snapshot = authorizedSnapshot,
                   !store.locked, !store.isRestoring,
-                  store.onlineConversationPermission.allows(dayKey: snapshot.request.dayKey) else { throw CoachV8Error.staleContext }
+                  store.onlineConversationPermission.allowsPlanningSources(snapshot.additionalPlanningSourceIDs, dayKey: snapshot.request.dayKey) else { throw CoachV8Error.staleContext }
             // First message: exact reviewed bytes. Following messages: the same
             // bounded data policy, authorized for this conversation, freshly checked.
             lastAuthorizedRequest = snapshot.request
@@ -759,12 +785,21 @@ struct CoachView: View {
             }
             let currentData = store.data, currentEvents = calendar.events, currentTime = Date()
             let result = try await Task.detached(priority: .userInitiated) {
-                try CoachV8Planner.preview(response, snapshot: snapshot, events: currentEvents, data: currentData, now: currentTime)
+                if response.mode == .recover {
+                    return CoachTurnResult(reply: "Ho preparato i vincoli del recupero. Apri il piano: Pivot confronterà gli spazi reali dopo la conferma di durate e tragitti. Nessun evento è stato spostato.", options: [])
+                }
+                return try CoachV8Planner.preview(response, snapshot: snapshot, events: currentEvents, data: currentData, now: currentTime)
             }.value
             try Task.checkCancellation()
             guard snapshot.isCurrent(events: calendar.events, data: store.data, now: Date()) else { throw CoachV8Error.staleContext }
-            let replyMessage = CoachMessage(dayKey: PivotDate.key(now), role: .coach, text: result.reply, onlineHistoryEligible: response.mode != .plan && response.mode != .actions)
+            let replyMessage = CoachMessage(dayKey: PivotDate.key(now), role: .coach, text: result.reply, onlineHistoryEligible: response.mode != .plan && response.mode != .actions && response.mode != .recover)
             let userMessage = CoachMessage(dayKey: PivotDate.key(now), role: .user, text: clean, createdAt: now, onlineHistoryEligible: true)
+            let savedPlanning: CoachPlanningSession?
+            if response.mode == .recover {
+                savedPlanning = try CoachPlanningSession.make(response, snapshot: snapshot, messageID: replyMessage.id,
+                    userMessageID: userMessage.id, access: .init(calendar: calendar.hasAccess, online: onlineCoach.isConfigured && !useLocal),
+                    events: currentEvents, data: currentData, now: currentTime)
+            } else { savedPlanning = nil }
             var savedDraft: CoachSavedCalendarDraft?
             if var draft = response.draft, [.create, .clarify, .actions].contains(response.mode) {
                 for (index, client) in store.data.clients.enumerated() {
@@ -791,21 +826,29 @@ struct CoachView: View {
                 savedBatch = try CoachCalendarBatch.make(response.actions ?? [], sources: snapshot.sources,
                     messageID: replyMessage.id, now: currentTime, data: currentData, calendarScope: snapshot.calendarScope)
             } else { savedBatch = nil }
+            var saveFailure: String?
             guard store.change({ data in
                 var coach = data.coachState
                 coach.messages.append(userMessage)
                 // Plan validation may mention a private local event title. Only
                 // provider conversation/clarification prose is safe for history.
                 coach.messages.append(replyMessage)
+                if let savedPlanning {
+                    do { try CoachPlanningStore.save(savedPlanning, in: &coach) }
+                    catch { saveFailure = error.localizedDescription; return }
+                } else if response.mode != .clarify {
+                    coach.focusedPlanningSessionID = nil
+                }
                 if let savedDraft {
                     var drafts = coach.calendarDrafts ?? []
                     drafts.removeAll { $0.id == savedDraft.id }; drafts.append(savedDraft); coach.calendarDrafts = drafts
-                    coach.focusedCalendarDraftID = savedDraft.id; coach.omitPreviousDraft = false
+                    coach.focusedCalendarDraftID = savedDraft.id; coach.focusedPlanningSessionID = nil; coach.omitPreviousDraft = false
                 }
                 if let savedBatch { var batches = coach.calendarBatches ?? []; batches.append(savedBatch); coach.calendarBatches = batches }
                 coach.options = result.options
                 data.coachState = coach
             }) else { message = "Non riesco a salvare la conversazione. Il messaggio resta qui."; return }
+            if let saveFailure { message = saveFailure; return }
             guard await store.flushPendingWrites() else {
                 message = "La conversazione è ancora in memoria, ma non è salvata su disco. Tieni Pivot aperto e riprova il salvataggio nelle Impostazioni."
                 return
@@ -813,8 +856,12 @@ struct CoachView: View {
             try Task.checkCancellation()
             if input.trimmingCharacters(in: .whitespacesAndNewlines) == clean { input = ""; originalDictation = nil }
             if let savedDraft, response.mode == .create { calendarDraft = savedDraft }
-            message = response.mode == .create ? "Bozza pronta: controllala prima di creare l'impegno." :
+            message = savedPlanning != nil ? "Apri il piano di recupero per verificare le alternative." : response.mode == .create ? "Bozza pronta: controllala prima di creare l'impegno." :
                 (savedBatch != nil ? "Apri le modifiche proposte per controllarle e confermarle." : result.options.isEmpty && savedDraft == nil ? "Nessuna modifica è stata preparata." : nil)
+        } catch let failure as CoachPlanningSession.Failure {
+            message = failure.errorDescription
+        } catch let failure as CoachPlanningSelection.Failure {
+            message = failure.localizedDescription
         } catch let failure as CoachOnlineFailure {
             guard !Task.isCancelled else { return }
             // Keep the composer intact; retries are manual and never queued invisibly.

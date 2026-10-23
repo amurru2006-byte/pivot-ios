@@ -43,6 +43,18 @@ struct CoachCloudDisclosure: View {
                     }
                 }
             }
+            if let contexts = request.planningContext, !contexts.isEmpty {
+                DisclosureGroup("Vincoli del piano da continuare") {
+                    ForEach(Array(contexts.enumerated()), id: \.offset) { _, context in
+                        Text("Date riferite al " + PivotDate.shortDate(context.anchor))
+                        Text("Attività: " + context.intent.eventIDs.joined(separator: ", "))
+                        Text("Giorni consentiti: " + context.intent.allowedDayOffsets.sorted().compactMap {
+                            PivotDate.calendar.date(byAdding: .day, value: $0, to: PivotDate.calendar.startOfDay(for: context.anchor)).map(PivotDate.shortDate)
+                        }.joined(separator: ", "))
+                        Text("Le sole attività originarie necessarie possono essere incluse anche se ora sono nel passato. Non viene aggiunto tutto lo storico.").font(.caption)
+                    }
+                }.accessibilityIdentifier("coach-online-planning-context")
+            }
             DisclosureGroup("Impegni inclusi: \(request.events.count)") {
                 Text("Solo sigle interne, categorie, orari, durata, stato e vincoli. Non vengono aggiunti titoli, note o indirizzi del calendario.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
@@ -51,7 +63,7 @@ struct CoachCloudDisclosure: View {
                         .font(.subheadline)
                 }
             }
-            if request.version == 3 { Text("Le corrispondenze fra il tuo messaggio e gli eventi sono indicate solo con sigle interne. La bozza da continuare viene filtrata come il messaggio e resta visibile qui sopra.").font(.caption).foregroundStyle(PivotTheme.muted) }
+            if request.version >= 3 { Text("Le corrispondenze fra il tuo messaggio e gli eventi sono indicate solo con sigle interne. La bozza da continuare viene filtrata come il messaggio e resta visibile qui sopra.").font(.caption).foregroundStyle(PivotTheme.muted) }
             Text("Non vengono aggiunti automaticamente audio, dati Salute o memorie private. Sono incluse solo le preferenze abilitate esplicitamente per l’AI online, se presenti qui sopra. Quello che scrivi tu può comunque contenere informazioni sensibili. Sono inclusi data, ora e un identificativo tecnico della richiesta.")
                 .font(.caption).foregroundStyle(PivotTheme.muted)
             DisclosureGroup("Dati tecnici completi") {

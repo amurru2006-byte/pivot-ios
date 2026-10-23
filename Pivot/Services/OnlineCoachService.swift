@@ -186,23 +186,31 @@ final class OnlineCoachService: ObservableObject {
         #if DEBUG && targetEnvironment(simulator)
         if actionFixture {
             interactionRequestCount += 1
-            if ProcessInfo.processInfo.arguments.contains("--calendar-mutations-test"), snapshot.request.version == 3,
+            if ProcessInfo.processInfo.arguments.contains("--planning-conversation-test"), snapshot.request.version == 4,
+               let alias = snapshot.request.planningContext?.first?.intent.eventIDs.first ?? snapshot.request.references?.first ?? snapshot.request.events.first?.id {
+                let followup = snapshot.request.planningContext?.isEmpty == false
+                let intent = CoachPlanningIntent(eventIDs: [alias], allowedDayOffsets: followup ? [3] : [1, 3, 4],
+                    excludedDayOffsets: followup ? [1, 2] : [2], band: .afternoon,
+                    earliestMinute: nil, latestMinute: nil, afterEventID: nil)
+                return .init(version: 4, requestID: snapshot.request.requestID, mode: .recover, eventIDs: [], reply: "Vincoli QA da controllare.", actions: [], planning: intent)
+            }
+            if ProcessInfo.processInfo.arguments.contains("--calendar-mutations-test"), snapshot.request.version >= 3,
                UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_COACH_ACTION_ID"] ?? "") != nil {
                 let updating = snapshot.request.message.localizedCaseInsensitiveContains("modifica")
                 let ids = updating ? Array(snapshot.request.events.prefix(1)).map(\.id) : snapshot.request.events.map(\.id)
                 let actions = ids.map { CoachCalendarEdit(kind: updating ? .update : .delete, eventID: $0,
                     title: updating ? "Impegno QA modificato" : nil, start: nil, end: nil, notes: nil) }
-                return .init(version: 3, requestID: snapshot.request.requestID, mode: .actions, eventIDs: [], reply: "Anteprima QA, nessuna scrittura.", actions: actions)
+                return .init(version: snapshot.request.version, requestID: snapshot.request.requestID, mode: .actions, eventIDs: [], reply: "Anteprima QA, nessuna scrittura.", actions: actions)
             }
-            if ProcessInfo.processInfo.arguments.contains("--conversation-continuity-test"), snapshot.request.version == 3,
+            if ProcessInfo.processInfo.arguments.contains("--conversation-continuity-test"), snapshot.request.version >= 3,
                UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_COACH_ACTION_ID"] ?? "") != nil {
                 if var draft = snapshot.request.draftContext?.last {
                     draft.end = draft.start?.addingTimeInterval(3600)
-                    return .init(version: 3, requestID: snapshot.request.requestID, mode: .create, eventIDs: [], reply: "Bozza completata con i dati precedenti.", draft: draft, actions: [])
+                    return .init(version: snapshot.request.version, requestID: snapshot.request.requestID, mode: .create, eventIDs: [], reply: "Bozza completata con i dati precedenti.", draft: draft, actions: [])
                 }
                 let draft = CoachCalendarDraft(title: "Attività passata QA", start: Date().addingTimeInterval(-7200), end: nil,
                     calendarHint: "Personale test", notes: "Nota dettata QA", endEstimated: false)
-                return .init(version: 3, requestID: snapshot.request.requestID, mode: .clarify, eventIDs: [], reply: "A che ora è finita?", draft: draft, actions: [])
+                return .init(version: snapshot.request.version, requestID: snapshot.request.requestID, mode: .clarify, eventIDs: [], reply: "A che ora è finita?", draft: draft, actions: [])
             }
             if snapshot.request.purpose == "rewrite" {
                 return .init(version: snapshot.request.version, requestID: snapshot.request.requestID, mode: .rewrite, eventIDs: [], reply: "Testo riordinato",
@@ -213,7 +221,7 @@ final class OnlineCoachService: ObservableObject {
                                           end: start > Date() ? start.addingTimeInterval(7200) : Date().addingTimeInterval(7200),
                                           calendarHint: "Personale test", notes: "Nota sintetica", endEstimated: false)
             return .init(version: snapshot.request.version, requestID: snapshot.request.requestID, mode: .create, eventIDs: [], reply: "Bozza pronta, nessun evento creato.", draft: draft,
-                actions: snapshot.request.version == 3 ? [] : nil)
+                actions: snapshot.request.version >= 3 ? [] : nil)
         }
         if preflightFixture || reviewFixture {
             interactionRequestCount += 1
