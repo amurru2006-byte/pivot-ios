@@ -86,6 +86,13 @@ def verify_log(text, expected):
     return len(passed)
 
 
+def chart_preflight(suites):
+    case = "IncomeCorrectionInteractionTests/testContactBarsKeepOnlyOneExactValueAndCanClearIt"
+    if case.split("/")[1] not in suites.get("IncomeCorrectionInteractionTests", []):
+        raise ValueError("missing_chart_scroll_regression")
+    return [case]
+
+
 def read_log(path):
     if not path.is_file() or path.stat().st_size > 64 * 1024 * 1024:
         raise ValueError("missing_or_oversized_test_log")
@@ -95,7 +102,7 @@ def read_log(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--shard", choices=sorted(SHARDS))
-    parser.add_argument("--preflight", choices=["places", "places-controls"])
+    parser.add_argument("--preflight", choices=["places", "places-controls", "chart"])
     parser.add_argument("--verify-log", type=Path)
     parser.add_argument("--verify-all-logs", type=Path)
     args = parser.parse_args()
@@ -103,7 +110,8 @@ def main():
     if args.preflight:
         if args.shard or args.verify_all_logs:
             parser.error("Choose either preflight or release shard verification")
-        cases = places_preflight(discover_tests(ROOT), controls_only=args.preflight == "places-controls")
+        suites = discover_tests(ROOT)
+        cases = chart_preflight(suites) if args.preflight == "chart" else places_preflight(suites, controls_only=args.preflight == "places-controls")
         if args.verify_log:
             print(f"Verified {verify_log(read_log(args.verify_log), cases)} preflight tests, no skips")
         else:

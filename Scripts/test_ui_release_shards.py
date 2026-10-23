@@ -1,8 +1,21 @@
 import unittest
-from ui_release_shards import discover_tests, expand_plan, load_plan, places_preflight, verify_log, ROOT
+from ui_release_shards import discover_tests, expand_plan, load_plan, places_preflight, chart_preflight, verify_log, ROOT
 
 
 class UIReleaseShardTests(unittest.TestCase):
+    def test_chart_preflight_checks_the_actual_failed_case_without_reducing_full_coverage(self):
+        suites = discover_tests(ROOT)
+        cases = chart_preflight(suites)
+        self.assertEqual(cases, ["IncomeCorrectionInteractionTests/testContactBarsKeepOnlyOneExactValueAndCanClearIt"])
+        suite, method = cases[0].split("/")
+        text = f"Test Case '-[PivotUITests.{suite} {method}]' passed (1.0 seconds).\n"
+        self.assertEqual(verify_log(text, cases), 1)
+        with self.assertRaises(ValueError): verify_log("", cases)
+        with self.assertRaises(ValueError): verify_log(text + text, cases)
+        suites[suite].remove(method)
+        with self.assertRaises(ValueError): chart_preflight(suites)
+        self.assertEqual(sum(map(len, load_plan().values())), 87)
+
     def test_places_preflight_selects_and_verifies_same_eight_cases(self):
         cases = places_preflight(discover_tests(ROOT))
         self.assertEqual(len(cases), 8)

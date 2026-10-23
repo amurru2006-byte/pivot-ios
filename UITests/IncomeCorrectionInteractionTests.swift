@@ -20,8 +20,9 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["Entrate"].waitForExistence(timeout: 15)); app.tabBars.buttons["Entrate"].tap()
         return app
     }
-    private func reveal(_ element: XCUIElement, app: XCUIApplication, up: Bool = true) {
-        scrollControlIntoView(element, in: app)
+    private func reveal(_ element: XCUIElement, app: XCUIApplication, up: Bool = true,
+                        file: StaticString = #filePath, line: UInt = #line) {
+        scrollControlIntoView(element, in: app, file: file, line: line)
     }
     func testRecentReceiptsExpandAndCollapseWithoutChangingTotals() {
         let app = launch(extra: ["--receipts-list-test"])
@@ -77,6 +78,28 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
         let graph = app.buttons["client-income-page-1"]
         reveal(graph, app: app); graph.tap()
         let chart = app.descendants(matching: .any)["client-income-chart"].firstMatch
+        XCTAssertTrue(chart.waitForExistence(timeout: 8))
+        // The horizontal pager can resize after changing page. If its chart
+        // extends under the tab bar, exercise an actual upward finger drag ON
+        // the visible plot, not a generic swipe whose start may hit a tab or
+        // the wrong nested scroll container. Keep full-visibility assertions.
+        let bottom = app.tabBars.firstMatch.frame.minY - 16
+        if chart.frame.maxY > bottom {
+            let before = chart.frame.minY
+            let startY = min(chart.frame.maxY, bottom) - 24
+            let endY = max(app.navigationBars["Contatto"].frame.maxY + 24, startY - 140)
+            XCTAssertGreaterThan(startY, chart.frame.minY + 8)
+            XCTAssertGreaterThan(startY - endY, 50)
+            let origin = app.coordinate(withNormalizedOffset: .zero)
+            let start = origin.withOffset(CGVector(dx: chart.frame.midX, dy: startY))
+            let end = origin.withOffset(CGVector(dx: chart.frame.midX, dy: endY))
+            start.press(forDuration: 0.01, thenDragTo: end)
+            let moved = expectation(for: NSPredicate { _, _ in chart.frame.minY < before - 40 }, evaluatedWith: chart)
+            wait(for: [moved], timeout: 8)
+            let scrolling = XCTAttachment(screenshot: app.screenshot())
+            scrolling.name = "contact-chart-allows-vertical-scroll-before-bar-taps"
+            scrolling.lifetime = .keepAlways; add(scrolling)
+        }
         reveal(chart, app: app); XCTAssertTrue(chart.exists)
         chart.coordinate(withNormalizedOffset: CGVector(dx: 0.04, dy: 0.5)).tap()
         let value = app.staticTexts["client-income-bar-value"]
