@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Core, gateway e strumenti con soli dati sintetici
         run: |
-          bash -n Scripts/preview-ui.sh
+          bash -n Scripts/preview-ui.sh Scripts/package-v8-candidate.sh
           swift test
           node --test Backend/coach-gateway/worker.test.mjs
           python3 -m unittest discover -s Scripts -p 'test_*.py'
@@ -30,9 +30,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: bash Scripts/prepare-ios-ci.sh
-      - name: Luoghi, dati dei contatti e conferma del viaggio senza rete reale
+      - name: Verifica elenco luoghi e continuita del recupero senza rete reale
         env:
-          PIVOT_UI_ONLY_TESTING: v8-088-places-regression
+          PIVOT_UI_ONLY_TESTING: v8-088-places-controls-regression
         run: bash Scripts/preview-ui.sh
       - uses: actions/upload-artifact@v4
         if: always()

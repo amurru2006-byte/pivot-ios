@@ -23,10 +23,18 @@ class UIReleaseShardTests(unittest.TestCase):
 
     def test_places_selection_is_generated_before_build_and_shared_with_verifier(self):
         source = (ROOT / "Scripts/preview-ui.sh").read_text(encoding="utf-8")
-        self.assertLess(source.index("--preflight places)"), source.index("if xcodebuild"))
-        selection = source.split('elif [ "$PIVOT_UI_ONLY_TESTING" = v8-088-places-regression ]; then', 1)[1].split("elif", 1)[0]
+        self.assertLess(source.index('--preflight "$PIVOT_PLACES_GROUP")'), source.index("if xcodebuild"))
+        selection = source.split('elif [ -n "$PIVOT_PLACES_GROUP" ]; then', 1)[1].split("elif", 1)[0]
         self.assertIn('done <<< "$PIVOT_PLACES_FLAGS"', selection)
-        self.assertIn('--preflight places --verify-log "$PIVOT_UI_LOG"', source)
+        self.assertIn('--preflight "$PIVOT_PLACES_GROUP" --verify-log "$PIVOT_UI_LOG"', source)
+
+    def test_places_controls_focuses_on_observed_failure_and_new_follow_up_without_reducing_release(self):
+        suites = discover_tests(ROOT)
+        cases = places_preflight(suites, controls_only=True)
+        self.assertEqual(len(cases), 2)
+        self.assertTrue(any(case.startswith("SavedPlacesInteractionTests/") for case in cases))
+        self.assertTrue(any("testRecoveryDateCorrection" in case for case in cases))
+        self.assertEqual(sum(map(len, load_plan().values())), 87)
 
     def test_repository_coverage_is_complete_and_unique(self):
         plan = load_plan()

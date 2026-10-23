@@ -9,6 +9,17 @@ from compiled_iphone import inspect_archive, verify_archive, project_version
 
 
 class CompiledIPhoneTests(unittest.TestCase):
+    def test_candidate_packager_uses_the_same_validated_project_version_as_build_verifier(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / 'Scripts/package-v8-candidate.sh').read_text(encoding='utf-8')
+        self.assertEqual(source.count("version, build = project_version(Path('project.yml').read_text())"), 2)
+        self.assertIn("assert info['CFBundleShortVersionString'] == version", source)
+        self.assertIn("assert info['CFBundleVersion'] == build", source)
+        self.assertIn("assert widget['CFBundleShortVersionString'] == version and widget['CFBundleVersion'] == build", source)
+        self.assertIn('"../Pivot-$PIVOT_VERSION.ipa"', source)
+        self.assertIn("dict(version=version, build=int(build)", source)
+        self.assertNotRegex(source, r"Pivot-\d+\.\d+\.\d+|version='\d+\.\d+\.\d+'")
+
     commit = 'a' * 40
 
     def temporary(self):

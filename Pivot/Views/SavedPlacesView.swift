@@ -36,7 +36,7 @@ struct SavedPlacesView: View {
                             .accessibilityLabel("Opzioni per \(place.name)").accessibilityIdentifier("place-actions-\(place.id)")
                     }
                 }
-                if library.favorites.isEmpty { Text("Salva Casa, Università o un altro luogo.").foregroundStyle(.secondary) }
+                if library.favorites.isEmpty { Text("Salva Casa, Università o un altro luogo.").foregroundStyle(.secondary).accessibilityIdentifier("places-empty") }
             }
             if onSelect != nil, !contacts.isEmpty {
                 Section("A casa dei contatti") { ForEach(contacts) { placeButton($0) } }
@@ -58,7 +58,10 @@ struct SavedPlacesView: View {
                 Text("Luoghi e cronologia restano nei dati personali di Pivot. Le ricerche digitate non vengono conservate. La scelta di un luogo non conferma tempi di viaggio né la tua posizione attuale.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-        }.navigationTitle("Luoghi").navigationBarTitleDisplayMode(.inline)
+        }.listStyle(.insetGrouped).scrollContentBackground(.hidden)
+            .background(LinearGradient(colors: [Color(pivotHex: "101D2A"), PivotTheme.background], startPoint: .topLeading, endPoint: .center).ignoresSafeArea())
+            .toolbarBackground(PivotTheme.background, for: .navigationBar)
+            .navigationTitle("Luoghi").navigationBarTitleDisplayMode(.inline)
             .searchable(text: $query, prompt: "Nome o indirizzo")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
