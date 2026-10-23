@@ -147,7 +147,9 @@ export function validRequest(x, now) {
       !x.references.every(id => x.events.some(e => e.id === id)) ||
       !Number.isInteger(x.historyOmittedCount) || x.historyOmittedCount < 0 || x.historyOmittedCount > 1_000_000)) return false;
   if (v4 && (!Array.isArray(x.planningContext) || x.planningContext.length > 1 ||
-      !x.planningContext.every(intent=>validPlanning(intent,x)))) return false;
+      !x.planningContext.every(context=>exactKeys(context,['anchor','intent']) && context.anchor!==null && validTime(context.anchor) &&
+        Number.isFinite(Date.parse(context.anchor)) && Date.parse(context.anchor)<=Date.parse(x.now) &&
+        Date.parse(x.now)-Date.parse(context.anchor)<=8*86400_000 && validPlanning(context.intent,x)))) return false;
   return x.history.every(m => exactKeys(m,['role','text']) && ['user','assistant'].includes(m.role) && string(m.text,v3 ? 12_000 : 400)) &&
     x.memories.every(m => string(m,240));
 }
@@ -329,7 +331,7 @@ const INSTRUCTIONS_V4 = INSTRUCTIONS_V3.replace(
 ) + `
 RECUPERO MULTIGIORNO: per cercare alternative a una o più attività ESISTENTI puoi usare mode=recover,eventIDs=[],draft=null,actions=[],planning con esattamente eventIDs,allowedDayOffsets,excludedDayOffsets,band,earliestMinute,latestMinute,afterEventID. In ogni altro mode planning=null. Non proporre orari liberi: il telefono li calcola dopo aver controllato durata completa, preparazione, viaggi e conferme.
 planning.eventIDs contiene da1a3 alias esistenti delle attività desiderate, non titoli inventati. Se l'identità è ambigua fai UNA domanda, mode=clarify e planning=null; non scegliere arbitrariamente. allowedDayOffsets è una lista non vuota di giorni consentiti0...6 rispetto a OGGI in Europe/Rome; excludedDayOffsets0...6, senza sovrapposizione. band è null oppure morning/afternoon/evening; earliestMinute0...1439 e latestMinute1...1440 sono limiti espliciti della fascia, o null. afterEventID è null o l'alias di un ALTRO evento che deve precedere l'attività. Non inventare durate, indirizzi, tempi dei mezzi, pausa tra allenamenti o cause mediche.
-planningContext può contenere l'ultima richiesta, già riferita alla data di questa chiamata e ai suoi alias attuali. In una correzione conserva attività e vincoli non cambiati: "domani no, meglio giovedì" esclude domani e sceglie giovedì, senza perdere il target. Un giorno escluso torna consentito solo se l'utente lo riammette esplicitamente. Non trascinare il piano su una richiesta distinta. "Dopo cena" senza un orario o riferimento noto richiede un chiarimento, non le20 inventate. Vincoli fuori dai7giorni richiedono chiarimento. Un orario trascorso non dimostra che l'attività sia stata saltata. Non dire che alternative, notifiche o modifiche siano già state eseguite.`;
+planningContext può contenere {anchor,intent} della richiesta precedente. SOLTANTO quel contesto usa la data anchor originale, anche se oggi è cambiato; gli alias invece sono già aggiornati. Non traslare le vecchie date a oggi. La NUOVA risposta planning usa sempre gli offset rispetto al now attuale. In una correzione conserva attività e vincoli non cambiati: "domani no, meglio giovedì" esclude domani e sceglie giovedì, senza perdere il target. Un giorno escluso torna consentito solo se l'utente lo riammette esplicitamente; il telefono richiederà comunque di verificare la riapertura. Se i vecchi giorni sono passati e non è indicato un nuovo giorno chiedilo, non inventarlo. Non trascinare il piano su una richiesta distinta. "Dopo cena" senza un orario o riferimento noto richiede un chiarimento, non le20 inventate. Vincoli fuori dai7giorni richiedono chiarimento. Un orario trascorso non dimostra che l'attività sia stata saltata. Non dire che alternative, notifiche o modifiche siano già state eseguite.`;
 
 export async function handle(request, env, dependencies = {}) {
   // Workers' native fetch requires the global receiver; Node mocks did not.

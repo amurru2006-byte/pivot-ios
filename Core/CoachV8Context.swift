@@ -17,7 +17,7 @@ struct CoachV8Request: Codable {
     var references: [String]? = nil
     var historyOmittedCount: Int? = nil
     // V4 only: at most one prior, alias-only set of planning constraints.
-    var planningContext: [CoachPlanningIntent]? = nil
+    var planningContext: [CoachPlanningContext]? = nil
 
     struct Event: Codable {
         var id: String
@@ -143,6 +143,10 @@ struct CoachV8Snapshot {
     // Local provenance, deliberately not encoded in the cloud DTO.
     private(set) var focusedDraft: CoachSavedCalendarDraft? = nil
     private(set) var calendarScope: CoachCalendarScope = .today
+    private(set) var focusedPlanningSession: CoachPlanningSession? = nil
+    // Local permission boundary for explicitly continuing an already reviewed
+    // plan whose source is now outside the chosen calendar window.
+    private(set) var additionalPlanningSourceIDs: [String] = []
 
     static func make(message: String, events: [CalendarItem], data: AppData, now: Date, purpose: String? = nil,
         protocolVersion: Int = 2, calendarScope: CoachCalendarScope = .today) throws -> Self {
@@ -150,11 +154,20 @@ struct CoachV8Snapshot {
         guard !clean.isEmpty else { throw CoachV8Error.emptyMessage }
         guard clean.count <= (purpose == nil ? 1500 : 12_000),
               purpose == nil || ["conversation", "rewrite"].contains(purpose!) else { throw CoachV8Error.contextTooLarge }
+        let version = purpose == nil ? 1 : (purpose == "conversation" && [3, 4].contains(protocolVersion) ? protocolVersion : 2)
         let canonical = EventCoalescer.unique(events, data: data)
         let calendarData = CoachPrivacy.calendarData(data)
         let effectiveScope: CoachCalendarScope = purpose == "conversation" && protocolVersion >= 3 ? calendarScope : .today
-        let planned = Planner.plannedEvents(events, data: calendarData).filter { purpose != "rewrite" && effectiveScope.contains($0, now: now) }
-            .sorted { $0.start == $1.start ? $0.id < $1.id : $0.start < $1.start }
+        var focusedPlanning: CoachPlanningSession?
+        if version == 4, let id = data.coachState.focusedPlanningSessionID {
+            guard let session = data.coachState.planningSessions?.first(where: { $0.id == id }) else { throw CoachPlanningSession.Failure.changed }
+            focusedPlanning = session
+        }
+        let continued = try focusedPlanning?.boundEvents(in: canonical, now: now) ?? []
+        var planned = Planner.plannedEvents(events, data: calendarData).filter { purpose != "rewrite" && effectiveScope.contains($0, now: now) }
+        let additional = continued.filter { item in !planned.contains { $0.id == item.id } }
+        planned.append(contentsOf: additional)
+        planned.sort { $0.start == $1.start ? $0.id < $1.id : $0.start < $1.start }
         guard planned.count <= 48 else { throw CoachV8Error.calendarTooLarge }
         var sources: [String: CalendarItem] = [:]
         let summaries: [CoachV8Request.Event] = planned.enumerated().compactMap { index, item in
@@ -177,7 +190,6 @@ struct CoachV8Snapshot {
                 && item.healthDerived != true && (item.role == .user || item.role == .coach)
                 && (data.coachState.contextStartedAt.map { item.createdAt >= $0 } ?? true)
         }
-        let version = purpose == nil ? 1 : (purpose == "conversation" && [3, 4].contains(protocolVersion) ? protocolVersion : 2)
         let history = eligibleHistory.suffix(version >= 3 ? 20 : 6).map {
             let text = CoachPrivacy.text($0.text, events: events, data: data)
             return CoachV8Request.Message(role: $0.role == .user ? "user" : "assistant", text: version >= 3 ? text : String(text.prefix(400)))
@@ -210,7 +222,9 @@ struct CoachV8Snapshot {
                 return title.count >= 4 && (" " + mentions + " ").contains(" " + title + " ")
             }
             request.historyOmittedCount = eligibleHistory.count - history.count
-            if version == 4 { request.planningContext = [] }
+            if version == 4 {
+                request.planningContext = try focusedPlanning.map { [try $0.context(remapping: sources, now: now)] } ?? []
+            }
             // Drop whole oldest turns, never silently cut facts halfway through
             // a sentence. The disclosure and model see how many were omitted.
             while !request.history.isEmpty {
@@ -223,7 +237,8 @@ struct CoachV8Snapshot {
         let bytes = try request.encoded()
         guard bytes.count <= 24_000 else { throw CoachV8Error.contextTooLarge }
         return .init(request: request, encodedRequest: bytes, originalEvents: events, dataUpdatedAt: data.updatedAt, sources: sources,
-            focusedDraft: focusedDraft, calendarScope: effectiveScope)
+            focusedDraft: focusedDraft, calendarScope: effectiveScope, focusedPlanningSession: focusedPlanning,
+            additionalPlanningSourceIDs: additional.map(\.id).sorted())
     }
 
     func isCurrent(events: [CalendarItem], data: AppData, now: Date) -> Bool {

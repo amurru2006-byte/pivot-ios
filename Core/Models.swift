@@ -339,6 +339,8 @@ struct CoachState: Codable {
     var focusedCalendarDraftID: UUID? = nil
     var omitPreviousDraft: Bool? = nil
     var contextStartedAt: Date? = nil
+    var planningSessions: [CoachPlanningSession]? = nil
+    var focusedPlanningSessionID: UUID? = nil
 }
 
 struct Settings: Codable, Equatable {

@@ -114,6 +114,7 @@ enum BackupCodec {
         if let coach = data.coach {
             guard coach.contextStartedAt.map({ $0.timeIntervalSinceReferenceDate.isFinite }) ?? true else { throw BackupError.invalidData }
             guard CoachDraftStore.valid(coach) else { throw BackupError.invalidData }
+            guard CoachPlanningStore.valid(coach) else { throw BackupError.invalidData }
             guard Set(coach.messages.map(\.id)).count == coach.messages.count,
                   Set(coach.options.map(\.id)).count == coach.options.count,
                   Set(coach.pendingCalendarChanges.map(\.id)).count == coach.pendingCalendarChanges.count,

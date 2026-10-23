@@ -321,10 +321,11 @@ const responseV3 = () => ({mode:'actions',eventIDs:[],reply:'Ho cancellato tutto
 
 const fixtureV4 = () => ({...fixtureV3(),version:4,planningContext:[]});
 const planningV4 = () => ({eventIDs:['e0'],allowedDayOffsets:[1],excludedDayOffsets:[2],band:'afternoon',earliestMinute:null,latestMinute:null,afterEventID:null});
+const contextV4 = (intent=planningV4()) => ({anchor:fixture().now,intent});
 const responseV4 = () => ({mode:'recover',eventIDs:[],reply:'Ho già spostato tutto alle18',draft:null,rewrittenMessage:null,actions:[],planning:planningV4()});
 
 test('v4 interprets only bounded planning constraints with one call and no new provider tools', async () => {
-  const body=fixtureV4(); body.planningContext=[planningV4()]; let calls=0;
+  const body=fixtureV4(); body.planningContext=[contextV4()]; let calls=0;
   const response=await handle(request(body),await environment(),{clock,fetchProvider:async(url,init)=>{
     calls++; const sent=JSON.parse(init.body), dto=JSON.parse(sent.messages[1].content);
     assert.equal(sent.response_format.json_schema.name,'pivot_coach_v4');
@@ -332,7 +333,8 @@ test('v4 interprets only bounded planning constraints with one call and no new p
     assert.equal(sent.model,'openai/gpt-oss-120b'); assert.equal(sent.max_completion_tokens,2400);
     assert.deepEqual(sent.response_format.json_schema.schema.required,['mode','eventIDs','reply','draft','rewrittenMessage','actions','planning']);
     assert.deepEqual(dto.planningContext,body.planningContext);
-    assert.deepEqual(Object.keys(dto.planningContext[0]).sort(),Object.keys(planningV4()).sort());
+    assert.deepEqual(Object.keys(dto.planningContext[0]).sort(),['anchor','intent']);
+    assert.deepEqual(Object.keys(dto.planningContext[0].intent).sort(),Object.keys(planningV4()).sort());
     assert.equal(Object.hasOwn(dto,'requestID'),false);
     return upstream(responseV4());
   }});
@@ -343,12 +345,15 @@ test('v4 interprets only bounded planning constraints with one call and no new p
 });
 
 test('v4 request context rejects private fields unknown aliases duplicate targets and contradictory days before provider', async () => {
-  const changes=[x=>x.planningContext=[{...planningV4(),nativeID:'private'}],
-    x=>x.planningContext=[{...planningV4(),eventIDs:['e99']}],x=>x.planningContext=[planningV4(),planningV4()],
-    x=>x.planningContext=[{...planningV4(),eventIDs:['e0','e0']}],
-    x=>x.planningContext=[{...planningV4(),excludedDayOffsets:[1]}],x=>x.planningContext=[{...planningV4(),allowedDayOffsets:[7]}],
-    x=>x.planningContext=[{...planningV4(),allowedDayOffsets:[]}],x=>x.planningContext=[{...planningV4(),earliestMinute:true}],
-    x=>x.planningContext=[{...planningV4(),latestMinute:600}],x=>x.planningContext=[{...planningV4(),afterEventID:'e0'}],
+  const changes=[x=>x.planningContext=[{...contextV4(),nativeID:'private'}],
+    x=>x.planningContext=[contextV4({...planningV4(),eventIDs:['e99']})],x=>x.planningContext=[contextV4(),contextV4()],
+    x=>x.planningContext=[contextV4({...planningV4(),eventIDs:['e0','e0']})],
+    x=>x.planningContext=[contextV4({...planningV4(),excludedDayOffsets:[1]})],x=>x.planningContext=[contextV4({...planningV4(),allowedDayOffsets:[7]})],
+    x=>x.planningContext=[contextV4({...planningV4(),allowedDayOffsets:[]})],x=>x.planningContext=[contextV4({...planningV4(),earliestMinute:true})],
+    x=>x.planningContext=[contextV4({...planningV4(),latestMinute:600})],x=>x.planningContext=[contextV4({...planningV4(),afterEventID:'e0'})],
+    x=>x.planningContext=[{...contextV4(),anchor:new Date(now+1000).toISOString()}],
+    x=>x.planningContext=[{...contextV4(),anchor:new Date(now-9*86400_000).toISOString()}],
+    x=>x.planningContext=[{...contextV4(),anchor:'2026-10-08'}],
     x=>x.events[0].id='e48',x=>x.purpose='rewrite',x=>delete x.planningContext];
   for(const change of changes) {
     const body=fixtureV4(); change(body);
@@ -358,7 +363,7 @@ test('v4 request context rejects private fields unknown aliases duplicate target
 });
 
 test('v4 original request bytes reject duplicate fields even with Unicode escaping inside context arrays', async () => {
-  const body=fixtureV4();body.planningContext=[planningV4()];const raw=JSON.stringify(body);
+  const body=fixtureV4();body.planningContext=[contextV4()];const raw=JSON.stringify(body);
   for(const value of [raw.replace('"version":4','"version":4,"version":4'),
     raw.replace('"allowedDayOffsets":[1]','"allowedDayOffsets":[1],"allowedDayOff\\u0073ets":[1]')]) {
     assert.notEqual(value,raw);
@@ -405,6 +410,19 @@ test('v4 integrity bound rejects excessive nested response depth without exposin
   const raw='{"a":'+ '['.repeat(33)+'0'+']'.repeat(33)+'}';
   const response=await handle(request(fixtureV4()),await environment(),{clock,fetchProvider:async()=>Response.json({choices:[{finish_reason:'stop',message:{content:raw}}]})});
   assert.equal(response.status,502); assert.deepEqual(await response.json(),{error:'invalid_response'});
+});
+
+test('v4 preserves the original context date anchor instead of rebasing yesterday constraints to today', async () => {
+  const body=fixtureV4(), anchor=new Date(now-86400_000).toISOString();
+  body.planningContext=[{anchor,intent:planningV4()}];
+  const response=await handle(request(body),await environment(),{clock,fetchProvider:async(url,init)=>{
+    const sent=JSON.parse(init.body), dto=JSON.parse(sent.messages[1].content);
+    assert.equal(dto.planningContext[0].anchor,anchor);
+    assert.deepEqual(dto.planningContext[0].intent.allowedDayOffsets,[1]);
+    assert.equal(dto.now,body.now); assert.notEqual(dto.now,anchor);
+    return upstream(responseV4());
+  }});
+  assert.equal(response.status,200);
 });
 
 test('v3 passes whole earlier turns and partial draft facts without calendar metadata', async () => {
