@@ -27,7 +27,7 @@ case "$PIVOT_UI_ONLY_TESTING" in
     PIVOT_UI_RESULT=build/online-privacy-tests.xcresult
     PIVOT_SIM_ENTITLEMENTS=build/online-privacy-simulator-entitlements.plist
     ;;
-  v8-088-places-regression|v8-088-places-controls-regression|v8-087-linked-travel-regression|v8-086-presentation-regression|v8-086-rest-audio-regression|v8-086-contact-save-regression|PivotUITests/PremiumCoachInteractionTests|PivotUITests/PremiumCoachInteractionTests/testMemoryOptInPersistsAppearsInExactDisclosureAndCanBeRevoked)
+  v8-088-calendar-controls-regression|v8-088-chart-controls-regression|v8-088-places-regression|v8-088-places-controls-regression|v8-087-linked-travel-regression|v8-086-presentation-regression|v8-086-rest-audio-regression|v8-086-contact-save-regression|PivotUITests/PremiumCoachInteractionTests|PivotUITests/PremiumCoachInteractionTests/testMemoryOptInPersistsAppearsInExactDisclosureAndCanBeRevoked)
     PIVOT_PREVIEW_OUTPUT=build/Previews/OnlinePrivacy
     PIVOT_UI_BUILD_LOG=build/online-privacy-build.log
     PIVOT_UI_LOG=build/online-privacy-tests.log
@@ -62,6 +62,10 @@ if [ "$PIVOT_UI_ONLY_TESTING" = v8-088-places-regression ]; then
   PIVOT_PLACES_GROUP=places
 elif [ "$PIVOT_UI_ONLY_TESTING" = v8-088-places-controls-regression ]; then
   PIVOT_PLACES_GROUP=places-controls
+elif [ "$PIVOT_UI_ONLY_TESTING" = v8-088-chart-controls-regression ]; then
+  PIVOT_PLACES_GROUP=chart
+elif [ "$PIVOT_UI_ONLY_TESTING" = v8-088-calendar-controls-regression ]; then
+  PIVOT_PLACES_GROUP=calendar-controls
 fi
 if [ -n "$PIVOT_PLACES_GROUP" ]; then
   PIVOT_PLACES_FLAGS=$(python3 Scripts/ui_release_shards.py --preflight "$PIVOT_PLACES_GROUP")

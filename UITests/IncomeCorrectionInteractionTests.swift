@@ -20,8 +20,9 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["Entrate"].waitForExistence(timeout: 15)); app.tabBars.buttons["Entrate"].tap()
         return app
     }
-    private func reveal(_ element: XCUIElement, app: XCUIApplication, up: Bool = true) {
-        scrollControlIntoView(element, in: app)
+    private func reveal(_ element: XCUIElement, app: XCUIApplication, up: Bool = true,
+                        file: StaticString = #filePath, line: UInt = #line) {
+        scrollControlIntoView(element, in: app, file: file, line: line)
     }
     func testRecentReceiptsExpandAndCollapseWithoutChangingTotals() {
         let app = launch(extra: ["--receipts-list-test"])
@@ -77,6 +78,34 @@ final class IncomeCorrectionInteractionTests: XCTestCase {
         let graph = app.buttons["client-income-page-1"]
         reveal(graph, app: app); graph.tap()
         let chart = app.descendants(matching: .any)["client-income-chart"].firstMatch
+        XCTAssertTrue(chart.waitForExistence(timeout: 8))
+        // Reproduce the observed partial-visibility state deliberately. A
+        // downward drag in the outer gutter returns the vertical page toward
+        // its top without touching the chart or horizontal pager. Merely
+        // passing when the chart happens to be fully visible proves nothing
+        // about the earlier stuck-scroll failure.
+        let bottom = app.tabBars.firstMatch.frame.minY - 16
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        let top = app.navigationBars["Contatto"].frame.maxY + 40
+        origin.withOffset(CGVector(dx: 8, dy: top)).press(forDuration: 0.01,
+            thenDragTo: origin.withOffset(CGVector(dx: 8, dy: bottom - 40)))
+        let partiallyCovered = expectation(for: NSPredicate { _, _ in chart.frame.maxY > bottom }, evaluatedWith: chart)
+        wait(for: [partiallyCovered], timeout: 8)
+        let covered = XCTAttachment(screenshot: app.screenshot())
+        covered.name = "contact-chart-partly-covered-before-real-plot-drag"; covered.lifetime = .keepAlways; add(covered)
+        let before = chart.frame.minY
+        let startY = min(chart.frame.maxY, bottom) - 24
+        let endY = max(top, startY - 200)
+        XCTAssertGreaterThan(startY, chart.frame.minY + 8)
+        XCTAssertGreaterThan(startY - endY, 50)
+        origin.withOffset(CGVector(dx: chart.frame.midX, dy: startY)).press(forDuration: 0.01,
+            thenDragTo: origin.withOffset(CGVector(dx: chart.frame.midX, dy: endY)))
+        let moved = expectation(for: NSPredicate { _, _ in chart.frame.minY < before - 40 }, evaluatedWith: chart)
+        wait(for: [moved], timeout: 8)
+        XCTAssertFalse(app.staticTexts["client-income-bar-value"].exists, "A vertical scroll is not a bar selection")
+        let scrolling = XCTAttachment(screenshot: app.screenshot())
+        scrolling.name = "contact-chart-allows-vertical-scroll-before-bar-taps"
+        scrolling.lifetime = .keepAlways; add(scrolling)
         reveal(chart, app: app); XCTAssertTrue(chart.exists)
         chart.coordinate(withNormalizedOffset: CGVector(dx: 0.04, dy: 0.5)).tap()
         let value = app.staticTexts["client-income-bar-value"]

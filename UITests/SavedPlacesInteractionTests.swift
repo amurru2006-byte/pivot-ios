@@ -63,6 +63,14 @@ final class SavedPlacesInteractionTests: XCTestCase {
         let selected = XCTAttachment(screenshot: app.screenshot())
         selected.name = "manual-place-selected-zero-maps-requests"; selected.lifetime = .keepAlways; add(selected)
 
+        // Each tab preserves its NavigationStack. Return to the Settings root
+        // before switching tabs, so the later privacy check opens from there
+        // rather than searching the still-open travel destination for a link.
+        let travelBar = app.navigationBars["Tragitti"]
+        XCTAssertTrue(travelBar.waitForExistence(timeout: 5))
+        travelBar.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["Impostazioni"].waitForExistence(timeout: 5))
+
         let today = app.tabBars.buttons["Oggi"]
         XCTAssertTrue(today.waitForExistence(timeout: 5)); today.tap()
         tap(app.buttons["open-pivot-coach"], in: app)
@@ -83,9 +91,10 @@ final class SavedPlacesInteractionTests: XCTestCase {
         let settings = app.tabBars.buttons["Impostazioni"]
         XCTAssertTrue(settings.waitForExistence(timeout: 15)); settings.tap()
     }
-    private func tap(_ element: XCUIElement, in app: XCUIApplication) {
-        scrollControlIntoView(element, in: app)
-        XCTAssertTrue(element.isEnabled); element.tap()
+    private func tap(_ element: XCUIElement, in app: XCUIApplication,
+                     file: StaticString = #filePath, line: UInt = #line) {
+        scrollControlIntoView(element, in: app, file: file, line: line)
+        XCTAssertTrue(element.isEnabled, file: file, line: line); element.tap()
     }
     private func toolbarTap(_ element: XCUIElement) {
         XCTAssertTrue(element.waitForExistence(timeout: 5))

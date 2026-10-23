@@ -45,6 +45,10 @@ final class CalendarMutationInteractionTests: XCTestCase {
         tap(app.buttons["calendar-mutation-audit"], app)
         let result = app.staticTexts["calendar-mutation-audit-result"]
         XCTAssertTrue(result.waitForExistence(timeout: 5))
+        // This element already exists after the external-change diagnostic.
+        // Its existence is not acknowledgement of the new audit button tap.
+        let updated = expectation(for: NSPredicate(format: "label CONTAINS %@", "\(count) eventi"), evaluatedWith: result)
+        wait(for: [updated], timeout: 8)
         XCTAssertTrue(result.label.contains("\(count) eventi"), result.label)
         XCTAssertTrue(result.label.contains("1 attività · 1 incassi · 500 ricevuti · 500 da incassare"), result.label)
         return result.label
