@@ -39,8 +39,9 @@ struct SettingsView: View {
                         .accessibilityIdentifier("settings-notifications")
                     settingsLink("Backup e privacy", subtitle: "Proteggi il tuo storico", icon: "externaldrive.fill") { backupSettings }
                         .accessibilityIdentifier("settings-backup")
-                    settingsLink("AI online e privacy", subtitle: "Collegamento protetto e limiti", icon: "lock.shield") { OnlineCoachSettingsView() }
-                    settingsLink("Tragitti e Apple Maps", subtitle: "Consenso, luoghi e tempi di viaggio", icon: "map.fill") { TravelCalculatorView() }
+                    settingsLink("AI online e privacy", subtitle: "Collegamento protetto e limiti", icon: "lock.shield", wrapInScreen: false) { OnlineCoachSettingsView() }
+                        .accessibilityIdentifier("settings-online")
+                    settingsLink("Tragitti e Apple Maps", subtitle: "Consenso, luoghi e tempi di viaggio", icon: "map.fill", wrapInScreen: false) { TravelCalculatorView() }
                         .accessibilityIdentifier("settings-travel")
                     settingsLink("Luoghi salvati", subtitle: "Casa, Università e indirizzi abituali", icon: "mappin.and.ellipse", wrapInScreen: false) { SavedPlacesView() }
                         .accessibilityIdentifier("settings-places")
