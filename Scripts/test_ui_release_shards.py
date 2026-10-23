@@ -1,8 +1,20 @@
 import unittest
-from ui_release_shards import discover_tests, expand_plan, load_plan, places_preflight, chart_preflight, calendar_controls_preflight, verify_log, ROOT
+from ui_release_shards import discover_tests, expand_plan, load_plan, places_preflight, chart_preflight, calendar_controls_preflight, planning_preflight, verify_log, ROOT
 
 
 class UIReleaseShardTests(unittest.TestCase):
+    def test_planning_preflight_requires_both_cases_and_keeps_full_release_coverage(self):
+        suites = discover_tests(ROOT)
+        cases = planning_preflight(suites)
+        self.assertEqual(len(cases), 2)
+        text = "\n".join(f"Test Case '-[PivotUITests.{suite} {method}]' passed (1.0 seconds)."
+                         for suite, method in (case.split("/") for case in cases))
+        self.assertEqual(verify_log(text, cases), 2)
+        with self.assertRaises(ValueError): verify_log(text.splitlines()[0], cases)
+        suites["PlanningConversationInteractionTests"].append("testUnreviewedDrift")
+        with self.assertRaises(ValueError): planning_preflight(suites)
+        self.assertEqual(sum(map(len, load_plan().values())), 89)
+
     def test_calendar_control_preflight_requires_routing_audit_and_concern_once(self):
         suites = discover_tests(ROOT)
         cases = calendar_controls_preflight(suites)
@@ -13,7 +25,7 @@ class UIReleaseShardTests(unittest.TestCase):
         with self.assertRaises(ValueError): verify_log(text.splitlines()[0], cases)
         suite, method = cases[0].split("/"); suites[suite].remove(method)
         with self.assertRaises(ValueError): calendar_controls_preflight(suites)
-        self.assertEqual(sum(map(len, load_plan().values())), 87)
+        self.assertEqual(sum(map(len, load_plan().values())), 89)
 
     def test_chart_preflight_checks_the_actual_failed_case_without_reducing_full_coverage(self):
         suites = discover_tests(ROOT)
@@ -26,7 +38,7 @@ class UIReleaseShardTests(unittest.TestCase):
         with self.assertRaises(ValueError): verify_log(text + text, cases)
         suites[suite].remove(method)
         with self.assertRaises(ValueError): chart_preflight(suites)
-        self.assertEqual(sum(map(len, load_plan().values())), 87)
+        self.assertEqual(sum(map(len, load_plan().values())), 89)
 
     def test_places_preflight_selects_and_verifies_same_eight_cases(self):
         cases = places_preflight(discover_tests(ROOT))
@@ -59,12 +71,12 @@ class UIReleaseShardTests(unittest.TestCase):
         self.assertEqual(len(cases), 2)
         self.assertTrue(any(case.startswith("SavedPlacesInteractionTests/") for case in cases))
         self.assertTrue(any("testRecoveryDateCorrection" in case for case in cases))
-        self.assertEqual(sum(map(len, load_plan().values())), 87)
+        self.assertEqual(sum(map(len, load_plan().values())), 89)
 
     def test_repository_coverage_is_complete_and_unique(self):
         plan = load_plan()
         self.assertEqual(sum(map(len, plan.values())), sum(map(len, discover_tests(ROOT).values())))
-        self.assertEqual({k: len(v) for k, v in plan.items()}, {"finance": 24, "workout": 22, "profile": 21, "pairing": 20})
+        self.assertEqual({k: len(v) for k, v in plan.items()}, {"finance": 24, "workout": 22, "profile": 21, "pairing": 22})
 
     def fixture(self):
         suites = {"ExampleTests": ["testA", "testB", "testC", "testD"]}

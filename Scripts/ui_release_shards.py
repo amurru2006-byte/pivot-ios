@@ -108,10 +108,17 @@ def read_log(path):
     return path.read_text(encoding="utf-8")
 
 
+def planning_preflight(suites):
+    methods = suites.get("PlanningConversationInteractionTests", [])
+    if len(methods) != 2 or len(set(methods)) != 2:
+        raise ValueError("update_explicit_planning_preflight_coverage")
+    return [f"PlanningConversationInteractionTests/{method}" for method in methods]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--shard", choices=sorted(SHARDS))
-    parser.add_argument("--preflight", choices=["places", "places-controls", "chart", "calendar-controls"])
+    parser.add_argument("--preflight", choices=["places", "places-controls", "chart", "calendar-controls", "planning"])
     parser.add_argument("--verify-log", type=Path)
     parser.add_argument("--verify-all-logs", type=Path)
     args = parser.parse_args()
@@ -122,6 +129,7 @@ def main():
         suites = discover_tests(ROOT)
         if args.preflight == "chart": cases = chart_preflight(suites)
         elif args.preflight == "calendar-controls": cases = calendar_controls_preflight(suites)
+        elif args.preflight == "planning": cases = planning_preflight(suites)
         else: cases = places_preflight(suites, controls_only=args.preflight == "places-controls")
         if args.verify_log:
             print(f"Verified {verify_log(read_log(args.verify_log), cases)} preflight tests, no skips")

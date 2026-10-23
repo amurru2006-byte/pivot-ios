@@ -11,16 +11,54 @@ struct CoachPlanningSelection {
     let unconfirmedTravelIDs: [String]
     let pairedReviewIDs: [String]
     private let snapshot: CoachV8Snapshot
+    private let intervalAnchor: Date
+    private let requiresOnlineAccess: Bool
 
     struct Access { let calendar: Bool; let online: Bool }
-    enum Failure: Error, Equatable { case accessRevoked, invalidIntent, staleContext, ineligibleActivity, pendingReview, invalidReference }
+    enum Failure: LocalizedError, Equatable {
+        case accessRevoked, invalidIntent, staleContext, ineligibleActivity, pendingReview, invalidReference
+        var errorDescription: String? {
+            switch self {
+            case .accessRevoked: return "Controlla l’accesso al Calendario e, per un nuovo messaggio online, il consenso AI."
+            case .invalidIntent: return "Non riesco a verificare i vincoli del piano. Nessuna modifica preparata."
+            case .staleContext: return "L’agenda o il piano è cambiato. Aggiorna e ripeti la richiesta."
+            case .ineligibleActivity: return "L’attività è fissa, già svolta, in corso o non modificabile. Controllala prima di chiedere il recupero."
+            case .pendingReview: return "C’è già una modifica da confermare per questa attività. Completa o annulla quella proposta prima di prepararne un’altra."
+            case .invalidReference: return "Non riesco a identificare l’impegno dopo cui vuoi organizzarti. Specifica quale intendi."
+            }
+        }
+    }
     // This is readiness to SEARCH, never readiness to write. Full duration,
     // preparation and every proposed slot/travel still need their own review.
     var maySearchLocally: Bool { !allowedIntervals.isEmpty && unconfirmedTravelIDs.isEmpty && pairedReviewIDs.isEmpty }
 
     static func prepare(_ intent: CoachPlanningIntent, responseRequestID: String, snapshot: CoachV8Snapshot, access: Access,
                         events: [CalendarItem], data: AppData, now: Date) throws -> Self {
-        guard access.calendar, access.online else { throw Failure.accessRevoked }
+        try prepare(intent, responseRequestID: responseRequestID, snapshot: snapshot, access: access,
+                    events: events, data: data, now: now, anchor: snapshot.request.now, requiresOnline: true)
+    }
+
+    /// Reopening a previously authorized LOCAL plan sends nothing to the cloud.
+    /// Its original civil-date anchor is retained, while every event and rule is
+    /// checked afresh. Revoking online consent does not disable local review.
+    static func restore(_ session: CoachPlanningSession, calendarAccess: Bool,
+                        events: [CalendarItem], data: AppData, now: Date) throws -> Self {
+        guard CoachPlanningStore.valid(data.coachState),
+              data.coachState.planningSessions?.contains(session) == true else { throw Failure.staleContext }
+        var local = data
+        local.coachState.focusedPlanningSessionID = session.id
+        local.coachState.focusedCalendarDraftID = nil
+        let snapshot = try CoachV8Snapshot.make(message: "Controllo locale del piano", events: events,
+            data: local, now: now, purpose: "conversation", protocolVersion: 4, calendarScope: .week)
+        let context = try session.context(remapping: snapshot.sources, now: now)
+        return try prepare(context.intent, responseRequestID: snapshot.request.requestID, snapshot: snapshot,
+            access: .init(calendar: calendarAccess, online: false), events: events, data: local,
+            now: now, anchor: context.anchor, requiresOnline: false)
+    }
+
+    private static func prepare(_ intent: CoachPlanningIntent, responseRequestID: String, snapshot: CoachV8Snapshot, access: Access,
+                                events: [CalendarItem], data: AppData, now: Date, anchor: Date, requiresOnline: Bool) throws -> Self {
+        guard access.calendar, !requiresOnline || access.online else { throw Failure.accessRevoked }
         guard validDate(now), validDate(snapshot.request.now), snapshot.request.purpose == "conversation",
               responseRequestID == snapshot.request.requestID,
               snapshot.isCurrent(events: events, data: data, now: now) else { throw Failure.staleContext }
@@ -59,17 +97,19 @@ struct CoachPlanningSelection {
         let referenceEnds: [String: Date]
         if let alias = intent.afterEventID, let reference { referenceEnds = [alias: reference.end] }
         else { referenceEnds = [:] }
-        let intervals = try intent.intervals(knownAliases: aliases, anchor: snapshot.request.now, now: now, referenceEnds: referenceEnds)
+        let intervals = try intent.intervals(knownAliases: aliases, anchor: anchor, now: now, referenceEnds: referenceEnds)
         return .init(intent: intent, requestID: responseRequestID, sources: selected, reference: reference,
-            allowedIntervals: intervals, unconfirmedTravelIDs: travel, pairedReviewIDs: paired, snapshot: snapshot)
+            allowedIntervals: intervals, unconfirmedTravelIDs: travel, pairedReviewIDs: paired, snapshot: snapshot,
+            intervalAnchor: anchor, requiresOnlineAccess: requiresOnline)
     }
     func isCurrent(access: Access, events: [CalendarItem], data: AppData, now: Date) -> Bool {
-        access.calendar && access.online && Self.validDate(now) && snapshot.isCurrent(events: events, data: data, now: now)
+        access.calendar && (!requiresOnlineAccess || access.online) && Self.validDate(now) && snapshot.isCurrent(events: events, data: data, now: now)
     }
     /// Repeat semantic eligibility as well as revision checks at the local
     /// search boundary. Never rely on a cached readiness flag after a review.
     func revalidated(access: Access, events: [CalendarItem], data: AppData, now: Date) throws -> Self {
-        try Self.prepare(intent, responseRequestID: requestID, snapshot: snapshot, access: access, events: events, data: data, now: now)
+        try Self.prepare(intent, responseRequestID: requestID, snapshot: snapshot, access: access, events: events, data: data,
+                         now: now, anchor: intervalAnchor, requiresOnline: requiresOnlineAccess)
     }
     private static func validDate(_ value: Date) -> Bool {
         value.timeIntervalSince1970.isFinite && (0...253_402_300_799).contains(value.timeIntervalSince1970)

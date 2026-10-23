@@ -136,6 +136,13 @@ final class PivotStore: ObservableObject {
                UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_RECOVERY_ID"] ?? "") != nil, data.rules["recovery-qa"] == nil {
                 change { $0.rules["recovery-qa"] = .init(flexibility: .movable, minimumMinutes: 60, travelConfirmed: true) }
             }
+            if !locked, ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--planning-conversation-test"),
+               UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_COACH_ACTION_ID"] ?? "") != nil,
+               data.rules["mutation-qa-1"] == nil {
+                change { data in
+                    for index in 1...2 { data.rules["mutation-qa-\(index)"] = .init(flexibility: .movable, minimumMinutes: 60, travelConfirmed: true) }
+                }
+            }
             if !locked, ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--history-test"),
                UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_HISTORY_ID"] ?? "") != nil, data.clients.isEmpty {
                 change { data in
