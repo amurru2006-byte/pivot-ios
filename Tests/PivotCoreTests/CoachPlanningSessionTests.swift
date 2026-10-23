@@ -48,6 +48,17 @@ final class CoachPlanningSessionTests: XCTestCase {
         XCTAssertEqual(restored.coachState.focusedPlanningSessionID, initial.id)
         XCTAssertTrue(restored.moves.isEmpty); XCTAssertTrue(restored.payments.isEmpty); XCTAssertTrue(restored.income.isEmpty)
     }
+    func testExplicitMissedSourceDayCannotBecomeAnotherDaysActivity() throws {
+        let value = data
+        for (message, shouldReject) in [("Ieri ho saltato la palestra, recupera palestra domani", true),
+                                        ("Oggi ho saltato la palestra, recupera palestra domani", false)] {
+            let snap = try CoachV8Snapshot.make(message: message, events: [target], data: value, now: now,
+                purpose: "conversation", protocolVersion: 4, calendarScope: .week)
+            if shouldReject {
+                XCTAssertThrowsError(try session(snap, data: value)) { XCTAssertEqual($0 as? CoachPlanningSession.Failure, .changed) }
+            } else { XCTAssertNoThrow(try session(snap, data: value)) }
+        }
+    }
     func testFreshSnapshotRemapsAliasesButNeverSendsNativeBindings() throws {
         let (_, data) = try saved()
         var earlier = target; earlier.id = "earlier-qa"; earlier.eventIdentifier = "earlier-native-qa"
