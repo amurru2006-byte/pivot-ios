@@ -66,6 +66,11 @@ struct CoachPlanningSelection {
     func isCurrent(access: Access, events: [CalendarItem], data: AppData, now: Date) -> Bool {
         access.calendar && access.online && Self.validDate(now) && snapshot.isCurrent(events: events, data: data, now: now)
     }
+    /// Repeat semantic eligibility as well as revision checks at the local
+    /// search boundary. Never rely on a cached readiness flag after a review.
+    func revalidated(access: Access, events: [CalendarItem], data: AppData, now: Date) throws -> Self {
+        try Self.prepare(intent, responseRequestID: requestID, snapshot: snapshot, access: access, events: events, data: data, now: now)
+    }
     private static func validDate(_ value: Date) -> Bool {
         value.timeIntervalSince1970.isFinite && (0...253_402_300_799).contains(value.timeIntervalSince1970)
     }
