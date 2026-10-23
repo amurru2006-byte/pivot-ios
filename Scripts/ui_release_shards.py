@@ -93,6 +93,14 @@ def chart_preflight(suites):
     return [case]
 
 
+def calendar_controls_preflight(suites):
+    cases = ["OnlineCoachInteractionTests/testRoutingPreferencesCanBeRememberedWithoutCreatingAnEvent",
+             "CalendarMutationInteractionTests/testTitleUpdateAndUndoLeaveOtherEventAndReceiptsUntouched"]
+    if any(case.split("/")[1] not in suites.get(case.split("/")[0], []) for case in cases):
+        raise ValueError("missing_calendar_control_regression")
+    return cases
+
+
 def read_log(path):
     if not path.is_file() or path.stat().st_size > 64 * 1024 * 1024:
         raise ValueError("missing_or_oversized_test_log")
@@ -102,7 +110,7 @@ def read_log(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--shard", choices=sorted(SHARDS))
-    parser.add_argument("--preflight", choices=["places", "places-controls", "chart"])
+    parser.add_argument("--preflight", choices=["places", "places-controls", "chart", "calendar-controls"])
     parser.add_argument("--verify-log", type=Path)
     parser.add_argument("--verify-all-logs", type=Path)
     args = parser.parse_args()
@@ -111,7 +119,9 @@ def main():
         if args.shard or args.verify_all_logs:
             parser.error("Choose either preflight or release shard verification")
         suites = discover_tests(ROOT)
-        cases = chart_preflight(suites) if args.preflight == "chart" else places_preflight(suites, controls_only=args.preflight == "places-controls")
+        if args.preflight == "chart": cases = chart_preflight(suites)
+        elif args.preflight == "calendar-controls": cases = calendar_controls_preflight(suites)
+        else: cases = places_preflight(suites, controls_only=args.preflight == "places-controls")
         if args.verify_log:
             print(f"Verified {verify_log(read_log(args.verify_log), cases)} preflight tests, no skips")
         else:

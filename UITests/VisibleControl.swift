@@ -23,7 +23,15 @@ extension XCTestCase {
         guard dx.isFinite, dy.isFinite, (0...1).contains(dx), (0...1).contains(dy) else {
             XCTFail("Switch thumb is outside its visible wrapper", file: file, line: line); return
         }
-        element.coordinate(withNormalizedOffset: CGVector(dx: dx, dy: dy)).tap()
+        let screen = app.frame
+        guard screen.contains(thumb) else {
+            XCTFail("Native switch must be inside the current app viewport", file: file, line: line); return
+        }
+        // SwiftUI can resolve the wrapper's normalized coordinate against a
+        // different nested switch frame. Use the already observed native
+        // bounds in app coordinates: still exactly ONE real finger tap.
+        app.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: thumb.midX - screen.minX, dy: thumb.midY - screen.minY)).tap()
         let changed = expectation(for: NSPredicate(format: "value == %@", after), evaluatedWith: element)
         wait(for: [changed], timeout: 8)
         XCTAssertEqual(element.value as? String, after, file: file, line: line)
