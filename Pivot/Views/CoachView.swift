@@ -644,7 +644,8 @@ struct CoachView: View {
         historyDay = now
         let parsedRecovery = CoachRecoveryRequest.parse(clean, now: now)
         let refinedRecovery = parsedRecovery == nil ? CoachRecoveryRequest.followUp(clean, messages: store.data.coachState.messages, now: now) : nil
-        if (!onlineCoach.isConfigured || useLocal), targetID == nil, contextEventID == nil, let recovery = parsedRecovery ?? refinedRecovery {
+        let pastSource = parsedRecovery?.sourceDay.map { $0 < PivotDate.calendar.startOfDay(for: now) } ?? false
+        if (!onlineCoach.isConfigured || useLocal || pastSource), targetID == nil, contextEventID == nil, let recovery = parsedRecovery ?? refinedRecovery {
             await calendar.refresh(settings: store.data.settings)
             guard !Task.isCancelled, !store.locked, !store.isRestoring else { return }
             // A follow-up retains the explicit original target (or the missing

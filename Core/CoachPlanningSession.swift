@@ -77,6 +77,8 @@ struct CoachPlanningSession: Codable, Equatable, Identifiable {
               response.rewrittenMessage == nil, let rawIntent = response.planning else { throw Failure.invalid }
         let selected = try CoachPlanningSelection.prepare(rawIntent, responseRequestID: response.requestID,
             snapshot: snapshot, access: access, events: events, data: data, now: now)
+        if let declared = CoachRecoveryRequest.parse(snapshot.request.message, now: snapshot.request.now)?.sourceDay,
+           !selected.sources.allSatisfy({ $0.occurs(on: declared) }) { throw Failure.changed }
         let required = Set(rawIntent.eventIDs + (rawIntent.afterEventID.map { [$0] } ?? []))
         let bindings = snapshot.sources.filter { required.contains($0.key) }
         let candidateParent = snapshot.focusedPlanningSession

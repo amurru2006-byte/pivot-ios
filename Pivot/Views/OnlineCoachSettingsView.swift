@@ -29,6 +29,8 @@ struct OnlineCoachSettingsView: View {
                     .font(.subheadline).accessibilityIdentifier("online-coach-privacy")
                 Text("Il filtro non garantisce l’anonimato: controlla anche i messaggi recenti e non inviare informazioni sanitarie. Il servizio AI legge il contenuto: HTTPS protegge il trasporto, non lo nasconde al servizio. Va verificata la mancata conservazione dei contenuti nell’account del servizio.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
+                Text("Quando continui un piano di recupero vengono inclusi i suoi vincoli con la data originale. Se l’attività originaria è ora fuori dall’intervallo scelto, ti viene chiesta una nuova revisione per quella fonte; non viene caricato tutto lo storico. Riaprire la scheda e cercare alternative resta locale.")
+                    .font(.caption).foregroundStyle(PivotTheme.muted)
                 Text("Il token resta nel portachiavi di questo iPhone, senza sincronizzazione iCloud. Non viene incluso nel backup Pivot. Nessun servizio a pagamento si attiva quando finisce la quota.")
                     .font(.caption).foregroundStyle(PivotTheme.muted)
             }

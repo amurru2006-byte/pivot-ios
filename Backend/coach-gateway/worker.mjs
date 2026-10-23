@@ -9,7 +9,7 @@ const exactKeys = (x, keys) => x && typeof x === 'object' && !Array.isArray(x) &
 const string = (x, max) => typeof x === 'string' && x.length > 0 && x.length <= max;
 const reply = (status, code, failureClass) => Response.json({ error: code }, {
   status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
-    'X-Pivot-Gateway-Revision':'20261019-reviewed-actions',
+    'X-Pivot-Gateway-Revision':'20261023-reviewed-planning',
     ...(failureClass ? {'X-Pivot-Failure-Class':failureClass} : {}) }
 });
 
@@ -406,7 +406,7 @@ export async function handle(request, env, dependencies = {}) {
       result.mode === 'actions' ? {...result,reply:'Ho preparato le modifiche da controllare. Apri l’anteprima e conferma soltanto quelle che vuoi applicare: il Calendario non è ancora cambiato.'} :
       result.mode === 'recover' ? {...result,reply:'Ho interpretato la richiesta di recupero. Controlliamo attività, vincoli e tempi sul telefono prima di cercare alternative: nessun evento è stato spostato.'} : result;
     return Response.json(safeResult,{ headers:{ 'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
-      'X-Pivot-Gateway-Revision':'20261019-reviewed-actions' } });
+      'X-Pivot-Gateway-Revision':'20261023-reviewed-planning' } });
   } catch (error) {
     const code = controller.signal.aborted ? 'provider_timeout' :
       error instanceof SyntaxError ? 'invalid_response' :

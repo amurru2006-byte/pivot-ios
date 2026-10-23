@@ -51,6 +51,15 @@ struct CoachCloudDisclosure: View {
                         Text("Giorni consentiti: " + context.intent.allowedDayOffsets.sorted().compactMap {
                             PivotDate.calendar.date(byAdding: .day, value: $0, to: PivotDate.calendar.startOfDay(for: context.anchor)).map(PivotDate.shortDate)
                         }.joined(separator: ", "))
+                        if !context.intent.excludedDayOffsets.isEmpty {
+                            Text("Giorni esclusi: " + context.intent.excludedDayOffsets.sorted().compactMap {
+                                PivotDate.calendar.date(byAdding: .day, value: $0, to: PivotDate.calendar.startOfDay(for: context.anchor)).map(PivotDate.shortDate)
+                            }.joined(separator: ", "))
+                        }
+                        if let band = context.intent.band { Text("Fascia: " + band.label) }
+                        if let minute = context.intent.earliestMinute { Text("Dalle \(minute / 60):\(String(format: "%02d", minute % 60))") }
+                        if let minute = context.intent.latestMinute { Text("Entro le \(minute / 60):\(String(format: "%02d", minute % 60))") }
+                        if let alias = context.intent.afterEventID { Text("Dopo l’impegno: " + alias) }
                         Text("Le sole attività originarie necessarie possono essere incluse anche se ora sono nel passato. Non viene aggiunto tutto lo storico.").font(.caption)
                     }
                 }.accessibilityIdentifier("coach-online-planning-context")
