@@ -5,6 +5,7 @@ extension XCTestCase {
     /// activation points can be stale even while both wrappers are hittable.
     /// Never retry the touch or set state through a fixture to make a test pass.
     func tapVisibleSwitchOnce(_ element: XCUIElement, to enabled: Bool, in app: XCUIApplication,
+                              useAppCoordinates: Bool = false,
                               file: StaticString = #filePath, line: UInt = #line) {
         scrollControlIntoView(element, in: app, file: file, line: line)
         let before = enabled ? "0" : "1", after = enabled ? "1" : "0"
@@ -23,15 +24,19 @@ extension XCTestCase {
         guard dx.isFinite, dy.isFinite, (0...1).contains(dx), (0...1).contains(dy) else {
             XCTFail("Switch thumb is outside its visible wrapper", file: file, line: line); return
         }
-        let screen = app.frame
-        guard screen.contains(thumb) else {
-            XCTFail("Native switch must be inside the current app viewport", file: file, line: line); return
+        if useAppCoordinates {
+            let screen = app.frame
+            guard screen.contains(thumb) else {
+                XCTFail("Native switch must be inside the current app viewport", file: file, line: line); return
+            }
+            // Opt-in only for the routing Form's wrapper. A sheet can use a
+            // different app-coordinate origin; do not change other controls'
+            // previously verified element-relative native thumb touch.
+            app.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: thumb.midX - screen.minX, dy: thumb.midY - screen.minY)).tap()
+        } else {
+            element.coordinate(withNormalizedOffset: CGVector(dx: dx, dy: dy)).tap()
         }
-        // SwiftUI can resolve the wrapper's normalized coordinate against a
-        // different nested switch frame. Use the already observed native
-        // bounds in app coordinates: still exactly ONE real finger tap.
-        app.coordinate(withNormalizedOffset: .zero)
-            .withOffset(CGVector(dx: thumb.midX - screen.minX, dy: thumb.midY - screen.minY)).tap()
         let changed = expectation(for: NSPredicate(format: "value == %@", after), evaluatedWith: element)
         wait(for: [changed], timeout: 8)
         XCTAssertEqual(element.value as? String, after, file: file, line: line)

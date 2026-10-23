@@ -3,13 +3,13 @@ from ui_release_shards import discover_tests, expand_plan, load_plan, places_pre
 
 
 class UIReleaseShardTests(unittest.TestCase):
-    def test_calendar_control_preflight_requires_both_observed_failures_exactly_once(self):
+    def test_calendar_control_preflight_requires_routing_audit_and_concern_once(self):
         suites = discover_tests(ROOT)
         cases = calendar_controls_preflight(suites)
-        self.assertEqual(len(cases), 2)
+        self.assertEqual(len(cases), 3)
         text = "\n".join(f"Test Case '-[PivotUITests.{suite} {method}]' passed (1.0 seconds)."
                          for suite, method in (case.split("/") for case in cases))
-        self.assertEqual(verify_log(text, cases), 2)
+        self.assertEqual(verify_log(text, cases), 3)
         with self.assertRaises(ValueError): verify_log(text.splitlines()[0], cases)
         suite, method = cases[0].split("/"); suites[suite].remove(method)
         with self.assertRaises(ValueError): calendar_controls_preflight(suites)
