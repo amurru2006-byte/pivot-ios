@@ -98,6 +98,12 @@ final class CoachRecoveryRequestTests: XCTestCase {
         XCTAssertNil(withoutDay.sourceDay)
         XCTAssertNil(withoutDay.resolving(text: withoutDay.instruction!, events: [event("one")], data: AppData(), now: now).targetID)
     }
+    func testAChangedOrUnknownActivityAfterMissedWorkoutStatementIsNotGuessedAsGym() {
+        for activity in ["la lezione QA", "il pranzo", "Sara", "lo studio", "gli impegni", "il lavoro"] {
+            XCTAssertNil(CoachRecoveryRequest.parse("Oggi non sono riuscito ad allenarmi, recuperiamo \(activity) domani", now: now))
+        }
+        XCTAssertNotNil(CoachRecoveryRequest.parse("Oggi non sono andato in palestra, recuperiamo domani in serata per favore", now: now))
+    }
     func testAUniqueNamedTargetIsResolvedButTwoEquivalentSessionsRequireChoice() throws {
         let values = [event("one", title: "Squat QA"), event("two", title: "Bench QA")]
         let request = try XCTUnwrap(CoachRecoveryRequest.parse("Recupera Squat QA domani", now: now))

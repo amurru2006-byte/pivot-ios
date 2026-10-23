@@ -22,9 +22,10 @@ jobs:
           python3 -m unittest discover -s Scripts -p 'test_*.py'
   places:
     needs: core
-    # Standard hosted Intel runner: the first ARM allocation failed before
-    # any step, with a documented hosted-runner capacity error. No paid runner.
-    runs-on: macos-15-intel
+    # Use the standard Apple Silicon image which passed the delivered release.
+    # The Intel fallback compiled but XCTest could not initialize accessibility
+    # (XCTDaemonErrorDomain 18), before running even one case. No paid runner.
+    runs-on: macos-15
     timeout-minutes: 100
     steps:
       - uses: actions/checkout@v4

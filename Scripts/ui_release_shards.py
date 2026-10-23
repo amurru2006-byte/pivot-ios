@@ -55,6 +55,21 @@ def load_plan(root=ROOT):
     return expand_plan(spec, discover_tests(root))
 
 
+def places_preflight(suites):
+    """One selection for both xcodebuild and verification, never two drifting lists."""
+    cases = [f"{suite}/{method}" for suite in ["SavedPlacesInteractionTests", "CalendarCreationInteractionTests"]
+             for method in suites[suite]]
+    cases += [
+        "IncomeCorrectionInteractionTests/testContactDefaultsAndMultipleOriginsPersistAfterRelaunch",
+        "PremiumCoachInteractionTests/testNaturalMissedWorkoutKeepsTomorrowAndAsksWhichSessionBeforeLocalRecovery",
+        "PremiumCoachInteractionTests/testChatHandsRecoveryToRequestedDayWithoutCalendarWriteOrCloudConsent",
+    ]
+    discovered = {f"{suite}/{method}" for suite, methods in suites.items() for method in methods}
+    if len(cases) != 7 or len(set(cases)) != len(cases) or not set(cases) <= discovered:
+        raise ValueError("update_explicit_places_preflight_coverage")
+    return cases
+
+
 def verify_log(text, expected):
     if re.search(r"Test Case[^\n]*\b(?:failed|skipped)\b", text):
         raise ValueError("failed_or_skipped_test")
@@ -74,10 +89,20 @@ def read_log(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--shard", choices=sorted(SHARDS))
+    parser.add_argument("--preflight", choices=["places"])
     parser.add_argument("--verify-log", type=Path)
     parser.add_argument("--verify-all-logs", type=Path)
     args = parser.parse_args()
     plan = load_plan()
+    if args.preflight:
+        if args.shard or args.verify_all_logs:
+            parser.error("Choose either preflight or release shard verification")
+        cases = places_preflight(discover_tests(ROOT))
+        if args.verify_log:
+            print(f"Verified {verify_log(read_log(args.verify_log), cases)} preflight tests, no skips")
+        else:
+            print("\n".join(f"-only-testing:PivotUITests/{case}" for case in cases))
+        return
     if args.verify_all_logs:
         if args.shard or args.verify_log:
             parser.error("Choose one verification mode")
