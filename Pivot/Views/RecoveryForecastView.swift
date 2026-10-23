@@ -33,6 +33,11 @@ struct RecoveryForecastView: View {
                 if let text = initialRequest?.instruction {
                     DisclosureGroup("La tua richiesta") { Text(text).textSelection(.enabled) }
                 }
+                if let text = initialRequest?.latestRefinement { Text(text).font(.subheadline).textSelection(.enabled) }
+                if let excluded = initialRequest?.excludedDays, !excluded.isEmpty {
+                    Text("Giorni esclusi: " + excluded.map(PivotDate.shortDate).joined(separator: ", "))
+                        .font(.caption).foregroundStyle(PivotTheme.muted).accessibilityIdentifier("prediction-recovery-excluded-days")
+                }
                 if honorRequestedHorizon, initialRequest?.horizonDays != nil {
                     Text("Ricerca entro la settimana richiesta").font(.subheadline)
                     Button("Cerca anche nelle settimane successive") { honorRequestedHorizon = false; invalidate() }
@@ -135,10 +140,11 @@ struct RecoveryForecastView: View {
         let count = honorRequestedHorizon ? min(days, initialRequest?.remainingHorizon(at: now) ?? days) : days
         guard count > 0 else { invalidate(); message = "La settimana di questa richiesta è terminata. Scegli esplicitamente di cercare negli altri giorni."; return }
         let events = calendar.events, snapshot = store.data, band = preferredBand, included = preparationIncluded, day = searchDay
+        let excluded = initialRequest?.excludedDays ?? []
         options = []; reviewed = []; message = nil; planning = true; staged = false
         task = Task { @MainActor in
             let result = await Task.detached(priority: .userInitiated) {
-                RecoveryForecast.options(targetID: targetID, events: events, data: snapshot, now: now, days: count, preferredBand: band, preparationIncluded: included, onDay: day)
+                RecoveryForecast.options(targetID: targetID, events: events, data: snapshot, now: now, days: count, preferredBand: band, preparationIncluded: included, onDay: day, excludingDays: excluded)
             }.value
             guard !Task.isCancelled else { return }
             planning = false

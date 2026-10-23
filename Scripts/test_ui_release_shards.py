@@ -3,14 +3,14 @@ from ui_release_shards import discover_tests, expand_plan, load_plan, places_pre
 
 
 class UIReleaseShardTests(unittest.TestCase):
-    def test_places_preflight_selects_and_verifies_same_seven_cases(self):
+    def test_places_preflight_selects_and_verifies_same_eight_cases(self):
         cases = places_preflight(discover_tests(ROOT))
-        self.assertEqual(len(cases), 7)
-        self.assertEqual(len(set(cases)), 7)
-        self.assertEqual(sum(c.startswith("PremiumCoachInteractionTests/") for c in cases), 2)
+        self.assertEqual(len(cases), 8)
+        self.assertEqual(len(set(cases)), 8)
+        self.assertEqual(sum(c.startswith("PremiumCoachInteractionTests/") for c in cases), 3)
         log = "\n".join(f"Test Case '-[PivotUITests.{suite} {method}]' passed (1.0 seconds)."
                         for suite, method in (case.split("/") for case in cases))
-        self.assertEqual(verify_log(log, cases), 7)
+        self.assertEqual(verify_log(log, cases), 8)
         with self.assertRaises(ValueError): verify_log("\n".join(log.splitlines()[:-1]), cases)
 
     def test_places_preflight_rejects_drift_before_native_build(self):
@@ -31,7 +31,7 @@ class UIReleaseShardTests(unittest.TestCase):
     def test_repository_coverage_is_complete_and_unique(self):
         plan = load_plan()
         self.assertEqual(sum(map(len, plan.values())), sum(map(len, discover_tests(ROOT).values())))
-        self.assertEqual({k: len(v) for k, v in plan.items()}, {"finance": 24, "workout": 21, "profile": 21, "pairing": 20})
+        self.assertEqual({k: len(v) for k, v in plan.items()}, {"finance": 24, "workout": 22, "profile": 21, "pairing": 20})
 
     def fixture(self):
         suites = {"ExampleTests": ["testA", "testB", "testC", "testD"]}

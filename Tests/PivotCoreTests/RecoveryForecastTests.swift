@@ -2,6 +2,24 @@ import XCTest
 @testable import PivotCore
 
 final class RecoveryForecastTests: XCTestCase {
+    func testExcludedDaysAreRemovedBeforeCollectingThreeWindowsIncludingWhenSearchExpands() {
+        let day = PivotDate.calendar.startOfDay(for: now)
+        let tomorrow = PivotDate.calendar.date(byAdding: .day, value: 1, to: day)!
+        let allowed = PivotDate.calendar.date(byAdding: .day, value: 2, to: day)!
+        let excluded = [day, tomorrow]
+        let values = RecoveryForecast.options(targetID: target.id, events: [target], data: data, now: now,
+            preparationIncluded: true, excludingDays: excluded)
+        XCTAssertFalse(values.isEmpty)
+        XCTAssertTrue(values.allSatisfy { $0.moves[0].proposedStart >= allowed })
+        XCTAssertTrue(RecoveryForecast.options(targetID: target.id, events: [target], data: data, now: now,
+            preparationIncluded: true, onDay: tomorrow, excludingDays: excluded).isEmpty)
+    }
+    func testInvalidExclusionDatesAndOversizedListsCannotPrepareAPlan() {
+        for values in [[Date(timeIntervalSinceReferenceDate: .nan)], Array(repeating: now, count: 8)] {
+            XCTAssertTrue(RecoveryForecast.options(targetID: target.id, events: [target], data: data, now: now,
+                preparationIncluded: true, excludingDays: values).isEmpty)
+        }
+    }
     private let now = ISO8601DateFormatter().date(from: "2026-10-18T12:00:00+02:00")!
     private var target: CalendarItem {
         .init(id: "target", eventIdentifier: "target", calendarIdentifier: "qa", calendarTitle: "QA", title: "Attività sintetica",

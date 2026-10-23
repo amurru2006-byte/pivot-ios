@@ -616,12 +616,18 @@ struct CoachView: View {
         guard !clean.isEmpty, !store.locked, !coachModel.isGenerating, !Task.isCancelled else { return }
         let now = Date()
         historyDay = now
-        if targetID == nil, contextEventID == nil, let recovery = CoachRecoveryRequest.parse(clean, now: now) {
+        let parsedRecovery = CoachRecoveryRequest.parse(clean, now: now)
+        let refinedRecovery = parsedRecovery == nil ? CoachRecoveryRequest.followUp(clean, messages: store.data.coachState.messages, now: now) : nil
+        if targetID == nil, contextEventID == nil, let recovery = parsedRecovery ?? refinedRecovery {
             await calendar.refresh(settings: store.data.settings)
             guard !Task.isCancelled, !store.locked, !store.isRestoring else { return }
-            let request = recovery.resolving(text: clean, events: calendar.events, data: store.data, now: now)
+            // A follow-up retains the explicit original target (or the missing
+            // target). It must not resolve a new activity from a date-only reply.
+            let request = refinedRecovery != nil ? recovery : recovery.resolving(text: clean, events: calendar.events, data: store.data, now: now)
+            let introduction = refinedRecovery == nil ? "Apri il recupero: confermiamo attività, giorno, durata e tragitti, poi confronto gli spazi fino a 7 giorni."
+                : "Ho aggiornato giorno e preferenze della richiesta precedente. Apri il recupero per controllare l’attività e le alternative; i giorni esclusi restano esclusi anche ampliando la ricerca."
             let reply = CoachMessage(dayKey: PivotDate.key(now), role: .coach,
-                text: "Apri il recupero: confermiamo attività, giorno, durata e tragitti, poi confronto gli spazi fino a 7 giorni. Nessun evento è stato spostato e questa ricerca non usa l’AI online.",
+                text: introduction + " Nessun evento è stato spostato e questa ricerca non usa l’AI online.",
                 recoveryRequest: request)
             if store.change({ data in
                 data.coachState.messages.append(.init(dayKey: PivotDate.key(now), role: .user, text: clean))

@@ -63,9 +63,10 @@ def places_preflight(suites):
         "IncomeCorrectionInteractionTests/testContactDefaultsAndMultipleOriginsPersistAfterRelaunch",
         "PremiumCoachInteractionTests/testNaturalMissedWorkoutKeepsTomorrowAndAsksWhichSessionBeforeLocalRecovery",
         "PremiumCoachInteractionTests/testChatHandsRecoveryToRequestedDayWithoutCalendarWriteOrCloudConsent",
+        "PremiumCoachInteractionTests/testRecoveryDateCorrectionRetainsTargetAndExcludedDayAfterRelaunchWithoutCalendarWrite",
     ]
     discovered = {f"{suite}/{method}" for suite, methods in suites.items() for method in methods}
-    if len(cases) != 7 or len(set(cases)) != len(cases) or not set(cases) <= discovered:
+    if len(cases) != 8 or len(set(cases)) != len(cases) or not set(cases) <= discovered:
         raise ValueError("update_explicit_places_preflight_coverage")
     return cases
 
