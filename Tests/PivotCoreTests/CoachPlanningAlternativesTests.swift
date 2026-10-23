@@ -54,6 +54,20 @@ final class CoachPlanningAlternativesTests: XCTestCase {
         XCTAssertNoThrow(try selection.revalidated(access: .init(calendar: true, online: false), events: events, data: data, now: now))
         XCTAssertThrowsError(try CoachPlanningSelection.restore(session, calendarAccess: false, events: events, data: data, now: now))
     }
+    func testLocalReopeningDoesNotInheritCloudCalendarOrSharedMemoryLimits() throws {
+        let (session, events, initial) = try fixture()
+        var data = initial
+        let many = events + (0..<60).map { index -> CalendarItem in
+            var item = events[0]; item.id = "busy-extra-\(index)-qa"; item.eventIdentifier = "native-extra-\(index)-qa"
+            item.start = now.addingTimeInterval(2 * 86400 + Double(index) * 60); item.end = item.start.addingTimeInterval(3600)
+            return item
+        }
+        data.coachState.memories = [.init(text: "Preferenza privata QA", onlineSharingAllowed: false)]
+        let snapshot = try CoachV8Snapshot.localPlanning(session, events: many, data: data, now: now)
+        XCTAssertEqual(snapshot.request.events.count, 1); XCTAssertTrue(snapshot.request.history.isEmpty)
+        XCTAssertTrue(snapshot.request.memories.isEmpty); XCTAssertTrue(snapshot.encodedRequest.isEmpty)
+        XCTAssertFalse(try options(session, many, data).isEmpty)
+    }
     func testMidnightSearchRetainsOriginalAllowedTuesdayNotShiftedWednesday() throws {
         let (session, events, data) = try fixture(), tomorrow = now.addingTimeInterval(86400)
         let result = try options(session, events, data, at: tomorrow)

@@ -45,14 +45,10 @@ struct CoachPlanningSelection {
                         events: [CalendarItem], data: AppData, now: Date) throws -> Self {
         guard CoachPlanningStore.valid(data.coachState),
               data.coachState.planningSessions?.contains(session) == true else { throw Failure.staleContext }
-        var local = data
-        local.coachState.focusedPlanningSessionID = session.id
-        local.coachState.focusedCalendarDraftID = nil
-        let snapshot = try CoachV8Snapshot.make(message: "Controllo locale del piano", events: events,
-            data: local, now: now, purpose: "conversation", protocolVersion: 4, calendarScope: .week)
+        let snapshot = try CoachV8Snapshot.localPlanning(session, events: events, data: data, now: now)
         let context = try session.context(remapping: snapshot.sources, now: now)
         return try prepare(context.intent, responseRequestID: snapshot.request.requestID, snapshot: snapshot,
-            access: .init(calendar: calendarAccess, online: false), events: events, data: local,
+            access: .init(calendar: calendarAccess, online: false), events: events, data: data,
             now: now, anchor: context.anchor, requiresOnline: false)
     }
 

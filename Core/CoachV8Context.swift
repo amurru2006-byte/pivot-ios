@@ -241,6 +241,28 @@ struct CoachV8Snapshot {
             additionalPlanningSourceIDs: additional.map(\.id).sorted())
     }
 
+    /// A local reopen is not a provider preflight. Only the already-bound
+    /// activities/reference need aliases; the full calendar remains LOCAL busy
+    /// context. Cloud history/memory/count limits must not disable this search.
+    static func localPlanning(_ session: CoachPlanningSession, events: [CalendarItem], data: AppData, now: Date) throws -> Self {
+        let canonical = EventCoalescer.unique(events, data: data)
+        let bound = try session.boundEvents(in: canonical, now: now)
+        var sources: [String: CalendarItem] = [:]
+        let summaries = bound.enumerated().map { index, source -> CoachV8Request.Event in
+            let alias = "e\(index)"; sources[alias] = source
+            let rule = EventRule.effective(for: source, data: data)
+            return .init(id: alias, kind: source.kind, category: .other, status: .pending, start: source.start,
+                end: source.end, durationMinutes: source.durationMinutes, flexibility: rule.flexibility, travelConfirmed: rule.travelConfirmed)
+        }
+        let context = try session.context(remapping: sources, now: now)
+        let request = CoachV8Request(version: 4, purpose: "conversation", requestID: UUID().uuidString,
+            now: now, dayKey: PivotDate.key(now), message: "Controllo locale del piano", events: summaries,
+            history: [], memories: [], draftContext: [], references: [], historyOmittedCount: 0, planningContext: [context])
+        // Not an authorized network payload: never hand this snapshot to ask().
+        return .init(request: request, encodedRequest: Data(), originalEvents: events, dataUpdatedAt: data.updatedAt,
+            sources: sources, calendarScope: .week, focusedPlanningSession: session)
+    }
+
     func isCurrent(events: [CalendarItem], data: AppData, now: Date) -> Bool {
         events == originalEvents && data.updatedAt == dataUpdatedAt
             && PivotDate.key(now) == request.dayKey
