@@ -1,0 +1,51 @@
+name: Verify offline coach exchange preflight
+on:
+  push:
+    branches: ['codex/pivot-fitpros-core-preflight']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: fitpros-offline-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  synthetic-core:
+    if: ${{ github.event.repository.private == false }}
+    runs-on: macos-15-intel
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Exact twenty offline mapping and revision tests
+        run: |
+          mkdir -p build
+          set -o pipefail
+          swift test --filter TrainingCoachExchangeTests 2>&1 | tee build/fitpros-preflight.log
+          python3 - <<'PY'
+          import json, re
+          from pathlib import Path
+          source = Path('Tests/PivotCoreTests/TrainingCoachExchangeTests.swift').read_text()
+          names = re.findall(r'func (test\w+)\(', source)
+          log = Path('build/fitpros-preflight.log').read_text()
+          assert len(names) == len(set(names)) == 20
+          assert re.search(r'Executed 20 tests, with 0 failures', log)
+          assert not re.search(r'Test Case .* skipped', log)
+          for name in names:
+              assert any(name in line and ' passed ' in line for line in log.splitlines()), name
+          Path('build/synthetic-tests-summary.json').write_text(json.dumps({
+              'suite': 'TrainingCoachExchangeTests', 'passed': 20, 'failed': 0, 'skipped': 0,
+              'tests': sorted(names), 'scope': 'offline synthetic preflight only',
+              'external_write_channel_verified': False, 'workouts_sent': False,
+              'application_release_built': False
+          }, indent=2) + '\n')
+          PY
+      - name: All existing core tests including training and backup compatibility
+        run: swift test
+      - name: Publish synthetic summary only
+        uses: actions/upload-artifact@v7
+        with:
+          name: fitpros-offline-preflight-synthetic-tests
+          path: build/synthetic-tests-summary.json
+          if-no-files-found: error
+          retention-days: 2
