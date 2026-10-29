@@ -1,8 +1,58 @@
 import unittest
-from ui_release_shards import discover_tests, expand_plan, load_plan, places_preflight, chart_preflight, calendar_controls_preflight, planning_preflight, verify_log, ROOT
+from ui_release_shards import discover_tests, expand_plan, load_plan, places_preflight, chart_preflight, calendar_controls_preflight, planning_preflight, health_preflight, verify_log, ROOT
 
 
 class UIReleaseShardTests(unittest.TestCase):
+    def test_health_preflight_requires_exact_both_cases_inside_full_release(self):
+        cases = health_preflight(discover_tests(ROOT))
+        self.assertEqual(cases, [
+            "HealthRefreshInteractionTests/testFailedRefreshKeepsYesterdayReportAndShowsCurrentAttemptInBothScreens",
+            "HealthRefreshInteractionTests/testPartialHeartRateRefreshSavesCurrentBaseReadWithoutClaimingFullSuccess",
+        ])
+        plan = load_plan()
+        self.assertTrue(set(cases) <= set(plan["profile"]))
+        self.assertEqual(sum(map(len, plan.values())), 91)
+        log = "\n".join(f"Test Case '-[PivotUITests.{suite} {method}]' passed (1.0 seconds)."
+                        for suite, method in (case.split("/") for case in cases))
+        self.assertEqual(verify_log(log, cases), 2)
+        for changed in [log.splitlines()[0], log + "\n" + log.splitlines()[0],
+                        log.replace("testFailedRefresh", "testUnreviewedRefresh")]:
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                verify_log(changed, cases)
+
+    def test_health_preflight_rejects_missing_extra_duplicate_or_renamed_discovery(self):
+        expected = discover_tests(ROOT)["HealthRefreshInteractionTests"]
+        for changed in [[], expected[:1], expected + ["testUnreviewedDrift"],
+                        [expected[0], expected[0]], [expected[0], "testRenamed"]]:
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                health_preflight({"HealthRefreshInteractionTests": changed})
+        with self.assertRaises(ValueError): health_preflight({})
+
+    def test_health_preflight_rejects_skips_and_failures_even_after_both_pass(self):
+        cases = health_preflight(discover_tests(ROOT))
+        log = "\n".join(f"Test Case '-[PivotUITests.{suite} {method}]' passed (1.0 seconds)."
+                        for suite, method in (case.split("/") for case in cases))
+        suite, method = cases[0].split("/")
+        for status in ["failed", "skipped"]:
+            changed = log + f"\nTest Case '-[PivotUITests.{suite} {method}]' {status} (1.0 seconds)."
+            with self.subTest(status=status), self.assertRaises(ValueError): verify_log(changed, cases)
+
+    def test_health_selection_and_workflow_share_exact_verifier_without_early_release(self):
+        source = (ROOT / "Scripts/preview-ui.sh").read_text(encoding="utf-8")
+        self.assertIn('v8-0810-health-regression|', source)
+        self.assertIn('if [ "$PIVOT_UI_ONLY_TESTING" = v8-0810-health-regression ]; then\n  PIVOT_PLACES_GROUP=health', source)
+        self.assertLess(source.index('PIVOT_PLACES_GROUP=health'), source.index('if xcodebuild'))
+        self.assertIn('--preflight "$PIVOT_PLACES_GROUP" --verify-log "$PIVOT_UI_LOG"', source)
+        workflow = (ROOT / ".github/workflows/v8-health-preflight.yml").read_text(encoding="utf-8")
+        self.assertIn("branches: ['codex/pivot-v8-health-status']", workflow)
+        self.assertIn('needs: core', workflow)
+        self.assertIn('runs-on: macos-15\n', workflow)
+        self.assertIn('PIVOT_UI_ONLY_TESTING: v8-0810-health-regression', workflow)
+        self.assertIn('bash Scripts/preview-ui.sh', workflow)
+        self.assertNotRegex(workflow, r"(?m)^\s*continue-on-error:")
+        self.assertNotRegex(workflow, r'(?m)^\s*(?:run:\s*)?bash Scripts/package-v8-candidate.sh\s*$')
+        self.assertNotIn('build/Pivot-*.*.*.ipa', workflow)
+
     def test_planning_preflight_requires_both_cases_and_keeps_full_release_coverage(self):
         suites = discover_tests(ROOT)
         cases = planning_preflight(suites)
@@ -13,7 +63,7 @@ class UIReleaseShardTests(unittest.TestCase):
         with self.assertRaises(ValueError): verify_log(text.splitlines()[0], cases)
         suites["PlanningConversationInteractionTests"].append("testUnreviewedDrift")
         with self.assertRaises(ValueError): planning_preflight(suites)
-        self.assertEqual(sum(map(len, load_plan().values())), 89)
+        self.assertEqual(sum(map(len, load_plan().values())), 91)
 
     def test_calendar_control_preflight_requires_routing_audit_and_concern_once(self):
         suites = discover_tests(ROOT)
@@ -25,7 +75,7 @@ class UIReleaseShardTests(unittest.TestCase):
         with self.assertRaises(ValueError): verify_log(text.splitlines()[0], cases)
         suite, method = cases[0].split("/"); suites[suite].remove(method)
         with self.assertRaises(ValueError): calendar_controls_preflight(suites)
-        self.assertEqual(sum(map(len, load_plan().values())), 89)
+        self.assertEqual(sum(map(len, load_plan().values())), 91)
 
     def test_chart_preflight_checks_the_actual_failed_case_without_reducing_full_coverage(self):
         suites = discover_tests(ROOT)
@@ -38,7 +88,7 @@ class UIReleaseShardTests(unittest.TestCase):
         with self.assertRaises(ValueError): verify_log(text + text, cases)
         suites[suite].remove(method)
         with self.assertRaises(ValueError): chart_preflight(suites)
-        self.assertEqual(sum(map(len, load_plan().values())), 89)
+        self.assertEqual(sum(map(len, load_plan().values())), 91)
 
     def test_places_preflight_selects_and_verifies_same_eight_cases(self):
         cases = places_preflight(discover_tests(ROOT))
@@ -71,12 +121,12 @@ class UIReleaseShardTests(unittest.TestCase):
         self.assertEqual(len(cases), 2)
         self.assertTrue(any(case.startswith("SavedPlacesInteractionTests/") for case in cases))
         self.assertTrue(any("testRecoveryDateCorrection" in case for case in cases))
-        self.assertEqual(sum(map(len, load_plan().values())), 89)
+        self.assertEqual(sum(map(len, load_plan().values())), 91)
 
     def test_repository_coverage_is_complete_and_unique(self):
         plan = load_plan()
         self.assertEqual(sum(map(len, plan.values())), sum(map(len, discover_tests(ROOT).values())))
-        self.assertEqual({k: len(v) for k, v in plan.items()}, {"finance": 24, "workout": 22, "profile": 21, "pairing": 22})
+        self.assertEqual({k: len(v) for k, v in plan.items()}, {"finance": 24, "workout": 22, "profile": 23, "pairing": 22})
 
     def fixture(self):
         suites = {"ExampleTests": ["testA", "testB", "testC", "testD"]}

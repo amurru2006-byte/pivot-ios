@@ -115,10 +115,21 @@ def planning_preflight(suites):
     return [f"PlanningConversationInteractionTests/{method}" for method in methods]
 
 
+def health_preflight(suites):
+    methods = [
+        "testFailedRefreshKeepsYesterdayReportAndShowsCurrentAttemptInBothScreens",
+        "testPartialHeartRateRefreshSavesCurrentBaseReadWithoutClaimingFullSuccess",
+    ]
+    discovered = suites.get("HealthRefreshInteractionTests", [])
+    if len(discovered) != len(methods) or set(discovered) != set(methods):
+        raise ValueError("update_explicit_health_preflight_coverage")
+    return [f"HealthRefreshInteractionTests/{method}" for method in methods]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--shard", choices=sorted(SHARDS))
-    parser.add_argument("--preflight", choices=["places", "places-controls", "chart", "calendar-controls", "planning"])
+    parser.add_argument("--preflight", choices=["places", "places-controls", "chart", "calendar-controls", "planning", "health"])
     parser.add_argument("--verify-log", type=Path)
     parser.add_argument("--verify-all-logs", type=Path)
     args = parser.parse_args()
@@ -130,6 +141,7 @@ def main():
         if args.preflight == "chart": cases = chart_preflight(suites)
         elif args.preflight == "calendar-controls": cases = calendar_controls_preflight(suites)
         elif args.preflight == "planning": cases = planning_preflight(suites)
+        elif args.preflight == "health": cases = health_preflight(suites)
         else: cases = places_preflight(suites, controls_only=args.preflight == "places-controls")
         if args.verify_log:
             print(f"Verified {verify_log(read_log(args.verify_log), cases)} preflight tests, no skips")

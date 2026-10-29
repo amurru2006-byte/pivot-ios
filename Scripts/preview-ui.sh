@@ -27,7 +27,7 @@ case "$PIVOT_UI_ONLY_TESTING" in
     PIVOT_UI_RESULT=build/online-privacy-tests.xcresult
     PIVOT_SIM_ENTITLEMENTS=build/online-privacy-simulator-entitlements.plist
     ;;
-  v8-089-planning-regression|v8-088-calendar-controls-regression|v8-088-chart-controls-regression|v8-088-places-regression|v8-088-places-controls-regression|v8-087-linked-travel-regression|v8-086-presentation-regression|v8-086-rest-audio-regression|v8-086-contact-save-regression|PivotUITests/PremiumCoachInteractionTests|PivotUITests/PremiumCoachInteractionTests/testMemoryOptInPersistsAppearsInExactDisclosureAndCanBeRevoked)
+  v8-0810-health-regression|v8-089-planning-regression|v8-088-calendar-controls-regression|v8-088-chart-controls-regression|v8-088-places-regression|v8-088-places-controls-regression|v8-087-linked-travel-regression|v8-086-presentation-regression|v8-086-rest-audio-regression|v8-086-contact-save-regression|PivotUITests/PremiumCoachInteractionTests|PivotUITests/PremiumCoachInteractionTests/testMemoryOptInPersistsAppearsInExactDisclosureAndCanBeRevoked)
     PIVOT_PREVIEW_OUTPUT=build/Previews/OnlinePrivacy
     PIVOT_UI_BUILD_LOG=build/online-privacy-build.log
     PIVOT_UI_LOG=build/online-privacy-tests.log
@@ -58,7 +58,9 @@ PIVOT_SIMULATOR=$(python3 Scripts/select_simulator.py build/devices.json --metad
 cat build/selected-simulator.json
 # Validate the focused selection before building, and reuse that exact list
 # for result verification. A missing selected case must not waste an iOS build.
-if [ "$PIVOT_UI_ONLY_TESTING" = v8-089-planning-regression ]; then
+if [ "$PIVOT_UI_ONLY_TESTING" = v8-0810-health-regression ]; then
+  PIVOT_PLACES_GROUP=health
+elif [ "$PIVOT_UI_ONLY_TESTING" = v8-089-planning-regression ]; then
   PIVOT_PLACES_GROUP=planning
 elif [ "$PIVOT_UI_ONLY_TESTING" = v8-088-places-regression ]; then
   PIVOT_PLACES_GROUP=places

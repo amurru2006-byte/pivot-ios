@@ -128,7 +128,7 @@ struct TodayView: View {
                 }
                 Button { showHealth = true } label: {
                     Label(store.data.settings.healthEnabled == true ? "Salute e attività rilevate" : "Collega app Salute", systemImage: "heart.text.square")
-                }.font(.caption).foregroundStyle(PivotTheme.muted)
+                }.font(.caption).foregroundStyle(PivotTheme.muted).accessibilityIdentifier("open-health")
                 if let sync = calendar.lastRefresh {
                     Label("Calendario aggiornato alle \(PivotDate.time(sync))", systemImage: "arrow.triangle.2.circlepath").font(.caption2).foregroundStyle(PivotTheme.muted).accessibilityIdentifier("calendar-updated")
                 }
@@ -166,11 +166,26 @@ struct TodayView: View {
         NavigationStack {
             PivotScreen {
                 PivotHeader(title: "Salute", subtitle: "Dati disponibili, senza registrare tutto a mano")
-                Text(health.status).font(.subheadline).foregroundStyle(PivotTheme.muted)
-                Button(store.data.settings.healthEnabled == true ? "Aggiorna dati da Salute" : "Collega app Salute") { Task { await health.connect(store: store, events: calendar.events) } }.buttonStyle(PivotPrimaryButton()).disabled(health.isRefreshing || store.locked)
+                if health.lastAttempt?.message != health.status {
+                    Text(health.status).font(.subheadline).foregroundStyle(PivotTheme.muted)
+                }
+                if let attempt = health.lastAttempt {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Ultimo tentativo · \(DisplayDate.label(attempt.finishedAt ?? attempt.startedAt, format: "d MMMM yyyy · HH:mm"))")
+                            .font(.caption.weight(.semibold)).foregroundStyle(PivotTheme.muted)
+                            .accessibilityIdentifier("health-last-attempt-time")
+                        Text(attempt.message).font(.caption)
+                            .foregroundStyle(attempt.outcome == .failed || attempt.outcome == .partial ? PivotTheme.amber : PivotTheme.muted)
+                            .accessibilityIdentifier("health-last-attempt-status")
+                    }
+                }
+                Button(store.data.settings.healthEnabled == true ? "Aggiorna dati da Salute" : "Collega app Salute") { Task { await health.connect(store: store, events: calendar.events) } }.buttonStyle(PivotPrimaryButton()).disabled(health.isRefreshing || health.isConnecting || store.locked)
                 if let report = health.lastReport {
-                    PivotCard(tint: PivotTheme.accent) {
-                        Label("Ultima lettura da Salute · \(PivotDate.time(report.readAt))", systemImage: "checkmark.shield.fill").font(.headline)
+                    PivotCard(tint: PivotTheme.blue) {
+                        Label("Ultima lettura salvata da Salute", systemImage: "clock.arrow.circlepath").font(.headline)
+                        Text(DisplayDate.label(report.readAt, format: "d MMMM yyyy · HH:mm"))
+                            .font(.caption).foregroundStyle(PivotTheme.muted)
+                            .accessibilityIdentifier("health-last-successful-read")
                         Text("Letti \(report.workoutSamples) allenamenti e \(report.sleepDays) notti negli ultimi 7 giorni.").font(.subheadline)
                         if report.appliedChanges == 0 {
                             Text("Nessuna modifica nuova in Pivot.").font(.caption).foregroundStyle(PivotTheme.muted)

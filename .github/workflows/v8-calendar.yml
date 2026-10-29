@@ -1,7 +1,7 @@
 name: Verifica calendario e AI online V8
 on:
   push:
-    branches: ['codex/pivot-v8-calendar', 'codex/pivot-v8-workout-audio', 'codex/pivot-v8-entrate-081', 'codex/pivot-v8-arm-081']
+    branches: ['codex/pivot-v8-calendar', 'codex/pivot-v8-workout-audio', 'codex/pivot-v8-entrate-081', 'codex/pivot-v8-arm-081', 'codex/pivot-v8-health-0810']
   workflow_dispatch:
 permissions:
   contents: read

@@ -96,6 +96,12 @@ struct RootView: View {
             else { tabs }
         }
         .task {
+            #if DEBUG && targetEnvironment(simulator)
+            if HealthService.isHealthInteractionFixtureEnabled {
+                health.prepareHealthInteractionFixtureIfNeeded()
+                return
+            }
+            #endif
             if PreviewMode.enabled {
                 if !previewReady { PreviewMode.prepare(store: store, calendar: calendar); rebuildAgenda(); previewReady = true }
             }
@@ -156,6 +162,12 @@ struct RootView: View {
             }
         }
         .onChange(of: store.isLoading) { _, loading in
+            #if DEBUG && targetEnvironment(simulator)
+            if HealthService.isHealthInteractionFixtureEnabled {
+                if !loading { health.prepareHealthInteractionFixtureIfNeeded() }
+                return
+            }
+            #endif
             if !loading {
                 if store.data.settings.healthEnabled == true {
                     Task { await health.resumeBackgroundUpdates() }
@@ -172,6 +184,9 @@ struct RootView: View {
         .onChange(of: notifications.route?.id) { _, _ in openPendingCoachSetup() }
         .onChange(of: store.data.updatedAt) { _, _ in rebuildAgenda(); openPendingWorkout(); reconcileRestAudio(); reconcileSavings() }
         .onChange(of: store.data.settings) { old, new in
+            #if DEBUG && targetEnvironment(simulator)
+            if HealthService.isHealthInteractionFixtureEnabled { return }
+            #endif
             if old.excludedCalendarIDs != new.excludedCalendarIDs || old.excludedCalendarTitles != new.excludedCalendarTitles || old.excludeHolidays != new.excludeHolidays { requestRefresh(force: true) }
             if old.healthEnabled != new.healthEnabled {
                 if !store.isLoading {
@@ -186,6 +201,9 @@ struct RootView: View {
         .onChange(of: calendar.events) { _, _ in rebuildAgenda() }
         .onChange(of: calendar.hasAccess) { _, _ in rebuildAgenda() }
         .onChange(of: agenda.revision) { _, _ in
+            #if DEBUG && targetEnvironment(simulator)
+            if HealthService.isHealthInteractionFixtureEnabled { return }
+            #endif
             guard !PreviewMode.enabled, !store.isLoading, !store.isRestoring else { return }
             notificationGate.request {
                 let started = ProcessInfo.processInfo.systemUptime
@@ -275,6 +293,9 @@ struct RootView: View {
         }
     }
     private func requestRefresh(force: Bool = false) {
+        #if DEBUG && targetEnvironment(simulator)
+        if HealthService.isHealthInteractionFixtureEnabled { return }
+        #endif
         guard !PreviewMode.enabled, !store.isLoading, !store.isRestoring else { return }
         if force { calendar.invalidateSnapshot() }
         refreshGate.request {

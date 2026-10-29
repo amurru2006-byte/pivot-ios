@@ -11,8 +11,10 @@ final class HealthService: ObservableObject {
     @Published private(set) var connectionDiagnostic: String?
     @Published private(set) var isConnecting = false
     @Published private(set) var workouts: [HealthWorkoutSummary] = []
-    @Published private(set) var lastRefresh: Date?
-    @Published private(set) var lastReport: HealthRefreshReport?
+    @Published private var refreshState = HealthRefreshState()
+    var lastRefresh: Date? { refreshState.lastReport?.readAt }
+    var lastReport: HealthRefreshReport? { refreshState.lastReport }
+    var lastAttempt: HealthRefreshAttempt? { refreshState.lastAttempt }
     private let healthStore = HKHealthStore()
     private var sleepByDay: [String: HealthSleepSummary] = [:]
     private var workoutCache: [String: HealthWorkoutCacheEntry] = [:]
@@ -22,6 +24,41 @@ final class HealthService: ObservableObject {
     private var backgroundUpdateHandler: (@MainActor () async -> Void)?
     private var automaticUpdateError: String?
     private var authorizationRequestCompleted = false
+    #if DEBUG && targetEnvironment(simulator)
+    private var healthInteractionFixturePrepared = false
+    static var isHealthInteractionFixtureEnabled: Bool {
+        let process = ProcessInfo.processInfo
+        return process.arguments.contains("--interaction-test")
+            && process.arguments.contains("--health-refresh-interaction-test")
+            && UUID(uuidString: process.environment["PIVOT_QA_HEALTH_ID"] ?? "") != nil
+            && ["failed", "partial"].contains(process.environment["PIVOT_UI_HEALTH_STATUS"] ?? "")
+    }
+    private var healthInteractionNow: Date {
+        let epoch = Double(ProcessInfo.processInfo.environment["PIVOT_UI_HEALTH_NOW"] ?? "") ?? 1_793_275_200
+        return Date(timeIntervalSince1970: epoch.isFinite ? epoch : 1_793_275_200)
+    }
+    func prepareHealthInteractionFixtureIfNeeded() {
+        guard Self.isHealthInteractionFixtureEnabled, !healthInteractionFixturePrepared else { return }
+        healthInteractionFixturePrepared = true
+        let old = healthInteractionNow.addingTimeInterval(-86_400)
+        let report = HealthRefreshReport.make(workouts: [], sleeps: [:], before: AppData(), after: AppData(), readAt: old)
+        _ = refreshState.begin(at: old)
+        _ = refreshState.finish(.succeeded, at: old, report: report)
+        status = "Dati sintetici per la verifica dell’interfaccia."
+    }
+    private func runHealthInteractionRefresh() {
+        prepareHealthInteractionFixtureIfNeeded()
+        let now = healthInteractionNow
+        guard refreshState.begin(at: now) else { return }
+        if ProcessInfo.processInfo.environment["PIVOT_UI_HEALTH_STATUS"] == "partial" {
+            let report = HealthRefreshReport.make(workouts: [], sleeps: [:], before: AppData(), after: AppData(), readAt: now)
+            _ = refreshState.finish(.partial, at: now, stage: .heartRate, cause: .deferredDetails, report: report)
+        } else {
+            _ = refreshState.finish(.failed, at: now, stage: .workouts, cause: .queryFailed)
+        }
+        status = lastAttempt?.message ?? ""
+    }
+    #endif
     private var readTypes: Set<HKObjectType> {
         var types: Set<HKObjectType> = [HKObjectType.workoutType()]
         if let sleep = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) { types.insert(sleep) }
@@ -40,6 +77,9 @@ final class HealthService: ObservableObject {
         backgroundUpdateHandler = handler
     }
     func prepareBackgroundObservers() {
+        #if DEBUG && targetEnvironment(simulator)
+        if Self.isHealthInteractionFixtureEnabled { return }
+        #endif
         guard authorizationRequestCompleted, observerQueries.isEmpty, HKHealthStore.isHealthDataAvailable() else { return }
         for type in backgroundTypes {
             let query = HKObserverQuery(sampleType: type, predicate: nil) { [weak self] _, completion, error in
@@ -53,6 +93,9 @@ final class HealthService: ObservableObject {
         }
     }
     func setBackgroundDelivery(enabled: Bool) async {
+        #if DEBUG && targetEnvironment(simulator)
+        if Self.isHealthInteractionFixtureEnabled { return }
+        #endif
         guard HKHealthStore.isHealthDataAvailable() else { return }
         if !enabled {
             workoutCache.removeAll()
@@ -81,24 +124,53 @@ final class HealthService: ObservableObject {
         }
     }
     func connect(store: PivotStore, events: [CalendarItem]) async {
-        guard !isConnecting else { return }
-        guard HKHealthStore.isHealthDataAvailable() else { status = "Salute non disponibile su questo dispositivo"; return }
+        #if DEBUG && targetEnvironment(simulator)
+        if Self.isHealthInteractionFixtureEnabled { runHealthInteractionRefresh(); return }
+        #endif
+        guard !isConnecting, !isRefreshing else { return }
+        let attemptStartedAt = Date()
+        guard refreshState.begin(at: attemptStartedAt) else { return }
+        guard HKHealthStore.isHealthDataAvailable() else {
+            status = "Salute non disponibile su questo dispositivo"
+            finishAttempt(.failed, stage: .availability, cause: .unavailable)
+            return
+        }
         isConnecting = true
         connectionDiagnostic = nil
         defer { isConnecting = false }
         do {
             // Read only. No workouts or sleep are ever written back to Apple Health.
             try await healthStore.requestAuthorization(toShare: [], read: readTypes)
+            try Task.checkCancellation()
             authorizationRequestCompleted = true
-            guard store.change({ $0.settings.healthEnabled = true }) else { return }
+            guard store.change({ $0.settings.healthEnabled = true }) else {
+                status = "Il collegamento Salute non è stato salvato in Pivot."
+                finishAttempt(.failed, stage: .persistence, cause: .persistenceFailed)
+                return
+            }
             prepareBackgroundObservers()
             await setBackgroundDelivery(enabled: true)
-            await refresh(store: store, events: events, force: true, recheckHeartRate: true)
+            await refresh(store: store, events: events, force: true, recheckHeartRate: true,
+                          attemptStartedAt: attemptStartedAt)
+        } catch is CancellationError {
+            finishAttempt(.cancelled)
+            status = "Collegamento Salute annullato. I dati precedenti restano disponibili."
         } catch {
             authorizationRequestCompleted = false
             recordDiagnostic(error, phase: "Richiesta dei permessi Salute")
             status = Self.connectionMessage(for: error)
+            finishAttempt(.failed, stage: .authorization, cause: .authorizationFailed)
         }
+    }
+    @discardableResult
+    private func finishAttempt(_ outcome: HealthRefreshAttempt.Outcome,
+                               stage: HealthRefreshAttempt.Stage? = nil,
+                               cause: HealthRefreshAttempt.Cause? = nil,
+                               report: HealthRefreshReport? = nil) -> Bool {
+        guard let attempt = lastAttempt, attempt.outcome == .inProgress else { return false }
+        // A system-clock correction must not leave a finished attempt spinning.
+        let finishedAt = max(Date(), max(attempt.startedAt, report?.readAt ?? attempt.startedAt))
+        return refreshState.finish(outcome, at: finishedAt, stage: stage, cause: cause, report: report)
     }
     private static func connectionMessage(for error: Error) -> String {
         let details = error.localizedDescription.lowercased()
@@ -118,30 +190,62 @@ final class HealthService: ObservableObject {
         connectionDiagnostic = "Pivot \(version) (\(build))\n\(phase)\n\(error.domain) · codice \(error.code)\n\(error.localizedDescription)"
     }
     func resumeBackgroundUpdates() async {
+        #if DEBUG && targetEnvironment(simulator)
+        if Self.isHealthInteractionFixtureEnabled { prepareHealthInteractionFixtureIfNeeded(); return }
+        #endif
         // Re-establish authorization before installing observers on a later launch.
         // Previously authorized types don't prompt again; never prompt on launch
         // if the user has not explicitly enabled the Health integration.
-        guard HKHealthStore.isHealthDataAvailable(), !isConnecting else { return }
+        guard HKHealthStore.isHealthDataAvailable(), !isConnecting, !isRefreshing else { return }
+        let attemptStartedAt = Date()
         isConnecting = true
         defer { isConnecting = false }
         do {
             try await healthStore.requestAuthorization(toShare: [], read: readTypes)
+            try Task.checkCancellation()
             authorizationRequestCompleted = true
             await setBackgroundDelivery(enabled: true)
+        } catch is CancellationError {
+            if refreshState.begin(at: attemptStartedAt) { finishAttempt(.cancelled) }
+            status = "Ripristino del collegamento Salute annullato."
         } catch {
             authorizationRequestCompleted = false
             recordDiagnostic(error, phase: "Ripristino del collegamento Salute")
             status = Self.connectionMessage(for: error)
+            _ = refreshState.begin(at: attemptStartedAt)
+            finishAttempt(.failed, stage: .authorization, cause: .authorizationFailed)
         }
     }
-    func refresh(store: PivotStore, events: [CalendarItem], force: Bool = false, recheckHeartRate: Bool = false) async {
-        guard !PreviewMode.enabled, store.data.settings.healthEnabled == true, !store.locked, !store.isRestoring, !store.isLoading, !isRefreshing else { return }
+    func refresh(store: PivotStore, events: [CalendarItem], force: Bool = false, recheckHeartRate: Bool = false,
+                 attemptStartedAt: Date? = nil) async {
+        #if DEBUG && targetEnvironment(simulator)
+        if Self.isHealthInteractionFixtureEnabled {
+            prepareHealthInteractionFixtureIfNeeded()
+            if force { runHealthInteractionRefresh() }
+            return
+        }
+        #endif
+        // Do not start an observer read while the explicit connection is waiting
+        // for authorization; both paths share one visible attempt at a time.
+        guard !isConnecting || attemptStartedAt != nil else { return }
+        guard !PreviewMode.enabled, store.data.settings.healthEnabled == true, !store.locked,
+              !store.isRestoring, !store.isLoading, !isRefreshing else {
+            if attemptStartedAt != nil { finishAttempt(.deferred, stage: .reconciliation, cause: .changed) }
+            return
+        }
         if !force, let lastRefresh, Date().timeIntervalSince(lastRefresh) < 300 { return }
-        guard HKHealthStore.isHealthDataAvailable() else { return }
+        if attemptStartedAt == nil, !refreshState.begin(at: Date()) { return }
+        guard HKHealthStore.isHealthDataAvailable() else {
+            status = "Salute non disponibile su questo dispositivo"
+            finishAttempt(.failed, stage: .availability, cause: .unavailable)
+            return
+        }
         isRefreshing = true
         let started = ProcessInfo.processInfo.systemUptime
         defer { isRefreshing = false; store.diagnostics.record("Salute", seconds: ProcessInfo.processInfo.systemUptime - started) }
+        var readingStage: HealthRefreshAttempt.Stage = .sleep
         do {
+            try Task.checkCancellation()
             let from = PivotDate.calendar.date(byAdding: .day, value: -7, to: PivotDate.calendar.startOfDay(for: Date()))!
             let predicate = HKQuery.predicateForSamples(withStart: from.addingTimeInterval(-86400), end: Date(), options: [])
             var sleepValues: [HKCategorySample] = []
@@ -149,7 +253,7 @@ final class HealthService: ObservableObject {
                 sleepValues = try await samples(type: type, predicate: predicate).compactMap { $0 as? HKCategorySample }
             }
             let samplesForSleep = sleepValues, now = Date()
-            sleepByDay = await Task.detached(priority: .utility) {
+            let readSleepByDay = await Task.detached(priority: .utility) {
                 let asleep = samplesForSleep.filter { HKCategoryValueSleepAnalysis.allAsleepValues.contains(HKCategoryValueSleepAnalysis(rawValue: $0.value) ?? .inBed) }
                     .map { HealthInterval(start: $0.startDate, end: $0.endDate) }
                 let awake = samplesForSleep.filter { $0.value == HKCategoryValueSleepAnalysis.awake.rawValue }.map { HealthInterval(start: $0.startDate, end: $0.endDate) }
@@ -161,6 +265,8 @@ final class HealthService: ObservableObject {
                 }
                 return result
             }.value
+            try Task.checkCancellation()
+            readingStage = .workouts
             let values = try await samples(type: HKObjectType.workoutType(), predicate: predicate).compactMap { $0 as? HKWorkout }
             var summaries: [HealthWorkoutSummary] = []
             var nextCache: [String: HealthWorkoutCacheEntry] = [:]
@@ -175,7 +281,10 @@ final class HealthService: ObservableObject {
             for value in ordered {
                 try Task.checkCancellation()
                 guard !store.isRestoring, !store.isLoading, !store.locked, store.data.settings.healthEnabled == true else {
-                    workoutCache.removeAll(); return
+                    workoutCache.removeAll()
+                    finishAttempt(.cancelled)
+                    status = "Aggiornamento Salute annullato. I dati precedenti restano disponibili."
+                    return
                 }
                 let elevation = (value.metadata?[HKMetadataKeyElevationAscended] as? HKQuantity)?.doubleValue(for: .meter())
                 var summary = HealthWorkoutSummary(id: value.uuid.uuidString, start: value.startDate, end: value.endDate, type: Self.kind(value),
@@ -207,33 +316,78 @@ final class HealthService: ObservableObject {
             }
             try Task.checkCancellation()
             guard !store.isRestoring, !store.isLoading, !store.locked, store.data.settings.healthEnabled == true else {
-                workoutCache.removeAll(); return
+                workoutCache.removeAll()
+                finishAttempt(.cancelled)
+                status = "Aggiornamento Salute annullato. I dati precedenti restano disponibili."
+                return
             }
-            workouts = summaries.sorted { $0.start > $1.start }
-            workoutCache = nextCache
             // Rebase if the user edited a record while reconciliation was running.
-            let readWorkouts = summaries, readSleeps = sleepByDay
-            var applied = false
+            let readWorkouts = summaries, readSleeps = readSleepByDay
+            var completedReport: HealthRefreshReport?
             for _ in 0..<3 {
                 let snapshot = store.data, version = snapshot.updatedAt, mergeTime = Date()
                 let result = await Task.detached(priority: .utility) {
                     HealthReconciliation.merge(workouts: readWorkouts, sleeps: readSleeps, events: events, data: snapshot, now: mergeTime)
                 }.value
-                guard !store.isRestoring, !store.isLoading, !store.locked, store.data.settings.healthEnabled == true else { return }
+                try Task.checkCancellation()
+                guard !store.isRestoring, !store.isLoading, !store.locked, store.data.settings.healthEnabled == true else {
+                    finishAttempt(.cancelled)
+                    status = "Aggiornamento Salute annullato. I dati precedenti restano disponibili."
+                    return
+                }
                 guard version == store.data.updatedAt else { continue }
                 if let result {
                     guard store.change({ data in
                         data.records = result.records; data.checkIns = result.checkIns
                         data.workoutReviews = result.workoutReviews; data.coach = result.coach
-                    }) else { status = "I dati sono stati letti, ma il riepilogo locale non è stato salvato."; return }
+                    }) else {
+                        status = "I dati sono stati letti, ma il riepilogo locale non è stato salvato."
+                        finishAttempt(.failed, stage: .persistence, cause: .persistenceFailed)
+                        return
+                    }
                 }
-                let readAt = Date()
-                lastReport = HealthRefreshReport.make(workouts: readWorkouts, sleeps: readSleeps,
-                                                      before: snapshot, after: result ?? snapshot, readAt: readAt)
-                applied = true; break
+                let reconciledRevision = store.data.updatedAt
+                // change() queues a write; only flush confirms persistence. This
+                // also retries a previous failed write when merge now returns nil.
+                guard await store.flushPendingWrites() else {
+                    status = "I dati sono stati letti, ma il riepilogo locale non è stato salvato."
+                    finishAttempt(.failed, stage: .persistence, cause: .persistenceFailed)
+                    return
+                }
+                try Task.checkCancellation()
+                guard !store.isRestoring, !store.isLoading, !store.locked, store.data.settings.healthEnabled == true else {
+                    finishAttempt(.cancelled)
+                    status = "Aggiornamento Salute annullato. I dati precedenti restano disponibili."
+                    return
+                }
+                guard reconciledRevision == store.data.updatedAt else {
+                    // Health changes may already be durable. Do not merge from
+                    // that mutated snapshot and falsely report zero changes.
+                    status = "Dati salvati, ma il riepilogo va ricalcolato dopo le modifiche in corso."
+                    finishAttempt(.deferred, stage: .reconciliation, cause: .changed)
+                    return
+                }
+                let readAt = max(Date(), lastAttempt?.startedAt ?? now)
+                completedReport = HealthRefreshReport.make(workouts: readWorkouts, sleeps: readSleeps,
+                                                           before: snapshot, after: result ?? snapshot, readAt: readAt)
+                break
             }
-            guard applied else { status = "Aggiornamento rimandato mentre modifichi i dati."; return }
-            lastRefresh = lastReport?.readAt ?? Date()
+            guard let completedReport else {
+                status = "Aggiornamento rimandato mentre modifichi i dati."
+                finishAttempt(.deferred, stage: .reconciliation, cause: .changed)
+                return
+            }
+            // Publish only the snapshot whose local reconciliation was saved.
+            // A query, cancellation or persistence error leaves the previous
+            // report and its source observations at their original date.
+            guard finishAttempt(deferredHeartRates ? .partial : .succeeded,
+                          stage: deferredHeartRates ? .heartRate : nil,
+                          cause: deferredHeartRates ? .deferredDetails : nil,
+                          report: completedReport) else { return }
+            sleepByDay = readSleepByDay
+            workouts = summaries.sorted { $0.start > $1.start }
+            workoutCache = nextCache
+            if automaticUpdateError == nil { connectionDiagnostic = nil }
             let base = summaries.isEmpty && sleepValues.isEmpty
                 ? "Nessun dato leggibile. Potrebbero mancare dati o permessi: controlla Salute → profilo → App → Pivot."
                 : "Aggiornato alle \(PivotDate.time(Date())) · sola lettura"
@@ -248,10 +402,13 @@ final class HealthService: ObservableObject {
         } catch is CancellationError {
             // Cancellation isn't a failed Health authorization and must not
             // replace the last successful synchronization report.
+            finishAttempt(.cancelled)
+            status = "Aggiornamento Salute annullato. I dati precedenti restano disponibili."
             return
         } catch {
             recordDiagnostic(error, phase: "Lettura sonno e allenamenti")
             status = Self.connectionMessage(for: error)
+            finishAttempt(.failed, stage: readingStage, cause: .queryFailed)
         }
     }
     func sleep(on day: Date) -> HealthSleepSummary? {

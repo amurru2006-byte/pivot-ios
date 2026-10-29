@@ -35,6 +35,7 @@ struct SettingsView: View {
                 VStack(spacing: 12) {
                     settingsLink("Calendari", subtitle: "Colori e sincronizzazione", icon: "calendar") { calendarSettings }
                     settingsLink("Salute e Apple Watch", subtitle: "Sonno e allenamenti", icon: "heart.text.square.fill") { healthSettings }
+                        .accessibilityIdentifier("settings-health")
                     settingsLink("Notifiche", subtitle: "Quando e come avvisarti", icon: "bell.fill") { notificationSettings }
                         .accessibilityIdentifier("settings-notifications")
                     settingsLink("Backup e privacy", subtitle: "Proteggi il tuo storico", icon: "externaldrive.fill") { backupSettings }
@@ -130,10 +131,21 @@ struct SettingsView: View {
     private var healthSettings: some View {
     PivotCard(tint: PivotTheme.accent) {
         Label("Salute e Apple Watch", systemImage: "heart.text.square.fill").font(.headline)
-        Text(health.status).font(.subheadline).foregroundStyle(PivotTheme.muted)
+        if health.lastAttempt?.message != health.status {
+            Text(health.status).font(.subheadline).foregroundStyle(PivotTheme.muted)
+        }
+        if let attempt = health.lastAttempt {
+            Text("Ultimo tentativo · \(DisplayDate.label(attempt.finishedAt ?? attempt.startedAt, format: "d MMMM yyyy · HH:mm"))")
+                .font(.caption.weight(.semibold)).foregroundStyle(PivotTheme.muted)
+                .accessibilityIdentifier("health-last-attempt-time")
+            Text(attempt.message).font(.caption)
+                .foregroundStyle(attempt.outcome == .failed || attempt.outcome == .partial ? PivotTheme.amber : PivotTheme.muted)
+                .accessibilityIdentifier("health-last-attempt-status")
+        }
         if let report = health.lastReport {
-            Text("Ultima lettura: \(DisplayDate.label(report.readAt, format: "d MMM · HH:mm")) · \(report.workoutSamples) allenamenti · \(report.sleepDays) notti")
+            Text("Ultima lettura salvata da Salute · \(DisplayDate.label(report.readAt, format: "d MMMM yyyy · HH:mm")) · \(report.workoutSamples) allenamenti · \(report.sleepDays) notti")
                 .font(.caption).foregroundStyle(PivotTheme.muted)
+                .accessibilityIdentifier("health-last-successful-read")
             Text(report.appliedChanges == 0 ? "Nessuna modifica nuova applicata in Pivot." : "Modifiche applicate in Pivot: \(report.appliedChanges). Da decidere: \(report.pendingDecisions).")
                 .font(.caption).foregroundStyle(report.pendingDecisions == 0 ? PivotTheme.muted : PivotTheme.amber)
         }
@@ -145,7 +157,7 @@ struct SettingsView: View {
         Button("Collega app Salute") { Task { await health.connect(store: store, events: calendar.events); settings = store.data.settings } }
             .buttonStyle(PivotPrimaryButton()).disabled(health.isRefreshing || health.isConnecting || store.locked)
         Button("Aggiorna dati da Salute") { Task { await health.refresh(store: store, events: calendar.events, force: true, recheckHeartRate: true) } }
-            .buttonStyle(PivotSecondaryButton()).disabled(health.isRefreshing || store.data.settings.healthEnabled != true)
+            .buttonStyle(PivotSecondaryButton()).disabled(health.isRefreshing || health.isConnecting || store.data.settings.healthEnabled != true)
         Text("Sola lettura. Dopo il consenso, iOS può avvisare Pivot in background quando cambiano sonno o allenamenti; non viene avviato un monitoraggio continuo. Le camminate fuori dagli orari di allenamento restano attività generale. Per revocare i permessi usa l’app Salute.").font(.caption).foregroundStyle(PivotTheme.muted)
                 Toggle("Sincronizza automaticamente da Salute", isOn: Binding(get: { settings.healthEnabled == true }, set: { settings.healthEnabled = $0 }))
                 DisclosureGroup("Quando chiedere se una camminata vale come cardio") {

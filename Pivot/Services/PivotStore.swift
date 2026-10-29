@@ -85,6 +85,10 @@ final class PivotStore: ObservableObject {
            let value = ProcessInfo.processInfo.environment["PIVOT_QA_FINANCE_ID"], let id = UUID(uuidString: value) { storageName = "PivotFinanceQA-" + id.uuidString }
         if ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--rest-alarm-test"),
            let id = UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_REST_ID"] ?? "") { storageName = "PivotRestAlarmQA-" + id.uuidString }
+        if HealthService.isHealthInteractionFixtureEnabled {
+            let id = UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_HEALTH_ID"] ?? "") ?? UUID()
+            storageName = "PivotHealthQA-" + id.uuidString
+        }
         #endif
         directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(storageName, isDirectory: true)
         file = directory.appendingPathComponent("pivot-data.json")
@@ -110,6 +114,9 @@ final class PivotStore: ObservableObject {
             diagnostics.record("Caricamento storico", seconds: ProcessInfo.processInfo.systemUptime - started)
             if !locked { applyInitialSettings() }
             #if DEBUG && targetEnvironment(simulator)
+            if !locked, HealthService.isHealthInteractionFixtureEnabled {
+                change { $0.settings.healthEnabled = true }
+            }
             if !locked, ProcessInfo.processInfo.arguments.contains("--interaction-test"),
                ProcessInfo.processInfo.arguments.contains("--saved-travel-editor-test"),
                ProcessInfo.processInfo.arguments.contains("--coach-calendar-create-test"),
