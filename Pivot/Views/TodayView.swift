@@ -183,6 +183,7 @@ struct TodayView: View {
                 if let report = health.lastReport {
                     PivotCard(tint: PivotTheme.blue) {
                         Label("Ultima lettura salvata da Salute", systemImage: "clock.arrow.circlepath").font(.headline)
+                            .accessibilityIdentifier("health-refresh-report")
                         Text(DisplayDate.label(report.readAt, format: "d MMMM yyyy · HH:mm"))
                             .font(.caption).foregroundStyle(PivotTheme.muted)
                             .accessibilityIdentifier("health-last-successful-read")
@@ -197,7 +198,7 @@ struct TodayView: View {
                         Text(report.pendingDecisions == 0 ? "Nessuna attività da chiarire." : "Da decidere: \(report.pendingDecisions) attività.")
                             .font(.caption.weight(.semibold)).foregroundStyle(report.pendingDecisions == 0 ? PivotTheme.muted : PivotTheme.amber)
                         Text("Pivot legge soltanto: non scrive dati nell’app Salute.").font(.caption).foregroundStyle(PivotTheme.muted)
-                    }.accessibilityIdentifier("health-refresh-report")
+                    }
                 }
                 if let healthMessage { Text(healthMessage).font(.caption).foregroundStyle(PivotTheme.amber).accessibilityIdentifier("health-action-message") }
                 if let sleep = health.sleep(on: day) {
