@@ -266,7 +266,12 @@ fi
 # Keep the complete synthetic QA log, but stream just milestones/errors so a
 # long run exposes the current test instead of appearing stalled for hours.
 "${PIVOT_UI_TEST_COMMAND[@]}" 2>&1 | tee "$PIVOT_UI_LOG" | awk '
-  /Test Case|Test Suite|Executed [0-9]+ tests|error:|\*\* (TEST|BUILD)|^SwiftEmitModule|^SwiftCompile.*InteractionTests|^CodeSign.*PivotUITests-Runner|Running tests\.\.\.|Failed to initialize|Testing failed:|Test session results|Build Timing Summary/ { print; fflush() }
+  # XCTest assertion messages can contain a multiline synthetic AX hierarchy.
+  # Retain that failure context in the durable job log, even after attachments
+  # expire. Keep the original full log and every release gate unchanged.
+  /error:/ { failure_context = 1; failure_lines = 0 }
+  /Test Case .* (passed|failed|skipped) / { failure_context = 0 }
+  /Test Case|Test Suite|Executed [0-9]+ tests|error:|\*\* (TEST|BUILD)|^SwiftEmitModule|^SwiftCompile.*InteractionTests|^CodeSign.*PivotUITests-Runner|Running tests\.\.\.|Failed to initialize|Testing failed:|Test session results|Build Timing Summary/ || (failure_context && failure_lines++ < 4000) { print; fflush() }
 ' || PIVOT_UI_TEST_STATUS=$?
 if [ -n "$PIVOT_RELEASE_SHARD" ] && [ "$PIVOT_UI_TEST_STATUS" -eq 0 ]; then
   python3 Scripts/ui_release_shards.py --shard "$PIVOT_RELEASE_SHARD" --verify-log "$PIVOT_UI_LOG" || PIVOT_UI_TEST_STATUS=1
