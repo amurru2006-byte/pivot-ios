@@ -238,8 +238,13 @@ extension View {
 }
 
 struct RatingField: View {
+    @EnvironmentObject private var store: PivotStore
     let title: String
     @Binding var value: Int?
+    var metric: RatingMetric? = nil
+    var referenceDate: Date = Date()
+    @State private var history = WeeklyRatingReference(mean: nil, weeksWithData: 0, samples: 0)
+    private var target: Int? { metric?.target(in: store.data.settings) }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -249,6 +254,29 @@ struct RatingField: View {
             }
             Slider(value: Binding(get: { Double(value ?? 5) }, set: { value = Int($0.rounded()) }), in: 0...10, step: 1)
                 .accessibilityLabel(title)
+            if metric != nil {
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(PivotTheme.raised).frame(height: 3).padding(.horizontal, 7)
+                        if let target {
+                            Circle().fill(PivotTheme.amber).frame(width: 12, height: 12)
+                                .offset(x: max(0, geometry.size.width - 14) * Double(target) / 10, y: -4)
+                        }
+                        if let mean = history.mean {
+                            Circle().strokeBorder(PivotTheme.blue, lineWidth: 3).frame(width: 14, height: 14)
+                                .offset(x: max(0, geometry.size.width - 14) * mean / 10, y: 4)
+                        }
+                    }.frame(height: 24)
+                }.frame(height: 24).accessibilityHidden(true)
+                HStack {
+                    if let target { Label("Obiettivo \(target)/10", systemImage: "circle.fill").foregroundStyle(PivotTheme.amber) }
+                    Spacer(minLength: 3)
+                    if let mean = history.mean { Label("Media \(mean.formatted(.number.precision(.fractionLength(1))))/10", systemImage: "circle").foregroundStyle(PivotTheme.blue) }
+                }.font(.caption)
+                Text(history.mean == nil ? "Nessun dato nelle ultime 4 settimane complete." : "Media delle medie settimanali · \(history.weeksWithData) su 4 settimane con dati.")
+                    .font(.caption2).foregroundStyle(PivotTheme.muted)
+                if metric == .fatigue { Text("0 = nessuna stanchezza · 10 = molto stanco").font(.caption2).foregroundStyle(PivotTheme.muted) }
+            }
             HStack {
                 Text("0"); Spacer()
                 if value == nil { Button("Indica 5/10") { value = 5 } }
@@ -256,6 +284,12 @@ struct RatingField: View {
                 Spacer(); Text("10")
             }.font(.caption).foregroundStyle(PivotTheme.muted)
         }.padding(.vertical, 4)
+            .task(id: "\(metric?.rawValue ?? "")|\(PivotDate.key(referenceDate))|\(store.data.updatedAt.timeIntervalSince1970)") {
+                guard let metric else { return }
+                let snapshot = store.data, date = referenceDate
+                let result = await Task.detached(priority: .utility) { RatingReferences.historical(metric, before: date, data: snapshot) }.value
+                guard !Task.isCancelled else { return }; history = result
+            }
     }
 }
 

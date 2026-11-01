@@ -9,6 +9,7 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
         var eventID: String?
         var destination: String
         var outcome: Completion?
+        var clientID: String? = nil
     }
     @Published var route: Route?
     override init() {
@@ -30,7 +31,8 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
         let eventID = info["eventID"] as? String
         let destination = info["destination"] as? String ?? "today"
         let outcome: Completion? = response.actionIdentifier == "done" ? .completed : (response.actionIdentifier == "partial" ? .partial : nil)
-        await MainActor.run { self.route = Route(eventID: eventID, destination: destination, outcome: outcome) }
+        let clientID = info["clientID"] as? String
+        await MainActor.run { self.route = Route(eventID: eventID, destination: destination, outcome: outcome, clientID: clientID) }
     }
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions { [.banner, .list, .sound] }
     @Published private(set) var status = "Notifiche non configurate"
@@ -53,9 +55,14 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
         }
         let pending = await center.pendingNotificationRequests()
         guard token == generation else { return }
-        center.removePendingNotificationRequests(withIdentifiers: pending.filter { !$0.identifier.hasPrefix("income-") && !$0.identifier.hasPrefix("lesson-place-") }.map(\.identifier))
         let reserved = pending.filter { $0.identifier.hasPrefix("income-") }.count
-        let requests = NotificationPlan.requests(events: events, data: data, now: Date(), capacity: min(57, max(0, 60 - reserved)))
+        let requests = await Task.detached(priority: .utility) {
+            NotificationPlan.requestsFromPlanned(events: events, data: data, now: Date(), capacity: min(57, max(0, 60 - reserved)))
+        }.value
+        guard token == generation else { return }
+        let wanted = Set(requests.map(\.id))
+        center.removePendingNotificationRequests(withIdentifiers: pending.filter { !$0.identifier.hasPrefix("income-") && !$0.identifier.hasPrefix("lesson-place-") && !wanted.contains($0.identifier) }.map(\.identifier))
+        let existing = Dictionary(pending.map { ($0.identifier, $0) }, uniquingKeysWith: { _, newer in newer })
         var count = 0
         for request in requests {
             guard token == generation, !Task.isCancelled else { return }
@@ -63,13 +70,23 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
             content.title = request.title
             content.body = request.body
             content.sound = .default
-            content.userInfo = ["eventID": request.eventID ?? "", "destination": request.destination]
+            content.userInfo = ["eventID": request.eventID ?? "", "destination": request.destination, "clientID": request.clientID ?? ""]
             if request.id.hasPrefix("event-") { content.categoryIdentifier = "event-result" }
-            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, request.date.timeIntervalSinceNow), repeats: false)
+            if let old = existing[request.id], old.content.title == content.title, old.content.body == content.body,
+               old.content.categoryIdentifier == content.categoryIdentifier,
+               old.content.userInfo["eventID"] as? String == content.userInfo["eventID"] as? String,
+               old.content.userInfo["destination"] as? String == content.userInfo["destination"] as? String,
+               old.content.userInfo["clientID"] as? String == content.userInfo["clientID"] as? String,
+               let date = (old.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate() ?? (old.trigger as? UNTimeIntervalNotificationTrigger)?.nextTriggerDate(), abs(date.timeIntervalSince(request.date)) < 1 {
+                count += 1; continue
+            }
+            var components = PivotDate.calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: request.date)
+            components.timeZone = PivotDate.calendar.timeZone
+            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
             do { try await center.add(.init(identifier: request.id, content: content, trigger: trigger)); count += 1 }
             catch { status = "Alcuni avvisi non sono stati programmati: \(error.localizedDescription)"; return }
         }
-        let missingPlaces = LessonLogistics.pending(events: events, data: data, now: Date())
+        let missingPlaces = LessonLogistics.pendingEffective(events: events, data: data, now: Date())
         let validPlaceIDs = Set(missingPlaces.map { "lesson-place-\($0.id)" })
         center.removePendingNotificationRequests(withIdentifiers: pending.filter { $0.identifier.hasPrefix("lesson-place-") && !validPlaceIDs.contains($0.identifier) }.map(\.identifier))
         // Once per discovered occurrence, not every minute while it remains unanswered.

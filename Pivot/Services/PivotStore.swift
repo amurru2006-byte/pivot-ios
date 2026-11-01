@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import PDFKit
+import UIKit
 
 @MainActor
 final class PivotStore: ObservableObject {
@@ -8,31 +9,90 @@ final class PivotStore: ObservableObject {
     @Published var error: String?
     @Published private(set) var locked = false
     @Published private(set) var isRestoring = false
+    @Published private(set) var isLoading = !PreviewMode.enabled
+    @Published private(set) var isSaving = false
+    @Published private(set) var saveStatus = "Dati salvati"
+    let diagnostics = PerformanceDiagnostics()
     @Published private(set) var backupStatus = "Backup esterno non configurato"
     @Published private(set) var lastExternalBackup: Date?
     private let directory: URL
     private let file: URL
     private let documentsDirectory: URL
+    private let persistence: FilePersistence
+    private lazy var writer = CoalescingWriter<AppData>(write: { [persistence, diagnostics] snapshot in
+        let started = ProcessInfo.processInfo.systemUptime
+        try await persistence.save(snapshot)
+        diagnostics.record("Scrittura dati", seconds: ProcessInfo.processInfo.systemUptime - started)
+    }, onResult: { [weak self] pending, error in
+        guard let self else { return }
+        self.isSaving = pending
+        if let error {
+            self.saveStatus = "Salvataggio da riprovare"
+            self.error = "I dati aggiornati sono ancora in memoria: il salvataggio su disco non è riuscito. Tieni Pivot aperto e premi Riprova nelle Impostazioni. Dettaglio: \(error.localizedDescription)"
+        } else {
+            self.saveStatus = pending ? "Salvataggio in corso…" : "Dati salvati"
+            if !pending { self.writeExternal(self.data) }
+        }
+    })
     private let backupQueue = DispatchQueue(label: "app.pivot.external-backup", qos: .utility)
+    private var pendingExternalBackup: AppData?
+    private var externalBackupRunning = false
     private let bookmarkKey = "pivot.externalBackupFolder.v1"
     private let lastBackupKey = "pivot.lastExternalBackup.v1"
+    private var backgroundSaveID: UIBackgroundTaskIdentifier = .invalid
 
     init() {
-        directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Pivot", isDirectory: true)
+        var storageName = "Pivot"
+        #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--student-recognition-test") { storageName = "PivotStudentTests" }
+        if ProcessInfo.processInfo.arguments.contains("--payment-schedule-test") { storageName = "PivotPaymentTests" }
+        if ProcessInfo.processInfo.arguments.contains("--autofill-test") { storageName = "PivotAutofillTests" }
+        if ProcessInfo.processInfo.arguments.contains("--training-edit-test") { storageName = "PivotTrainingEditTests" }
+        #endif
+        directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(storageName, isDirectory: true)
         file = directory.appendingPathComponent("pivot-data.json")
         documentsDirectory = directory.appendingPathComponent("StudyPDFs", isDirectory: true)
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            if FileManager.default.fileExists(atPath: file.path) {
-                data = try BackupCodec.decode(Data(contentsOf: file))
-            }
-        } catch {
-            locked = true
-            self.error = "Non riesco a leggere lo storico. Non lo sovrascriverò. Esporta il file dall'app File o ripristina un backup valido. Dettaglio: \(error.localizedDescription)"
+        persistence = FilePersistence(directory: directory)
+        lastExternalBackup = UserDefaults.standard.object(forKey: lastBackupKey) as? Date
+        if UserDefaults.standard.data(forKey: bookmarkKey) != nil {
+            backupStatus = "Cartella configurata; verifica della copia alla prossima modifica"
         }
+        guard !PreviewMode.enabled else { return }
+        Task {
+            let started = ProcessInfo.processInfo.systemUptime
+            do { data = try await persistence.load() }
+            catch {
+                locked = true
+                self.error = "Non riesco a leggere lo storico. Non lo sovrascriverò. Ripristina un backup valido. Dettaglio: \(error.localizedDescription)"
+            }
+            isLoading = false
+            diagnostics.record("Caricamento storico", seconds: ProcessInfo.processInfo.systemUptime - started)
+            if !locked { applyInitialSettings() }
+            #if DEBUG && targetEnvironment(simulator)
+            if !locked, ProcessInfo.processInfo.arguments.contains("--student-recognition-test"), data.clients.isEmpty {
+                change { $0.clients = [Client(name: "Giulia Rossi", rateCents: 1800)] }
+            }
+            if !locked, ProcessInfo.processInfo.arguments.contains("--payment-schedule-test"), data.clients.isEmpty {
+                let client = Client(id: UUID(uuidString: "44444444-4444-4444-8444-444444444444")!, name: "Giulia Rossi", rateCents: 1800, paymentCadence: .weekly)
+                let monday = StudentPayments.week(containing: Date()).start.addingTimeInterval(17 * 3600)
+                change { data in
+                    data.clients = [client]
+                    data.income = [IncomeEntry(clientID: client.id, clientName: client.name, date: monday, minutes: 60, amountCents: 1800, calendarEventID: "payment-test-0")]
+                    let event = CalendarItem(id: "payment-test-0", eventIdentifier: "payment-test-0", calendarIdentifier: "interaction", calendarTitle: "Lavoro", title: "Ripetizioni con Giulia Rossi", start: monday.addingTimeInterval(-3600), end: monday, location: "", notes: "", colorHex: "#7EE6CD", isAllDay: false, writable: false, kind: .tutoring)
+                    var record = EventRecord(id: event.id, snapshot: event)
+                    record.status = .completed; record.tutoringAnswered = true; record.incomeID = data.income[0].id
+                    data.records[event.id] = record
+                }
+            }
+            #endif
+        }
+    }
+
+    private func applyInitialSettings() {
+        var next = data
         if !locked {
             if data.settings.notificationPolicyVersion == nil {
-                change { data in data.settings.notificationPolicyVersion = 1; data.settings.repeatMissedNotifications = false }
+                next.settings.notificationPolicyVersion = 1; next.settings.repeatMissedNotifications = false
             }
             let cents = Bundle.main.object(forInfoDictionaryKey: "PivotInitialIncomeCents") as? Int
             let year = Bundle.main.object(forInfoDictionaryKey: "PivotInitialIncomeYear") as? Int
@@ -41,34 +101,46 @@ final class PivotStore: ObservableObject {
             if let cents, let year, missingOpening, cents >= 0, (1900...9999).contains(year) {
                 ledger.setOpeningTotal(cents, year: year, payments: data.payments)
             }
-            if data.ledger == nil || missingOpening { change { $0.ledger = ledger } }
-        }
-        lastExternalBackup = UserDefaults.standard.object(forKey: lastBackupKey) as? Date
-        if UserDefaults.standard.data(forKey: bookmarkKey) != nil {
-            backupStatus = "Cartella configurata; verifica della copia alla prossima modifica"
+            if data.ledger == nil || missingOpening { next.ledger = ledger }
+            if data.settings.notificationPolicyVersion == nil || data.ledger == nil || missingOpening { change { $0 = next } }
         }
     }
 
     @discardableResult
     func change(_ edit: (inout AppData) -> Void) -> Bool {
-        guard !locked && !isRestoring else { error = "Salvataggio bloccato durante il ripristino o per proteggere lo storico originale."; return false }
+        guard !locked && !isRestoring && !isLoading else { error = "Attendi il caricamento o il ripristino prima di modificare lo storico."; return false }
         var next = data
         edit(&next)
         next.updatedAt = Date()
-        do {
-            let bytes = try BackupCodec.encode(next)
-            if FileManager.default.fileExists(atPath: file.path) {
-                let old = try Data(contentsOf: file)
-                try old.write(to: directory.appendingPathComponent("previous.json"), options: .atomic)
-            }
-            try bytes.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-            data = next
-            writeExternal(next)
-            return true
-        } catch { self.error = "Modifica non salvata: \(error.localizedDescription)"; return false }
+        data = next
+        isSaving = true; saveStatus = "Salvataggio in corso…"
+        writer.enqueue(next)
+        return true
+    }
+
+    @discardableResult func flushPendingWrites() async -> Bool {
+        let started = ProcessInfo.processInfo.systemUptime
+        let ok = await writer.flush()
+        diagnostics.record("Salvataggio", seconds: ProcessInfo.processInfo.systemUptime - started)
+        return ok
+    }
+
+    func saveBeforeBackground() {
+        guard !isLoading, backgroundSaveID == .invalid else { return }
+        backgroundSaveID = UIApplication.shared.beginBackgroundTask(withName: "Salva Pivot") { [weak self] in self?.endBackgroundSave() }
+        Task {
+            _ = await flushPendingWrites()
+            endBackgroundSave()
+        }
+    }
+    private func endBackgroundSave() {
+        guard backgroundSaveID != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundSaveID)
+        backgroundSaveID = .invalid
     }
 
     func selectBackupFolder(_ url: URL) {
+        guard !isLoading, !isRestoring else { return }
         guard !locked else { error = "Prima ripristina un backup valido. Il file originale è protetto."; return }
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
@@ -81,26 +153,39 @@ final class PivotStore: ObservableObject {
     }
 
     func backupNow() {
+        guard !isLoading, !isRestoring else { return }
         guard !locked else { error = "Prima ripristina un backup valido. Il file originale è protetto."; return }
         writeExternal(data)
     }
 
     private func writeExternal(_ snapshot: AppData) {
-        guard let bookmark = UserDefaults.standard.data(forKey: bookmarkKey) else { return }
+        guard UserDefaults.standard.data(forKey: bookmarkKey) != nil else { return }
+        pendingExternalBackup = snapshot
         backupStatus = "Aggiornamento della copia esterna…"
-        // Cloud-backed folders can stall on file hydration. Keep all their I/O
-        // off the UI queue, in write order, including the backup made on upgrade.
+        startNextExternalBackup()
+    }
+    private func startNextExternalBackup() {
+        guard !externalBackupRunning, let snapshot = pendingExternalBackup,
+              let bookmark = UserDefaults.standard.data(forKey: bookmarkKey) else { return }
+        pendingExternalBackup = nil
+        externalBackupRunning = true
+        // A slow cloud folder retains at most the in-flight and latest snapshots,
+        // not a growing queue of complete historical states/PDF exports.
         let pdfDirectory = documentsDirectory
         backupQueue.async { [weak self] in
             let result = Self.performExternalBackup(snapshot, bookmark: bookmark, documents: pdfDirectory)
             DispatchQueue.main.async {
                 guard let self else { return }
-                if let updatedBookmark = result.bookmark { UserDefaults.standard.set(updatedBookmark, forKey: self.bookmarkKey) }
-                if let date = result.date {
-                    self.lastExternalBackup = date
-                    UserDefaults.standard.set(date, forKey: self.lastBackupKey)
+                self.externalBackupRunning = false
+                if UserDefaults.standard.data(forKey: self.bookmarkKey) == bookmark {
+                    if let updatedBookmark = result.bookmark { UserDefaults.standard.set(updatedBookmark, forKey: self.bookmarkKey) }
+                    if let date = result.date {
+                        self.lastExternalBackup = date
+                        UserDefaults.standard.set(date, forKey: self.lastBackupKey)
+                    }
+                    self.backupStatus = self.pendingExternalBackup == nil ? result.status : "Aggiornamento della copia esterna…"
                 }
-                self.backupStatus = result.status
+                self.startNextExternalBackup()
             }
         }
     }
@@ -143,6 +228,7 @@ final class PivotStore: ObservableObject {
     }
 
     func exportURL() async throws -> URL {
+        guard !isLoading, await flushPendingWrites() else { throw BackupError.invalidData }
         let snapshot = data, sourceFile = file, pdfDirectory = documentsDirectory, isLocked = locked
         return try await Task.detached(priority: .utility) {
             let bytes = isLocked ? try Data(contentsOf: sourceFile) : try BackupCodec.encode(StudyFiles.completeBackup(HealthImport.exportData(snapshot), directory: pdfDirectory))
@@ -153,9 +239,10 @@ final class PivotStore: ObservableObject {
     }
 
     func restore(_ url: URL) async {
-        guard !isRestoring else { return }
+        guard !isRestoring, !isLoading else { return }
         isRestoring = true
         defer { isRestoring = false }
+        guard await flushPendingWrites() else { return }
         let pdfDirectory = documentsDirectory
         do {
             let restored = try await Task.detached(priority: .utility) {
@@ -167,13 +254,7 @@ final class PivotStore: ObservableObject {
                 }
                 return try StudyFiles.installBackup(decoded, directory: pdfDirectory)
             }.value
-            let bytes = try BackupCodec.encode(restored)
-            if FileManager.default.fileExists(atPath: file.path) {
-                let old = try Data(contentsOf: file)
-                let archive = directory.appendingPathComponent("before-restore-\(Int(Date().timeIntervalSince1970)).json")
-                try old.write(to: archive, options: .atomic)
-            }
-            try bytes.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            try await persistence.save(restored, restoring: true)
             data = restored
             locked = false
             error = nil
@@ -224,7 +305,7 @@ final class PivotStore: ObservableObject {
     func installTrainingPlan(_ plan: TrainingPlan) throws {
         var library = data.training ?? TrainingLibrary()
         guard library.plans.count < 6 else { throw TrainingError.invalidPlan }
-        guard StudyFiles.documents(in: data).reduce(0, { $0 + $1.byteCount }) + plan.document.byteCount <= StudyFiles.maximumLibraryBytes else { throw StudyFileError.libraryFull }
+        guard StudyFiles.documents(in: data).reduce(0, { $0 + $1.byteCount }) + (plan.document?.byteCount ?? 0) <= StudyFiles.maximumLibraryBytes else { throw StudyFileError.libraryFull }
         library.plans.append(plan); library.activePlanID = plan.id
         try library.validate()
         guard change({ $0.training = library }) else { throw BackupError.invalidData }
@@ -232,6 +313,8 @@ final class PivotStore: ObservableObject {
 
     @discardableResult func saveTraining(_ session: TrainingSession, tips: [String: String], event: CalendarItem?) -> Bool {
         var library = data.training ?? TrainingLibrary()
+        let session = TrainingEdits.preservingCatalogChoices(in: session, library: library)
+        let previous = library.sessions.first { $0.id == session.id }
         if let index = library.sessions.firstIndex(where: { $0.id == session.id }) { library.sessions[index] = session }
         else { library.sessions.append(session) }
         for (key, value) in tips { library.tips[key] = value }
@@ -240,25 +323,29 @@ final class PivotStore: ObservableObject {
         return change { data in
             data.training = library
             if let event = event ?? session.calendarEventID.flatMap({ data.records[$0]?.snapshot }) {
-                var record = data.records[event.id] ?? EventRecord(id: event.id, snapshot: event)
-                record.actualStart = session.start; record.actualEnd = session.end
-                record.activeMinutes = max(0, Int((session.end ?? Date()).timeIntervalSince(session.start) / 60))
-                record.status = session.end == nil ? .running : .completed
-                record.updatedAt = Date(); data.records[event.id] = record
+                let existing = data.records[event.id]
+                let record = existing ?? EventRecord(id: event.id, snapshot: event)
+                data.records[event.id] = TrainingTiming.merging(session, previous: existing == nil ? nil : previous, into: record)
             }
         }
     }
 
-    func trainingExportURL(_ session: TrainingSession) throws -> URL {
+    func trainingExportURL(_ session: TrainingSession) async throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("Allenamento-Pivot-\(PivotDate.key(session.start))-\(session.id.uuidString.prefix(8)).txt")
-        try Data(TrainingExport.text(session, library: data.training ?? TrainingLibrary()).utf8).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-        return url
+        let library = data.training ?? TrainingLibrary()
+        return try await Task.detached(priority: .utility) {
+            try Data(TrainingExport.text(session, library: library).utf8).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            return url
+        }.value
     }
 
-    func incomeExcelURL(year: Int) throws -> URL {
+    func incomeExcelURL(year: Int) async throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("Registro-Pivot-\(year).xlsx")
-        try LedgerExcel.make(data: data, year: year).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-        return url
+        let snapshot = data
+        return try await Task.detached(priority: .utility) {
+            try LedgerExcel.make(data: snapshot, year: year).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            return url
+        }.value
     }
 
     func record(for event: CalendarItem) -> EventRecord {

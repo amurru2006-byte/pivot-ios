@@ -8,6 +8,12 @@ struct TrainingExercise: Codable, Identifiable, Equatable {
     var reps: String
     var restSeconds: Int
     var coachNotes: String
+    var catalogID: String? = nil
+    var isValid: Bool {
+        !id.isEmpty && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !reps.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (1...30).contains(sets) && (0...3600).contains(restSeconds)
+    }
 }
 
 struct TrainingDay: Codable, Identifiable, Equatable {
@@ -27,18 +33,40 @@ struct TrainingPlanPayload: Codable, Equatable {
             guard !day.id.isEmpty, !day.name.isEmpty, (1...40).contains(day.exercises.count),
                   Set(day.exercises.map(\.id)).count == day.exercises.count else { throw TrainingError.invalidPlan }
             for exercise in day.exercises {
-                guard !exercise.id.isEmpty, !exercise.name.isEmpty, !exercise.reps.isEmpty,
-                      (1...30).contains(exercise.sets), (0...3600).contains(exercise.restSeconds) else { throw TrainingError.invalidPlan }
+                guard exercise.isValid else { throw TrainingError.invalidPlan }
             }
         }
+    }
+}
+
+enum TrainingDayOrder {
+    /// The first Pivot training PDF stored this specific three-day plan in
+    /// alphabetical order. Keep every other plan exactly as authored.
+    static func corrected(_ days: [TrainingDay]) -> [TrainingDay] {
+        let names = days.map { EventCoalescer.normalized($0.name) }
+        guard names == ["bench", "deadlift", "squat"] else { return days }
+        return [days[2], days[0], days[1]]
+    }
+    static func corrected(_ payload: TrainingPlanPayload) -> TrainingPlanPayload {
+        var result = payload
+        result.days = corrected(payload.days)
+        return result
     }
 }
 
 struct TrainingPlan: Codable, Identifiable {
     var id = UUID()
     var payload: TrainingPlanPayload
-    var document: StudyDocument
+    var document: StudyDocument?
     var importedAt = Date()
+    var revisions: [TrainingPlanRevision]? = nil
+}
+
+struct TrainingPlanRevision: Codable, Identifiable {
+    var id = UUID()
+    var payload: TrainingPlanPayload
+    var date: Date
+    var note: String
 }
 
 struct TrainingSet: Codable, Identifiable {
@@ -66,6 +94,7 @@ struct TrainingSession: Codable, Identifiable {
     var exercises: [TrainingExerciseLog]
     var notes: String = ""
     var updatedAt = Date()
+    var dayID: String? = nil
 }
 
 struct TrainingLibrary: Codable {
@@ -87,18 +116,21 @@ struct TrainingLibrary: Codable {
             }
             return TrainingExerciseLog(exercise: exercise, sets: sets)
         }
-        return TrainingSession(planID: plan.id, dayName: day.name, calendarEventID: eventID, start: now, exercises: logs)
+        return TrainingSession(planID: plan.id, dayName: day.name, calendarEventID: eventID, start: now, exercises: logs, dayID: day.id)
     }
     func validate() throws {
         guard plans.count <= 6, Set(plans.map(\.id)).count == plans.count,
               activePlanID == nil || plans.contains(where: { $0.id == activePlanID }),
               Set(sessions.map(\.id)).count == sessions.count else { throw TrainingError.invalidPlan }
-        for plan in plans { try plan.payload.validate() }
+        for plan in plans {
+            try plan.payload.validate()
+            for revision in plan.revisions ?? [] { try revision.payload.validate() }
+        }
         for session in sessions {
             guard session.end.map({ $0 >= session.start }) ?? true,
                   Set(session.exercises.map(\.id)).count == session.exercises.count else { throw TrainingError.invalidPlan }
             for log in session.exercises {
-                guard Set(log.sets.map(\.number)).count == log.sets.count,
+                guard log.exercise.isValid, Set(log.sets.map(\.number)).count == log.sets.count,
                       log.sets.allSatisfy({ set in (1...30).contains(set.number)
                           && (set.kg.map { $0.isFinite && (0...2000).contains($0) } ?? true)
                           && (set.reps.map { (0...1000).contains($0) } ?? true)

@@ -1,6 +1,191 @@
 import XCTest
 
 final class PivotInteractionTests: XCTestCase {
+    func testIncomeSummarySwipesToChart() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--preview", "--screen=income"]; app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Entrate"].waitForExistence(timeout: 10)); app.tabBars.buttons["Entrate"].tap()
+        let carousel = app.collectionViews["income-carousel"]
+        XCTAssertTrue(carousel.waitForExistence(timeout: 8)); carousel.swipeLeft()
+        let afterSwipe = XCTAttachment(screenshot: app.screenshot())
+        afterSwipe.name = "income-immediately-after-swipe"; afterSwipe.lifetime = .keepAlways
+        add(afterSwipe)
+        // Only synthetic preview data is used in this test. Keep the hierarchy
+        // when a failure prevents the final screenshot from being reached.
+        print("INCOME_AFTER_SWIPE\n\(app.debugDescription)")
+        let chart = app.descendants(matching: .any)["income-chart-title"].firstMatch
+        XCTAssertTrue(chart.waitForExistence(timeout: 5)); XCTAssertTrue(chart.isHittable)
+        let explanation = app.descendants(matching: .any)["income-chart-explanation"].firstMatch
+        let pageButton = app.buttons["income-page-1"]
+        XCTAssertTrue(pageButton.isSelected, "Lo swipe deve selezionare la pagina Grafico, non soltanto mostrare un elemento fuori schermo")
+        XCTAssertTrue(explanation.waitForExistence(timeout: 5))
+        XCTAssertTrue(pageButton.isHittable)
+        XCTAssertLessThanOrEqual(explanation.frame.maxY, pageButton.frame.minY, "La navigazione non deve coprire la spiegazione del grafico")
+        XCTAssertLessThanOrEqual(explanation.frame.maxY, carousel.frame.maxY, "La spiegazione deve rientrare nella pagina, senza tagli")
+        XCTAssertGreaterThan(explanation.frame.height, 25, "La spiegazione deve andare a capo, non essere troncata in una riga")
+        app.buttons["income-page-0"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["income-summary-title"].firstMatch.waitForExistence(timeout: 5))
+        pageButton.tap()
+        XCTAssertTrue(chart.isHittable)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "income-chart-no-overlap"; screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+    func testAutofilledActivityRetainsManualCorrectionAfterRelaunch() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--student-recognition-test", "--autofill-test"]; app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["calendar-updated"].waitForExistence(timeout: 15))
+        let details = app.buttons["Dettagli e registrazione"]
+        for _ in 0..<8 { if details.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(details.isHittable); details.tap()
+        let autofill = app.buttons["activity-autofill"]
+        XCTAssertTrue(autofill.waitForExistence(timeout: 5)); autofill.tap()
+        app.buttons["activity-save"].tap()
+        XCTAssertTrue(app.navigationBars["Pivot"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Diario"].tap()
+        let firstRow = app.buttons["diary-event-student-test"]
+        XCTAssertTrue(firstRow.waitForExistence(timeout: 10))
+        for _ in 0..<12 { if firstRow.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(firstRow.isHittable); firstRow.tap()
+        var notes = app.textFields["activity-notes"]
+        if !notes.exists { notes = app.textViews["activity-notes"] }
+        for _ in 0..<8 { if notes.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(notes.isHittable); notes.tap(); notes.typeText("Correzione manuale conservata")
+        if app.buttons["Fine"].exists { app.buttons["Fine"].tap() }
+        app.buttons["activity-save"].tap()
+        XCUIDevice.shared.press(.home); app.activate(); app.terminate(); app.launch()
+        app.tabBars.buttons["Diario"].tap()
+        let row = app.buttons["diary-event-student-test"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        for _ in 0..<12 { if row.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(row.isHittable); row.tap()
+        let saved = app.descendants(matching: .any)["activity-notes"]
+        for _ in 0..<8 { if saved.exists { break }; app.swipeUp() }
+        XCTAssertTrue(String(describing: saved.value).contains("Correzione manuale conservata"))
+    }
+    func testTrainingRevisionStatisticsAndOfflineExtraPickerAreReachable() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--training-test", "--training-edit-test"]; app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Palestra"].waitForExistence(timeout: 10)); app.tabBars.buttons["Palestra"].tap()
+        let importer = app.buttons["import-training-fixture"]
+        for _ in 0..<10 { if importer.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(importer.isHittable); importer.tap()
+        XCTAssertTrue(app.buttons["Usa questa scheda"].waitForExistence(timeout: 8)); app.buttons["Usa questa scheda"].tap()
+        let editor = app.buttons["edit-training-plan"]
+        for _ in 0..<10 { if editor.isHittable { break }; app.swipeDown() }
+        XCTAssertTrue(editor.isHittable); editor.tap()
+        let name = app.textFields["training-plan-name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5)); name.tap(); name.typeText(" aggiornata")
+        if app.buttons["Fine"].exists { app.buttons["Fine"].tap() }
+        let save = app.buttons["training-plan-save"]
+        for _ in 0..<8 { if save.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(save.isHittable); save.tap()
+        XCTAssertTrue(app.staticTexts["Scheda TEST aggiornata"].waitForExistence(timeout: 5))
+        let imageChoice = app.buttons["choose-exercise-image-test-exercise"]
+        for _ in 0..<8 { if imageChoice.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(imageChoice.waitForExistence(timeout: 8)); imageChoice.tap()
+        XCTAssertTrue(app.navigationBars["Scegli immagine"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Non c'è? Cerca in tutto il catalogo"].waitForExistence(timeout: 5))
+        app.buttons["Non c'è? Cerca in tutto il catalogo"].tap()
+        let imageChest = app.buttons["image-picker-group-bar-chest"]
+        XCTAssertTrue(imageChest.waitForExistence(timeout: 5)); XCTAssertTrue(imageChest.isHittable); imageChest.tap()
+        let benchImage = app.buttons["catalog-image-Barbell_Bench_Press_-_Medium_Grip"]
+        for _ in 0..<8 { if benchImage.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(benchImage.isHittable); benchImage.tap()
+        XCTAssertTrue(app.navigationBars["Palestra"].waitForExistence(timeout: 5))
+        // Backgrounding flushes the coalesced save, as when closing the app on iPhone.
+        XCUIDevice.shared.press(.home); app.activate()
+        app.terminate(); app.launch(); app.tabBars.buttons["Palestra"].tap()
+        let statistics = app.buttons["exercise-statistics-test-exercise"]
+        for _ in 0..<8 { if statistics.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(statistics.isHittable)
+        XCTAssertFalse(app.buttons["choose-exercise-image-test-exercise"].exists)
+        let groups = app.scrollViews["exercise-group-bar"]
+        let galleryArms = app.buttons["exercise-group-bar-arms"], galleryChest = app.buttons["exercise-group-bar-chest"]
+        if !galleryArms.isHittable { groups.swipeLeft() }
+        XCTAssertTrue(galleryArms.isHittable); galleryArms.tap(); XCTAssertFalse(statistics.exists)
+        if !galleryChest.isHittable { groups.swipeRight() }
+        XCTAssertTrue(galleryChest.isHittable); galleryChest.tap()
+        XCTAssertTrue(statistics.waitForExistence(timeout: 5)); XCTAssertTrue(statistics.isHittable); statistics.tap()
+        XCTAssertTrue(app.navigationBars["Progressi"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Principali: Pettorali"].waitForExistence(timeout: 5))
+        app.navigationBars.buttons.firstMatch.tap()
+        let day = app.buttons["workout-day-test-a"]
+        for _ in 0..<10 { if day.isHittable { break }; app.swipeDown() }
+        XCTAssertTrue(day.isHittable); day.tap()
+        XCTAssertTrue(app.buttons["Inizia allenamento"].waitForExistence(timeout: 5)); app.buttons["Inizia allenamento"].tap()
+        let extra = app.buttons["add-workout-exercise"]
+        for _ in 0..<12 { if extra.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(extra.isHittable); extra.tap()
+        XCTAssertTrue(app.navigationBars["Scegli esercizio"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "876")).firstMatch.waitForExistence(timeout: 8))
+    }
+    func testWeeklyHabitAndOneReceiptForPreviousLessonPersist() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--payment-schedule-test"]; app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["calendar-updated"].waitForExistence(timeout: 15))
+        let details = app.buttons["Dettagli e registrazione"]
+        for _ in 0..<6 { if details.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(details.isHittable); details.tap()
+        let amount = app.textFields["lesson-amount"]
+        for _ in 0..<8 { if amount.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(amount.isHittable); amount.tap(); amount.typeText("18"); app.buttons["Fine"].tap()
+        let received = app.switches["Ho già ricevuto un pagamento"]
+        for _ in 0..<5 { if received.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(received.isHittable); received.tap()
+        let receipt = app.textFields["lesson-received-amount"]
+        for _ in 0..<5 { if receipt.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(receipt.isHittable); receipt.tap(); receipt.typeText("36"); app.buttons["Fine"].tap()
+        let timing = app.descendants(matching: .any)["payment-timing"]
+        for _ in 0..<5 { if timing.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(timing.exists)
+        XCTAssertTrue((timing.label + String(describing: timing.value)).contains("settimana"))
+        let done = app.buttons["Fatto"]
+        for _ in 0..<10 { if done.isHittable { break }; app.swipeDown() }
+        XCTAssertTrue(done.isHittable); done.tap(); app.buttons["activity-save"].tap()
+        XCTAssertTrue(app.navigationBars["Pivot"].waitForExistence(timeout: 5))
+        XCUIDevice.shared.press(.home); app.activate(); app.tabBars.buttons["Entrate"].tap()
+        let student = app.buttons["client-detail-44444444-4444-4444-8444-444444444444"]
+        for _ in 0..<10 { if student.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(student.isHittable); student.tap()
+        XCTAssertTrue(app.staticTexts["student-balance-clear"].waitForExistence(timeout: 5))
+        app.terminate(); app.launch(); app.tabBars.buttons["Entrate"].tap()
+        for _ in 0..<10 { if student.isHittable { break }; app.swipeUp() }
+        student.tap()
+        XCTAssertTrue(app.staticTexts["student-balance-clear"].waitForExistence(timeout: 5))
+        let habit = app.descendants(matching: .any)["student-payment-cadence"]
+        XCTAssertTrue((habit.label + String(describing: habit.value)).contains("settimana"))
+    }
+    func testCalendarStudentIsRecognizedAndPaymentUsesSavedPerson() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--student-recognition-test"]; app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["calendar-updated"].waitForExistence(timeout: 15))
+        let details = app.buttons["Dettagli e registrazione"]
+        for _ in 0..<6 { if details.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(details.isHittable); details.tap()
+        let recognized = app.descendants(matching: .any)["recognized-student"]
+        for _ in 0..<8 { if recognized.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(recognized.exists)
+        XCTAssertTrue(recognized.label.contains("Giulia Rossi"))
+        XCTAssertFalse(app.textFields["student-name"].exists)
+        let amount = app.textFields["lesson-amount"]
+        XCTAssertTrue(amount.isHittable); amount.tap(); amount.typeText("18")
+        if app.buttons["Fine"].waitForExistence(timeout: 3) { app.buttons["Fine"].tap() }
+        let done = app.buttons["Fatto"]
+        for _ in 0..<8 { if done.isHittable { break }; app.swipeDown() }
+        XCTAssertTrue(done.isHittable); done.tap()
+        app.buttons["activity-save"].tap()
+        XCTAssertTrue(app.navigationBars["Pivot"].waitForExistence(timeout: 5))
+        // Backgrounding flushes pending writes; reopening must retain the linked lesson.
+        XCUIDevice.shared.press(.home); app.activate()
+        app.tabBars.buttons["Entrate"].tap()
+        let student = app.staticTexts["Giulia Rossi"].firstMatch
+        for _ in 0..<8 { if student.exists { break }; app.swipeUp() }
+        XCTAssertTrue(student.exists)
+        app.terminate(); app.launch(); app.tabBars.buttons["Entrate"].tap()
+        for _ in 0..<8 { if app.staticTexts["Giulia Rossi"].firstMatch.exists { break }; app.swipeUp() }
+        XCTAssertTrue(app.staticTexts["Giulia Rossi"].firstMatch.exists)
+    }
     func testSettingsSectionsAndDictationButtonAreReachable() {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test"]; app.launch()
@@ -8,7 +193,7 @@ final class PivotInteractionTests: XCTestCase {
         let health = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Salute e Apple Watch")).firstMatch
         for _ in 0..<5 { if health.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(health.isHittable); health.tap()
-        XCTAssertTrue(app.buttons["Collega / verifica Salute"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Collega app Salute"].waitForExistence(timeout: 5))
         app.tabBars.buttons["Oggi"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["calendar-updated"].waitForExistence(timeout: 15))
         let coach = app.buttons["open-pivot-coach"]

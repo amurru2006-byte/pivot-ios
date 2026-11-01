@@ -8,21 +8,25 @@ struct PlannedNotification {
     var priority: Int
     var eventID: String? = nil
     var destination: String = "event"
+    var clientID: String? = nil
 }
 
 enum NotificationPlan {
     static func requests(events: [CalendarItem], data: AppData, now: Date, capacity: Int = 60) -> [PlannedNotification] {
+        requestsFromPlanned(events: Planner.plannedEvents(events, data: data), data: data, now: now, capacity: capacity)
+    }
+    static func requestsFromPlanned(events: [CalendarItem], data: AppData, now: Date, capacity: Int = 60) -> [PlannedNotification] {
         let horizon = now.addingTimeInterval(7 * 86400)
         let calendar = PivotDate.calendar
         var requests: [PlannedNotification] = []
-        func add(_ date: Date, _ id: String, _ title: String, _ body: String, priority: Int = 1, eventID: String? = nil, destination: String = "event") {
+        func add(_ date: Date, _ id: String, _ title: String, _ body: String, priority: Int = 1, eventID: String? = nil, destination: String = "event", clientID: String? = nil) {
             guard date > now, date < horizon else { return }
             let hour = calendar.component(.hour, from: date)
             guard hour >= data.settings.quietEndHour && hour < data.settings.quietStartHour else { return }
-            requests.append(.init(date: date, id: id, title: title, body: body, priority: priority, eventID: eventID, destination: destination))
+            requests.append(.init(date: date, id: id, title: title, body: body, priority: priority, eventID: eventID, destination: destination, clientID: clientID))
         }
         // Use the same deduplicated, attendance-aware program as the home screen.
-        for event in Planner.plannedEvents(events, data: data) where !event.isAllDay {
+        for event in events where !event.isAllDay {
             let record = data.records[event.id]
             let missingCompensation = [.tutoring, .work].contains(event.kind) && [Completion.completed, .partial].contains(record?.status ?? .pending)
                 && record?.tutoringAnswered != true && !data.income.contains(where: { $0.calendarEventID == event.id || $0.id == record?.incomeID })
@@ -52,10 +56,30 @@ enum NotificationPlan {
                 add(event.end.addingTimeInterval(1800), "event-\(event.id)-30", "Quando hai un momento", "Com’è andata: \(event.title)? Dopo questo avviso resta nel riepilogo serale.", priority: 2, eventID: event.id)
             }
         }
+        // Payment promises are independent of the activity questionnaire. Weekly
+        // payers have one grouped deadline, never an unpaid warning after each lesson.
+        for due in StudentPayments.dues(planned: events, data: data) {
+            guard let expected = due.date else { continue }
+            var reminder = expected
+            if expected <= now {
+                let morning = calendar.date(bySettingHour: data.settings.quietEndHour, minute: 0, second: 0, of: now)!
+                reminder = morning > now ? morning : calendar.date(byAdding: .day, value: 1, to: morning)!
+            }
+            let hour = calendar.component(.hour, from: reminder)
+            if hour < data.settings.quietEndHour {
+                reminder = calendar.date(bySettingHour: data.settings.quietEndHour, minute: 0, second: 0, of: reminder)!
+            } else if hour >= data.settings.quietStartHour {
+                let next = calendar.date(byAdding: .day, value: 1, to: reminder)!
+                reminder = calendar.date(bySettingHour: data.settings.quietEndHour, minute: 0, second: 0, of: next)!
+            }
+            let text = due.isOverdue(at: now) ? "È rimasto un saldo da una lezione precedente." : (due.timing == .weekly ? "Ultima lezione prevista della settimana." : "È la data concordata per il pagamento.")
+            add(reminder, "payment-" + due.id, "Pagamento di " + due.clientName,
+                text + " " + Money.display(due.amountCents) + " ancora da ricevere. Registra solo i soldi realmente ricevuti.", priority: 0, destination: "payment", clientID: due.clientID.uuidString)
+        }
         for day in 0...6 {
             let date = calendar.date(byAdding: .day, value: day, to: now)!
             let time = calendar.date(bySettingHour: data.settings.eveningHour, minute: data.settings.eveningMinute, second: 0, of: date)!
-            let missingCardio = WorkoutContext.missingCardio(events: events, data: data, now: time)
+            let missingCardio = WorkoutContext.missingCardioInPlanned(events: events, data: data, now: time)
             add(time, "evening-\(PivotDate.key(date))", "Resoconto della giornata", missingCardio.isEmpty ? "Controlla le risposte mancanti e condividi il resoconto quando vuoi." : "Controlla anche il cardio da chiarire: il Coach ti chiede se l’hai svolto o recuperato.", priority: 0, destination: missingCardio.isEmpty ? "diary" : "coach")
         }
         // Reserve the finite iOS queue for meals/check-ins before optional follow-ups.

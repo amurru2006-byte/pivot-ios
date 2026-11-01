@@ -5,10 +5,13 @@ import UIKit
 struct EventDetailView: View {
     @EnvironmentObject var store: PivotStore
     @EnvironmentObject var calendar: CalendarService
+    @EnvironmentObject var agenda: AgendaService
     private let sourceEvent: CalendarItem
     private var onSaved: (() -> Void)?
     var event: CalendarItem {
-        Planner.effectiveEvents(calendar.events.filter { $0.id == sourceEvent.id || EventCoalescer.savedOccurrence(sourceEvent, $0) }, data: store.data).first { $0.id == sourceEvent.id || EventCoalescer.savedOccurrence(sourceEvent, $0) } ?? sourceEvent
+        agenda.effective.first { $0.id == sourceEvent.id }
+            ?? agenda.effective.first { EventCoalescer.savedOccurrence(sourceEvent, $0) }
+            ?? sourceEvent
     }
     @State private var record: EventRecord
     @State private var rule: EventRule
@@ -16,10 +19,17 @@ struct EventDetailView: View {
     @State private var suggestions: [RecoverySuggestion] = []
     @State private var studentName = ""
     @State private var selectedClientID: UUID? = nil
+    @State private var studentFromCalendar = false
+    @State private var ambiguousStudent = false
+    @State private var editingStudent = false
     @State private var lessonAmount = ""
     @State private var receivedAmount = ""
     @State private var received = false
     @State private var receiptDate = Date()
+    @State private var paymentTiming: PaymentTiming = .everyLesson
+    @State private var promisedPaymentDate = Date()
+    @State private var rememberPaymentCadence = false
+    @State private var paymentClientID: UUID?
     @State private var importingPDF = false
     @State private var importingMaterial = false
     @State private var documentPreview: StudyDocument?
@@ -102,8 +112,15 @@ struct EventDetailView: View {
                     let selectedOutcome = record.status
                     record = draft.record; rule = draft.rule; studentName = draft.studentName; selectedClientID = draft.clientID
                     lessonAmount = draft.lessonAmount; receivedAmount = draft.receivedAmount; received = draft.received; receiptDate = draft.receiptDate
+                    paymentTiming = draft.paymentTiming ?? .everyLesson
+                    promisedPaymentDate = draft.promisedPaymentDate ?? Date()
+                    rememberPaymentCadence = draft.rememberPaymentCadence ?? false
                     if selectedOutcome != .pending { record.status = selectedOutcome }
                 }
+                recognizeStudent()
+                if store.data.activityDrafts?[event.id] == nil && record.timingFromCalendar == true { suggestLessonAmount() }
+                if store.data.activityDrafts?[event.id]?.paymentTiming == nil { paymentTiming = selectedClient?.paymentCadence?.timing ?? .everyLesson }
+                paymentClientID = selectedClientID
                 loadedDraft = true; savedFingerprint = fingerprint
             }
             // A workout diary can change the timer while this detail is underneath it.
@@ -118,6 +135,10 @@ struct EventDetailView: View {
             persistDraft()
         }
         .onDisappear { persistDraft() }
+        .onChange(of: selectedClientID) { _, id in
+            guard loadedDraft, id != paymentClientID else { return }
+            paymentClientID = id; paymentTiming = selectedClient?.paymentCadence?.timing ?? .everyLesson; rememberPaymentCadence = false
+        }
         .confirmationDialog("Vuoi recuperare questa attività?", isPresented: $skipChoice, titleVisibility: .visible) {
             Button("Cerca un altro spazio") { findRecovery() }
             Button("Salta definitivamente") { if save() { closeAfterSaving() } }
@@ -126,6 +147,7 @@ struct EventDetailView: View {
         .sheet(isPresented: $editingLogistics, onDismiss: {
             rule = store.rule(for: event)
             record.logistics = store.record(for: event).logistics
+            recognizeStudent()
         }) { LessonLogisticsView(event: event) }
         .fileImporter(isPresented: $importingPDF, allowedContentTypes: [.pdf]) { result in
             switch result {
@@ -161,6 +183,14 @@ struct EventDetailView: View {
     private var registration: some View {
         PivotCard {
             SectionHeading(title: "Come è andata?")
+            Button {
+                EventAutofill.complete(&record, event: event)
+                suggestLessonAmount()
+            } label: { Label("Fatto come previsto · autocompila", systemImage: "checkmark.square.fill") }
+                .buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("activity-autofill")
+            if record.timingFromCalendar == true {
+                Text("Orari suggeriti dal calendario, non misurati. Puoi correggerli: le tue modifiche resteranno salvate.").font(.caption).foregroundStyle(PivotTheme.blue)
+            }
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 6) { outcomeButtons }
                 VStack(spacing: 8) { outcomeButtons }
@@ -177,8 +207,8 @@ struct EventDetailView: View {
                 Label("Sonno da Salute · \(ActivityTiming.duration(seconds))", systemImage: "bed.double.fill").font(.caption).foregroundStyle(PivotTheme.accent)
             }
             DisclosureGroup("Orari reali e durata") {
-            ClockField(title: "Inizio reale", value: $record.actualStart, fallback: event.start)
-            ClockField(title: "Fine reale", value: $record.actualEnd, fallback: event.end)
+            ClockField(title: "Inizio reale", value: Binding(get: { record.actualStart }, set: { record.actualStart = $0; record.timingFromCalendar = false; updateMinutes() }), fallback: event.start)
+            ClockField(title: "Fine reale", value: Binding(get: { record.actualEnd }, set: { record.actualEnd = $0; record.timingFromCalendar = false; updateMinutes() }), fallback: event.end)
             if let start = record.actualStart, let end = record.actualEnd, let seconds = ActivityTiming.seconds(start: start, end: end) {
                 Text("Durata calcolata: \(ActivityTiming.duration(seconds))").font(.subheadline).foregroundStyle(PivotTheme.accent)
             }
@@ -192,8 +222,11 @@ struct EventDetailView: View {
                 TextField("Cosa ti ha fermato?", text: $record.reason, axis: .vertical).lineLimit(2...5).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
                 Text("Racconta il motivo: ci aiuta ad adattare il programma.").font(.caption).foregroundStyle(PivotTheme.amber)
             }
-            TextField("Note extra, difficoltà o progressi…", text: $record.notes, axis: .vertical).lineLimit(3...8).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12))
-            DisclosureGroup("Energia durante l’attività") { RatingField(title: "Energia", value: $record.energy) }.font(.subheadline)
+            TextField("Note extra, difficoltà o progressi…", text: $record.notes, axis: .vertical).lineLimit(3...8).padding(12).background(PivotTheme.raised, in: RoundedRectangle(cornerRadius: 12)).accessibilityIdentifier("activity-notes")
+            DisclosureGroup("Energia e stanchezza durante l’attività") {
+                RatingField(title: "Energia", value: $record.energy, metric: .energy, referenceDate: event.start)
+                RatingField(title: "Stanchezza", value: $record.fatigue, metric: .fatigue, referenceDate: event.start)
+            }.font(.subheadline)
         }
     }
     private var outcomeButtons: some View {
@@ -208,8 +241,8 @@ struct EventDetailView: View {
     private var meal: some View {
         PivotCard(tint: PivotTheme.amber) {
             Label("Il tuo pasto", systemImage: "fork.knife").font(.headline).foregroundStyle(PivotTheme.amber)
-            RatingField(title: "Fame prima", value: $record.hungerBefore)
-            RatingField(title: "Fame dopo", value: $record.hungerAfter)
+            RatingField(title: "Fame prima", value: $record.hungerBefore, metric: .hungerBefore, referenceDate: event.start)
+            RatingField(title: "Fame dopo", value: $record.hungerAfter, metric: .hungerAfter, referenceDate: event.start)
             Picker("Piano rispettato", selection: Binding(get: { record.followedMeal.map { $0 ? 1 : 2 } ?? 0 }, set: { record.followedMeal = $0 == 0 ? nil : $0 == 1 })) {
                 Text("Non indicato").tag(0); Text("Sì").tag(1); Text("No").tag(2)
             }
@@ -318,19 +351,37 @@ struct EventDetailView: View {
             if let entry = linkedIncome {
                 Text("Lezione registrata: \(Money.display(entry.amountCents))").font(.subheadline)
                 NavigationLink { IncomeDetailView(entryID: entry.id) } label: { Label(entry.outstandingCents > 0 ? "Registra il pagamento mancante" : "Vedi il pagamento", systemImage: "arrow.right.circle") }
+                if let client = store.data.clients.first(where: { $0.id == entry.clientID }) {
+                    NavigationLink("Saldo e pagamento di più lezioni") { ClientDetailView(client: client) }
+                }
                 Text("Salvare ancora questa attività non aggiunge un secondo incasso.").font(.caption).foregroundStyle(PivotTheme.muted)
             } else {
-                Picker(event.kind == .work ? "Cliente" : "Studente", selection: $selectedClientID) {
-                    Text("Inserisci il nome").tag(nil as UUID?)
-                    ForEach(store.data.clients) { Text($0.name).tag(Optional($0.id)) }
+                if studentFromCalendar && !editingStudent {
+                    Label(selectedClient?.name ?? studentName, systemImage: "person.fill.checkmark")
+                        .accessibilityIdentifier("recognized-student")
+                    Text("Riconosciuto dal calendario").font(.caption).foregroundStyle(PivotTheme.muted)
+                    Button("Cambia studente") { editingStudent = true }.font(.caption)
+                } else {
+                    if ambiguousStudent {
+                        Text("Il titolo corrisponde a più studenti: scegli quello giusto.").font(.caption).foregroundStyle(PivotTheme.amber)
+                    }
+                    Picker(event.kind == .work ? "Cliente" : "Studente", selection: $selectedClientID) {
+                        Text("Altro / nuovo nome").tag(nil as UUID?)
+                        ForEach(store.data.clients) { Text($0.name).tag(Optional($0.id)) }
+                    }.accessibilityIdentifier("student-picker")
+                    if selectedClient == nil { TextField(event.kind == .work ? "Nome cliente / lavoro" : "Nome dello studente", text: $studentName).textContentType(.name).accessibilityIdentifier("student-name") }
                 }
-                if selectedClient == nil { TextField(event.kind == .work ? "Nome cliente / lavoro" : "Nome dello studente", text: $studentName).textContentType(.name) }
-                TextField("Importo concordato in euro (anche 0)", text: $lessonAmount).keyboardType(.decimalPad)
+                TextField("Importo concordato in euro (anche 0)", text: $lessonAmount).keyboardType(.decimalPad).accessibilityIdentifier("lesson-amount")
+                if record.timingFromCalendar == true, let client = selectedClient, client.rateCents > 0 {
+                    Text("Compenso suggerito dalla tariffa salvata: \(Money.display(client.rateCents))/ora. Correggilo se avete concordato un importo diverso; nessun pagamento è dato per ricevuto.").font(.caption).foregroundStyle(PivotTheme.muted)
+                }
                 Toggle("Ho già ricevuto un pagamento", isOn: $received)
                 if received {
-                    TextField("Euro ricevuti", text: $receivedAmount).keyboardType(.decimalPad)
+                    TextField("Euro ricevuti oggi (anche lezioni precedenti)", text: $receivedAmount).keyboardType(.decimalPad).accessibilityIdentifier("lesson-received-amount")
                     DatePicker("Data incasso", selection: $receiptDate)
+                    Text("Distribuirò il pagamento sulle lezioni di questo studente, dalla più vecchia.").font(.caption).foregroundStyle(PivotTheme.muted)
                 }
+                PaymentTermsFields(timing: $paymentTiming, promisedDate: $promisedPaymentDate, remember: $rememberPaymentCadence, studentName: selectedClient?.name ?? studentName)
                 Text("Il conto sale solo per i soldi ricevuti. La parte non pagata resta in ‘Da incassare’. Salva quando hai indicato l'esito della lezione.").font(.caption).foregroundStyle(PivotTheme.muted)
                 if record.tutoringAnswered == true { Text("Nessun compenso registrato per questa attività.").font(.caption) }
             }
@@ -364,6 +415,23 @@ struct EventDetailView: View {
     private func updateMinutes() {
         if let start = record.actualStart, let end = record.actualEnd { record.activeMinutes = max(0, Int(end.timeIntervalSince(start) / 60)) }
     }
+    private func recognizeStudent() {
+        guard [.tutoring, .work].contains(event.kind), selectedClientID == nil,
+              studentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let title = record.logistics.flatMap { $0.isConfirmed(for: event) ? $0.studentName : nil } ?? event.title
+        let result = StudentRecognition.recognize(title: title, clients: store.data.clients)
+        ambiguousStudent = result.ambiguous
+        guard !result.ambiguous else { return }
+        studentName = result.name
+        selectedClientID = result.client?.id
+        studentFromCalendar = !result.name.isEmpty
+    }
+    private func suggestLessonAmount() {
+        guard lessonAmount.isEmpty, linkedIncome == nil, [.tutoring, .work].contains(event.kind),
+              let client = selectedClient, client.rateCents > 0, record.activeMinutes > 0 else { return }
+        let cents = Money.lessonAmount(rateCents: client.rateCents, minutes: record.activeMinutes)
+        lessonAmount = String(format: "%.2f", Double(cents) / 100).replacingOccurrences(of: ".", with: ",")
+    }
     @discardableResult private func save() -> Bool {
         if let start = record.actualStart, let end = record.actualEnd, ActivityTiming.seconds(start: start, end: end) == nil {
             message = "La fine reale deve essere successiva all'inizio. Controlla anche la data se l'attività supera mezzanotte."; return false
@@ -381,9 +449,11 @@ struct EventDetailView: View {
             cents = amount
             let name = selectedClient?.name ?? studentName.trimmingCharacters(in: .whitespacesAndNewlines)
             guard amount == 0 || !name.isEmpty else { message = "Indica lo studente per registrare il guadagno."; return false }
-            client = selectedClient ?? Client(name: name, rateCents: 0)
+            guard amount == 0 || !ambiguousStudent || selectedClient != nil || !studentName.isEmpty else { message = "Scegli lo studente per questa lezione."; return false }
+            client = selectedClient ?? StudentRecognition.existingClient(named: name, clients: store.data.clients) ?? Client(name: name, rateCents: 0)
             if received {
-                guard let paid = Money.cents(from: receivedAmount), paid > 0, paid <= amount else { message = "L'incasso deve essere positivo e non superiore all'importo della lezione."; return false }
+                let balance = client.map { StudentPayments.balance(clientID: $0.id, data: store.data) } ?? 0
+                guard let paid = Money.cents(from: receivedAmount), paid > 0, paid <= amount + balance else { message = "L'incasso deve essere positivo e non superiore al saldo di questo studente, inclusa questa lezione."; return false }
                 collected = paid
             }
         }
@@ -393,7 +463,11 @@ struct EventDetailView: View {
         saved.logistics = store.record(for: event).logistics
         let ok = store.change { data in
             let previousStatus = data.records[event.id]?.status ?? .pending
-            if let client, let cents { TutoringLedger.register(event: event, record: &saved, client: client, amountCents: cents, collectedCents: collected, paymentDate: receiptDate, data: &data) }
+            if let client, let cents {
+                TutoringLedger.register(event: event, record: &saved, client: client, amountCents: cents, collectedCents: 0, paymentDate: receiptDate, data: &data, timing: paymentTiming, promisedDate: paymentTiming == .chosenDate ? promisedPaymentDate : nil)
+                if rememberPaymentCadence { StudentPayments.remember(paymentTiming, for: client.id, data: &data) }
+                if collected > 0 { StudentPayments.collect(clientID: client.id, cents: collected, date: receiptDate, data: &data) }
+            }
             data.records[event.id] = saved; data.rules[event.id] = rule
             if previousStatus != saved.status && saved.status != .pending {
                 var coach = data.coachState
@@ -416,7 +490,8 @@ struct EventDetailView: View {
     private func closeAfterSaving() { onSaved?(); dismiss() }
     private var draft: ActivityDraft {
         ActivityDraft(record: record, rule: rule, studentName: studentName, clientID: selectedClientID, lessonAmount: lessonAmount,
-                      receivedAmount: receivedAmount, received: received, receiptDate: receiptDate)
+                      receivedAmount: receivedAmount, received: received, receiptDate: receiptDate,
+                      paymentTiming: paymentTiming, promisedPaymentDate: promisedPaymentDate, rememberPaymentCadence: rememberPaymentCadence)
     }
     private var fingerprint: String {
         let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
