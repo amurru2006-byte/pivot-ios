@@ -7,6 +7,7 @@ struct CoachPlanningSessionView: View {
     @State private var preparationIncluded = false
     @State private var options: [CoachOption] = []
     @State private var reviewed: Set<UUID> = []
+    @State private var corrections: [UUID: String] = [:]
     @State private var message: String?
     @State private var planning = false
     @State private var task: Task<Void, Never>?
@@ -61,6 +62,14 @@ struct CoachPlanningSessionView: View {
                     PivotCard(tint: PivotTheme.blue) {
                         Text(option.explanation).font(.headline)
                         Text(option.consequences).font(.subheadline).foregroundStyle(PivotTheme.muted)
+                        TextField("Es. sposta il secondo a venerdì", text: Binding(
+                            get: { corrections[option.id] ?? "" }, set: { corrections[option.id] = $0 }))
+                            .textFieldStyle(.roundedBorder).accessibilityIdentifier("coach-planning-correction")
+                        Text("Correzione locale di questa alternativa: le altre attività restano agli orari mostrati. Giorni esclusi e ordine restano validi.")
+                            .font(.caption).foregroundStyle(PivotTheme.muted)
+                        Button("Ricalcola questa alternativa") { refine(option, session: session) }
+                            .frame(minHeight: 44).disabled(planning || store.locked || (corrections[option.id] ?? "").isEmpty)
+                            .accessibilityIdentifier("coach-planning-refine")
                         ForEach(option.moves) { move in
                             if !move.source.location.isEmpty {
                                 NavigationLink { TravelCalculatorView(destination: move.source.location, date: move.proposedStart, timing: .arriveBy,
@@ -92,7 +101,32 @@ struct CoachPlanningSessionView: View {
             .onChange(of: calendar.events) { _, _ in invalidate() }
             .onDisappear { task?.cancel(); planning = false }
     }
-    private func invalidate() { task?.cancel(); planning = false; options = []; reviewed = [] }
+    private func invalidate() { task?.cancel(); planning = false; options = []; reviewed = []; corrections = [:] }
+    private func refine(_ option: CoachOption, session: CoachPlanningSession) {
+        guard !store.locked, !store.isRestoring, !planning else { return }
+        do {
+            let request = try CoachPlanningRefinement.parse(corrections[option.id] ?? "", count: option.moves.count)
+            let data = store.data, events = calendar.events, access = calendar.hasAccess, now = Date()
+            planning = true; message = nil
+            task = Task { @MainActor in
+                do {
+                    let worker = Task.detached(priority: .userInitiated) {
+                        try CoachPlanningRefinement.apply(request, to: option, session: session,
+                            events: events, data: data, calendarAccess: access, now: now,
+                            isCancelled: { Task<Never, Never>.isCancelled })
+                    }
+                    let revised = try await withTaskCancellationHandler(operation: { try await worker.value },
+                                                                      onCancel: { worker.cancel() })
+                    guard !Task.isCancelled else { return }
+                    planning = false
+                    guard data.updatedAt == store.data.updatedAt, events == calendar.events, !store.locked,
+                          let index = options.firstIndex(where: { $0.id == option.id }) else { return }
+                    options[index] = revised; reviewed.remove(option.id); corrections.removeValue(forKey: option.id)
+                    message = "Alternativa ricalcolata. Le altre attività sono rimaste ferme; ricontrolla i tragitti prima di sceglierla."
+                } catch { guard !Task.isCancelled else { return }; planning = false; message = error.localizedDescription }
+            }
+        } catch { message = error.localizedDescription }
+    }
     private func readmit(_ value: CoachPlanningSession) {
         do {
             var next = value; try next.confirmReadmittedDays(now: Date())
@@ -106,15 +140,23 @@ struct CoachPlanningSessionView: View {
             guard !Task.isCancelled, !store.locked, !store.isRestoring else { planning = false; return }
             let data = store.data, events = calendar.events, access = calendar.hasAccess, now = Date()
             do {
-                let result = try await Task.detached(priority: .userInitiated) {
-                    try CoachPlanningAlternatives.options(for: value, calendarAccess: access, events: events,
-                        data: data, now: now, preparationIncluded: true)
-                }.value
+                let worker = Task.detached(priority: .userInitiated) {
+                    try CoachPlanningAlternatives.search(for: value, calendarAccess: access, events: events,
+                        data: data, now: now, preparationIncluded: true,
+                        isCancelled: { Task<Never, Never>.isCancelled })
+                }
+                let result = try await withTaskCancellationHandler(operation: { try await worker.value },
+                                                                  onCancel: { worker.cancel() })
                 guard !Task.isCancelled else { return }
                 planning = false
                 guard data.updatedAt == store.data.updatedAt, events == calendar.events, !store.locked else { message = "L’agenda è cambiata: ripeti la ricerca."; return }
-                options = result
-                if result.isEmpty { message = "Non ho trovato un’alternativa verificata. Controlla giorni, flessibilità e tragitti; questo non significa che l’agenda sia necessariamente piena." }
+                options = result.options
+                switch result.state {
+                case .limitReached: message = "Ho raggiunto il limite di ricerca locale. Le eventuali alternative mostrate sono verificate, ma potrei non averle trovate tutte. Puoi restringere giorni o fascia."
+                case .cancelled: options = []; message = "Ricerca interrotta. Nessuna modifica preparata."
+                case .notFoundWithinSearch: message = "Non ho trovato un’alternativa verificata. Controlla giorni, flessibilità e tragitti; questo non significa che l’agenda sia necessariamente piena."
+                case .optionsFound: break
+                }
             } catch { guard !Task.isCancelled else { return }; planning = false; message = error.localizedDescription }
         }
     }

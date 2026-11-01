@@ -1,0 +1,73 @@
+name: Verifica preparatoria AI agenda V8
+on:
+  push:
+    branches: ['codex/pivot-v8-ai-0811-preflight']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pivot-ai-preflight-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Tutte le regressioni Core e controlli offline
+        run: |
+          set -o pipefail
+          mkdir -p build
+          bash -n Scripts/preview-ui.sh Scripts/package-v8-candidate.sh
+          swift test 2>&1 | tee build/ai-preflight-core.log
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          log = Path('build/ai-preflight-core.log').read_text()
+          assert not re.search(r'Test Case .* (?:skipped|failed)', log)
+          count = 0
+          for suite, expected in [('CoachPlanningAlternativesTests', 20), ('CoachAgendaSignalsTests', 7)]:
+              source = Path(f'Tests/PivotCoreTests/{suite}.swift').read_text()
+              names = re.findall(r'func (test\w+)\(', source)
+              assert len(names) == len(set(names)) == expected
+              for name in names:
+                  matches = [line for line in log.splitlines() if suite in line and name in line and ' passed ' in line]
+                  assert len(matches) == 1, (suite, name)
+              count += len(names)
+          print(f'Verified {count} affected core tests, no skips; full Core suite executed')
+          PY
+          node --test Backend/coach-gateway/worker.test.mjs
+          python3 -m unittest discover -s Scripts -p 'test_*.py'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Pivot-ai-preflight-core
+          path: build/ai-preflight-core.log
+          retention-days: 7
+          if-no-files-found: error
+  planning-ui:
+    needs: core
+    runs-on: macos-15
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash Scripts/prepare-ios-ci.sh
+      - name: Compilazione simulatore e due regressioni conversazione esistenti
+        env:
+          PIVOT_UI_ONLY_TESTING: v8-089-planning-regression
+        run: bash Scripts/preview-ui.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Pivot-ai-preflight-ui
+          path: |
+            build/online-privacy-build.log
+            build/online-privacy-tests.log
+            build/Previews/OnlinePrivacy/
+            build/selected-simulator.json
+          retention-days: 7
+          if-no-files-found: ignore

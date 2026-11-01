@@ -12,7 +12,9 @@ enum CalendarRecoveryWindows {
     /// It prepares windows only; it does not apply changes or relax CoachPlanner's guard.
     static func find(target: CalendarItem, budget: CalendarTimeBudget, events: [CalendarItem], data: AppData,
                      otherBudgets: [String: CalendarTimeBudget] = [:], now: Date, days: Int = 3,
-                     excludingDays: [Date] = [], within allowedIntervals: [DateInterval]? = nil) -> [CalendarRecoveryWindow] {
+                     excludingDays: [Date] = [], within allowedIntervals: [DateInterval]? = nil,
+                     limit: Int = 3) -> [CalendarRecoveryWindow] {
+        guard (1...32).contains(limit) else { return [] }
         // Constraints are applied BEFORE collecting the first three windows.
         // Filtering three unrestricted results afterwards can hide every valid
         // later-day alternative. An explicit empty set means no allowed time.
@@ -90,7 +92,7 @@ enum CalendarRecoveryWindows {
                         let activityEnd = activityStart.addingTimeInterval(Double(budget.activityMinutes) * 60)
                         windows.append(.init(occupiedStart: cursor, activityStart: activityStart,
                                              activityEnd: activityEnd, occupiedEnd: occupiedEnd))
-                        if windows.count == 3 { return windows }
+                        if windows.count == limit { return windows }
                     }
                     cursor = max(cursor, block.1)
                     if cursor >= range.end { break }

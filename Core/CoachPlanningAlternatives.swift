@@ -5,6 +5,12 @@ import Foundation
 /// slots of not-yet-placed activities remain busy conservatively. No claim of
 /// exhaustive infeasibility, guessed routes, compressed durations or rest days.
 enum CoachPlanningAlternatives {
+    enum SearchState: Equatable { case optionsFound, notFoundWithinSearch, limitReached, cancelled }
+    struct SearchResult {
+        var options: [CoachOption]
+        var state: SearchState
+        var exploredNodes: Int
+    }
     enum Failure: LocalizedError, Equatable {
         case preparation, logistics, changed, invalid
         var errorDescription: String? {
@@ -19,16 +25,43 @@ enum CoachPlanningAlternatives {
 
     static func options(for session: CoachPlanningSession, calendarAccess: Bool, events: [CalendarItem],
                         data: AppData, now: Date, preparationIncluded: Bool) throws -> [CoachOption] {
+        try search(for: session, calendarAccess: calendarAccess, events: events, data: data,
+                   now: now, preparationIncluded: preparationIncluded).options
+    }
+
+    static func search(for session: CoachPlanningSession, calendarAccess: Bool, events: [CalendarItem],
+                       data: AppData, now: Date, preparationIncluded: Bool, maxNodes: Int = 64,
+                       fixedMoves: [PlanMove] = [], restrictedDays: [String: Date] = [:],
+                       isCancelled: () -> Bool = { false }) throws -> SearchResult {
+        guard (1...512).contains(maxNodes) else { throw Failure.invalid }
         guard preparationIncluded else { throw Failure.preparation }
         let selected = try CoachPlanningSelection.restore(session, calendarAccess: calendarAccess, events: events, data: data, now: now)
         guard selected.unconfirmedTravelIDs.isEmpty, selected.pairedReviewIDs.isEmpty else { throw Failure.logistics }
         let budgets = try selected.sources.map { try budget(for: $0, data: data) }
-        guard !selected.allowedIntervals.isEmpty else { return [] }
+        let sourceIDs = Set(selected.sources.map(\.id))
+        guard fixedMoves.count <= selected.sources.count,
+              Set(fixedMoves.map { $0.source.id }).count == fixedMoves.count,
+              Set(fixedMoves.map { $0.source.id }).isSubset(of: sourceIDs),
+              Set(restrictedDays.keys).isSubset(of: sourceIDs),
+              restrictedDays.values.allSatisfy({ CoachPlanningSession.validDate($0) && PivotDate.calendar.startOfDay(for: $0) == $0 }) else { throw Failure.invalid }
+        for move in fixedMoves {
+            guard selected.sources.contains(move.source), move.proposedStart > now,
+                  abs(move.proposedEnd.timeIntervalSince(move.proposedStart) - move.source.end.timeIntervalSince(move.source.start)) < 0.001 else { throw Failure.changed }
+        }
+        guard !selected.allowedIntervals.isEmpty else {
+            return .init(options: [], state: isCancelled() ? .cancelled : .notFoundWithinSearch, exploredNodes: 0)
+        }
         var result: [CoachOption] = []
-        // At most 1 + 3 + 9 search nodes and three complete alternatives.
+        var explored = 0, exhausted = false, cancelled = false
+        // Bound the entire tree, not only each activity's first three slots.
+        // Keep existing original slots busy conservatively; this is not a proof
+        // that no other possible schedule exists when no candidate is found.
         // Each later activity starts after the previous full occupied envelope.
         func visit(_ index: Int, _ simulated: AppData, _ earliest: Date, _ moves: [PlanMove]) {
+            if isCancelled() { cancelled = true; return }
             guard result.count < 3 else { return }
+            guard explored < maxNodes else { exhausted = true; return }
+            explored += 1
             if index == selected.sources.count {
                 let option = CoachOption(title: "Alternativa \(result.count + 1)",
                     explanation: moves.map { "\($0.source.title) · \(PivotDate.shortDate($0.proposedStart)) \(PivotDate.time($0.proposedStart))–\(PivotDate.time($0.proposedEnd))" }.joined(separator: "\n"),
@@ -38,18 +71,33 @@ enum CoachPlanningAlternatives {
                 return
             }
             let source = selected.sources[index]
-            let windows = CalendarRecoveryWindows.find(target: source, budget: budgets[index], events: events,
-                data: simulated, now: earliest, days: 7, within: selected.allowedIntervals)
+            let intervals = selected.allowedIntervals.filter { interval in
+                restrictedDays[source.id].map { PivotDate.calendar.isDate(interval.start, inSameDayAs: $0) } ?? true
+            }
+            let windows: [CalendarRecoveryWindow]
+            if let fixed = fixedMoves.first(where: { $0.source.id == source.id }) {
+                let occupiedStart = fixed.proposedStart.addingTimeInterval(-Double(budgets[index].beforeMinutes) * 60)
+                let occupiedEnd = fixed.proposedStart.addingTimeInterval(Double(budgets[index].activityMinutes + budgets[index].afterMinutes) * 60)
+                guard occupiedStart >= earliest,
+                      intervals.contains(where: { occupiedStart >= $0.start && occupiedEnd <= $0.end }) else { return }
+                windows = [.init(occupiedStart: occupiedStart, activityStart: fixed.proposedStart,
+                                 activityEnd: fixed.proposedEnd, occupiedEnd: occupiedEnd)]
+            } else {
+                windows = CalendarRecoveryWindows.find(target: source, budget: budgets[index], events: events,
+                    data: simulated, now: earliest, days: 7, within: intervals, limit: 32)
+            }
             for window in windows {
+                if isCancelled() { cancelled = true; return }
                 let move = PlanMove(source: source, proposedStart: window.activityStart,
                     proposedEnd: window.activityStart.addingTimeInterval(source.end.timeIntervalSince(source.start)))
                 var next = simulated; next.moves.append(move)
                 visit(index + 1, next, window.occupiedEnd, moves + [move])
-                if result.count == 3 { break }
+                if result.count == 3 || exhausted || cancelled { break }
             }
         }
         visit(0, data, now.addingTimeInterval(300), [])
-        return result
+        if cancelled { return .init(options: [], state: .cancelled, exploredNodes: explored) }
+        return .init(options: result, state: exhausted ? .limitReached : (result.isEmpty ? .notFoundWithinSearch : .optionsFound), exploredNodes: explored)
     }
 
     /// Stages locally and atomically. Native Calendar writes remain behind the

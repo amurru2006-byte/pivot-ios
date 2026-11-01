@@ -58,6 +58,19 @@ struct CoachView: View {
         PivotScreen {
             PivotHeader(title: "Parla con Pivot", subtitle: "Racconta cosa è cambiato. Decidi tu cosa applicare.")
             onlineStatusCard
+            let agendaSignals = CoachAgendaSignals.make(events: calendar.events, data: store.data, now: Date())
+            if !agendaSignals.isEmpty {
+                PivotCard(tint: PivotTheme.amber) {
+                    Label("Da valutare nell’agenda", systemImage: "calendar.badge.exclamationmark").font(.headline)
+                    Text("Osservazioni locali, ricalcolate sull’agenda disponibile. Nessun impegno è considerato saltato e nessuna modifica è stata applicata.")
+                        .font(.caption).foregroundStyle(PivotTheme.muted)
+                    ForEach(agendaSignals) { signal in
+                        Text(signal.explanation).font(.subheadline)
+                        Button("Discuti questa situazione") { input = signal.prompt; composerFocused = true }
+                            .frame(minHeight: 44).disabled(isPlanning || store.locked)
+                    }
+                }.accessibilityIdentifier("coach-agenda-signals")
+            }
             NavigationLink { PersonalForecastView() } label: {
                 Label("Previsioni personali", systemImage: "sparkles").frame(maxWidth: .infinity)
             }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("coach-predictions")

@@ -112,4 +112,138 @@ final class CoachPlanningAlternativesTests: XCTestCase {
         var missing = initial; missing.coachState.planningSessions = nil; missing.coachState.focusedPlanningSessionID = nil
         XCTAssertThrowsError(try options(session, events, missing))
     }
+
+    func testDetailedJointSearchKeepsThreeOrderedActivitiesAndReportsItsBound() throws {
+        let (session, events, data) = try fixture(count: 3)
+        let result = try CoachPlanningAlternatives.search(for: session, calendarAccess: true,
+            events: events, data: data, now: now, preparationIncluded: true)
+        XCTAssertEqual(result.state, .optionsFound)
+        XCTAssertFalse(result.options.isEmpty)
+        XCTAssertLessThanOrEqual(result.exploredNodes, 64)
+        for option in result.options {
+            XCTAssertEqual(option.moves.map { $0.source.id }, events.map(\.id))
+            XCTAssertNil(CoachPlanner.validate(option, events: events, data: data, now: now))
+        }
+        XCTAssertTrue(data.moves.isEmpty)
+    }
+
+    func testSearchBudgetExhaustionIsNotReportedAsAnImpossibleAgenda() throws {
+        let (session, events, data) = try fixture(count: 2)
+        let result = try CoachPlanningAlternatives.search(for: session, calendarAccess: true,
+            events: events, data: data, now: now, preparationIncluded: true, maxNodes: 1)
+        XCTAssertEqual(result.state, .limitReached)
+        XCTAssertEqual(result.exploredNodes, 1)
+        XCTAssertTrue(result.options.isEmpty)
+        XCTAssertTrue(data.moves.isEmpty)
+        XCTAssertTrue(data.coachState.pendingCalendarChanges.isEmpty)
+    }
+
+    func testCancellationBeforeSearchReturnsNoProposalOrWrites() throws {
+        let (session, events, data) = try fixture(count: 2)
+        let result = try CoachPlanningAlternatives.search(for: session, calendarAccess: true,
+            events: events, data: data, now: now, preparationIncluded: true, isCancelled: { true })
+        XCTAssertEqual(result.state, .cancelled)
+        XCTAssertEqual(result.exploredNodes, 0)
+        XCTAssertTrue(result.options.isEmpty)
+        XCTAssertTrue(data.moves.isEmpty)
+    }
+
+    func testCancellationDuringJointSearchDiscardsAllProposals() throws {
+        let (session, events, data) = try fixture(count: 3)
+        var checks = 0
+        let result = try CoachPlanningAlternatives.search(for: session, calendarAccess: true,
+            events: events, data: data, now: now, preparationIncluded: true,
+            isCancelled: { checks += 1; return checks >= 4 })
+        XCTAssertEqual(result.state, .cancelled)
+        XCTAssertTrue(result.options.isEmpty)
+        XCTAssertGreaterThan(result.exploredNodes, 0)
+        XCTAssertTrue(data.moves.isEmpty)
+    }
+
+    func testInvalidSearchBoundsAreRejectedRatherThanUnbounded() throws {
+        let (session, events, data) = try fixture()
+        for bound in [0, -1, 513, Int.max] {
+            XCTAssertThrowsError(try CoachPlanningAlternatives.search(for: session, calendarAccess: true,
+                events: events, data: data, now: now, preparationIncluded: true, maxNodes: bound)) {
+                XCTAssertEqual($0 as? CoachPlanningAlternatives.Failure, .invalid)
+            }
+        }
+    }
+
+    func testEmptyAllowedIntersectionIsDistinctFromCancellationOrSearchLimit() throws {
+        let (session, events, initial) = try fixture()
+        var data = initial
+        data.settings.quietEndHour = 20; data.settings.quietStartHour = 22
+        let result = try CoachPlanningAlternatives.search(for: session, calendarAccess: true,
+            events: events, data: data, now: now, preparationIncluded: true)
+        XCTAssertEqual(result.state, .notFoundWithinSearch)
+        XCTAssertTrue(result.options.isEmpty)
+        XCTAssertLessThanOrEqual(result.exploredNodes, 64)
+    }
+
+    func testWindowCollectorCanExposeLaterDaysWhileDefaultStaysThree() throws {
+        let (_, events, data) = try fixture()
+        let source = events[0]
+        let budget = try XCTUnwrap(CalendarTimeBudget.confirmed(activityMinutes: 60,
+            rule: EventRule.effective(for: source, data: data), preparationMinutes: 0))
+        let original = CalendarRecoveryWindows.find(target: source, budget: budget, events: events,
+            data: data, now: now, days: 7)
+        let expanded = CalendarRecoveryWindows.find(target: source, budget: budget, events: events,
+            data: data, now: now, days: 7, limit: 4)
+        XCTAssertEqual(original.count, 3)
+        XCTAssertEqual(expanded.count, 4)
+        XCTAssertEqual(Array(expanded.prefix(3)), original)
+        XCTAssertTrue(CalendarRecoveryWindows.find(target: source, budget: budget, events: events,
+            data: data, now: now, days: 7, limit: Int.max).isEmpty)
+    }
+
+    func testDetailedSearchStillRequiresPreparationAndCurrentCalendar() throws {
+        let (session, events, data) = try fixture()
+        XCTAssertThrowsError(try CoachPlanningAlternatives.search(for: session, calendarAccess: true,
+            events: events, data: data, now: now, preparationIncluded: false))
+        var changed = events; changed[0].title = "Modifica esterna sintetica"
+        XCTAssertThrowsError(try CoachPlanningAlternatives.search(for: session, calendarAccess: true,
+            events: changed, data: data, now: now, preparationIncluded: true))
+        XCTAssertTrue(data.moves.isEmpty)
+    }
+
+    func testLocalCorrectionParsesOnlyOneExplicitOrdinalAndDay() throws {
+        XCTAssertEqual(try CoachPlanningRefinement.parse("sposta il secondo a venerdì", count: 3), .init(index: 1, weekday: 6))
+        for text in ["sposta quello a venerdì", "sposta il secondo a venerdì e il primo a sabato", "non sposta il secondo a venerdì", "sposta il terzo a venerdì"] {
+            XCTAssertThrowsError(try CoachPlanningRefinement.parse(text, count: 2))
+        }
+    }
+
+    func testCorrectionMovesOnlySecondActivityAndPreservesFirstAndExclusions() throws {
+        let (session, events, data) = try fixture(count: 2)
+        let original = try XCTUnwrap(options(session, events, data).first)
+        let revised = try CoachPlanningRefinement.apply(.init(index: 1, weekday: 6), to: original,
+            session: session, events: events, data: data, calendarAccess: true, now: now)
+        XCTAssertEqual(revised.moves[0].proposedStart, original.moves[0].proposedStart)
+        XCTAssertEqual(revised.moves[0].proposedEnd, original.moves[0].proposedEnd)
+        XCTAssertEqual(PivotDate.calendar.component(.weekday, from: revised.moves[1].proposedStart), 6)
+        XCTAssertNil(CoachPlanner.validate(revised, events: events, data: data, now: now))
+        XCTAssertEqual(session.intent.excludedDayOffsets, [2])
+        XCTAssertTrue(data.moves.isEmpty)
+    }
+
+    func testCorrectionCannotReadmitExcludedDayOrSilentlyInvertOrder() throws {
+        let (session, events, data) = try fixture(count: 2)
+        let original = try XCTUnwrap(options(session, events, data).first)
+        for request in [CoachPlanningRefinement.Request(index: 1, weekday: 4), .init(index: 0, weekday: 6)] {
+            XCTAssertThrowsError(try CoachPlanningRefinement.apply(request, to: original,
+                session: session, events: events, data: data, calendarAccess: true, now: now))
+        }
+        XCTAssertTrue(data.moves.isEmpty)
+    }
+
+    func testCorrectionRejectsExpiredAlternativeAndChangedSource() throws {
+        let (session, events, data) = try fixture(count: 2)
+        let original = try XCTUnwrap(options(session, events, data).first)
+        XCTAssertThrowsError(try CoachPlanningRefinement.apply(.init(index: 1, weekday: 6), to: original,
+            session: session, events: events, data: data, calendarAccess: true, now: now.addingTimeInterval(121)))
+        var changed = events; changed[0].location = "Luogo QA modificato"
+        XCTAssertThrowsError(try CoachPlanningRefinement.apply(.init(index: 1, weekday: 6), to: original,
+            session: session, events: changed, data: data, calendarAccess: true, now: now))
+    }
 }
