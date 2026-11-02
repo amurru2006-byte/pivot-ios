@@ -1,0 +1,91 @@
+name: Preparatory FitPros browser bridge
+on:
+  push:
+    branches: ['codex/pivot-fitpros-browser-preflight']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: fitpros-browser-preflight
+  cancel-in-progress: true
+jobs:
+  synthetic-core:
+    if: github.event.repository.private == false
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Full Core suite and exact mapping/outbox cases
+        run: |
+          mkdir -p build
+          set -o pipefail
+          swift test 2>&1 | tee build/fitpros-browser-core.log
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          log = Path('build/fitpros-browser-core.log').read_text()
+          assert not re.search(r'Test Case .* (?:failed|skipped)', log)
+          for suite, expected in [('TrainingCoachExchangeTests',20), ('TrainingCoachOutboxTests',13)]:
+              source = Path(f'Tests/PivotCoreTests/{suite}.swift').read_text()
+              names = re.findall(r'func (test\w+)\(',source)
+              assert len(names) == len(set(names)) == expected
+              for name in names:
+                  assert sum(suite in line and name in line and ' passed ' in line for line in log.splitlines()) == 1, (suite,name)
+          print('Verified exact 33 mapping/outbox cases, no skips; full Core suite executed')
+          PY
+          node --test Backend/coach-gateway/worker.test.mjs
+          python3 -m unittest discover -s Scripts -p 'test_*.py'
+      - name: Check the embedded observer without executing site code
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          source=Path('Pivot/Services/FitProsDOMScript.swift').read_text()
+          assert source.count('#"""') == source.count('"""#') == 1
+          observer=source.split('#"""',1)[1].split('"""#',1)[0].strip()
+          for pattern in [r'\b(?:localStorage|sessionStorage|indexedDB|XMLHttpRequest)\b',
+                          r'\bdocument\.cookie\b',r'\bfetch\s*\(',
+                          r'\.value\s*=(?!=)',r'\.(?:click|dispatchEvent|setAttribute|appendChild)\s*\(']:
+              assert not re.search(pattern,observer), pattern
+          assert 'function readFitProsEditor' in observer
+          assert 'canWrite:false' in observer and 'serverPersistenceVerified:false' in observer
+          Path('build/fitpros-observer.js').write_text(observer)
+          bridge=Path('Pivot/Services/FitProsBrowserSession.swift').read_text()
+          assert 'httpCookieStore' not in bridge and 'URLSession' not in bridge
+          print('Read-only observer boundaries checked; login and remote persistence remain untested')
+          PY
+          node --check build/fitpros-observer.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: FitPros-browser-core-synthetic
+          path: build/fitpros-browser-core.log
+          retention-days: 2
+          if-no-files-found: error
+  simulator-compile:
+    needs: synthetic-core
+    if: github.event.repository.private == false
+    runs-on: macos-15
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bash Scripts/prepare-ios-ci.sh
+      - name: Compile native bridge and retain existing planning regression checks
+        env:
+          PIVOT_UI_ONLY_TESTING: v8-089-planning-regression
+        run: bash Scripts/preview-ui.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: FitPros-browser-simulator-synthetic
+          path: |
+            build/online-privacy-build.log
+            build/online-privacy-tests.log
+            build/Previews/OnlinePrivacy/
+            build/selected-simulator.json
+          retention-days: 2
+          if-no-files-found: ignore
