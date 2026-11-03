@@ -73,6 +73,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Align the synthetic simulator calendar with PivotDate
+        run: |
+          # PivotDate uses Europe/Rome; the existing UI test uses Calendar.current.
+          # Set the disposable runner before CoreSimulator boots, preserving both
+          # date assertions instead of skipping or rewriting either regression.
+          sudo systemsetup -settimezone Europe/Rome
+          test "$(sudo systemsetup -gettimezone)" = "Time Zone: Europe/Rome"
+          swift -e 'import Foundation; precondition(TimeZone.current.identifier == "Europe/Rome"); print("Synthetic runner calendar: " + TimeZone.current.identifier)'
       - run: bash Scripts/prepare-ios-ci.sh
       - name: Compile native bridge and retain existing planning regression checks
         env:
