@@ -109,8 +109,14 @@ def read_log(path):
 
 
 def planning_preflight(suites):
-    methods = suites.get("PlanningConversationInteractionTests", [])
-    if len(methods) != 2 or len(set(methods)) != 2:
+    methods = [
+        "testPlanningRefinementRetainsTargetExcludedDaysAndInteractiveCardAfterRelaunch",
+        "testAlternativeRequiresDurationAndRouteReviewAndStagesWithoutCalendarWrites",
+        "testExactTitleAndClockCorrectionSurvivesRelaunchAndRequiresNewRouteReview",
+        "testUnrecognizedCorrectionDoesNotSaveChoicesAndExplicitRemovalKeepsPlan",
+    ]
+    discovered = suites.get("PlanningConversationInteractionTests", [])
+    if len(discovered) != len(methods) or set(discovered) != set(methods):
         raise ValueError("update_explicit_planning_preflight_coverage")
     return [f"PlanningConversationInteractionTests/{method}" for method in methods]
 

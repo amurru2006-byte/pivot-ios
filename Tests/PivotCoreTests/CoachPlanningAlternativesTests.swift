@@ -246,4 +246,180 @@ final class CoachPlanningAlternativesTests: XCTestCase {
         XCTAssertThrowsError(try CoachPlanningRefinement.apply(.init(index: 1, weekday: 6), to: original,
             session: session, events: changed, data: data, calendarAccess: true, now: now))
     }
+func testNaturalCorrectionsResolveExactTitlesClockAndExplicitUnchangedActivity() throws {
+        var sources = try fixture(count: 2).1
+        sources[0].title = "Bench"; sources[1].title = "Stacco rumeno"
+        XCTAssertEqual(try CoachPlanningRefinement.parse("Metti STACCO RUMENO a venerdì alle 16:30, lascia fermo il primo.", sources: sources),
+                       .init(index: 1, weekday: 6, minute: 990))
+        XCTAssertEqual(try CoachPlanningRefinement.parse("il secondo meglio venerdì", sources: sources), .init(index: 1, weekday: 6))
+        XCTAssertEqual(try CoachPlanningRefinement.parse("sposta Bench al martedì alle 15", sources: sources),
+                       .init(index: 0, weekday: 3, minute: 900))
+    }
+
+    func testAmbiguousTitlesNegationContradictionsAndInvalidClocksDoNotGuess() throws {
+        var sources = try fixture(count: 2).1
+        sources[0].title = "Bench"; sources[1].title = "Bench"
+        for text in ["sposta Bench a venerdì", "non sposta il secondo a venerdì",
+                     "sposta il secondo a venerdì se posso", "sposta il secondo a venerdì alle 24:00",
+                     "sposta il secondo a venerdì alle 16:60", "sposta il secondo a venerdì alle 16:3",
+                     "sposta il secondo a venerdì, lascia fermo il secondo",
+                     "sposta il secondo a venerdì e il primo a sabato"] {
+            XCTAssertThrowsError(try CoachPlanningRefinement.parse(text, sources: sources), text)
+        }
+        XCTAssertThrowsError(try CoachPlanningRefinement.parse("sposta il primo a venerdì", count: Int.max))
+        XCTAssertThrowsError(try CoachPlanningRefinement.parse("sposta il primo a venerdì", count: -1))
+    }
+
+    private func corrected(_ session: CoachPlanningSession, _ events: [CalendarItem], _ data: AppData,
+                           minute: Int? = nil) throws -> CoachPlanningRefinement.Revision {
+        let original = try XCTUnwrap(options(session, events, data).first)
+        return try CoachPlanningRefinement.revise(.init(index: 1, weekday: 6, minute: minute), option: original,
+            session: session, events: events, data: data, calendarAccess: true, now: now)
+    }
+
+    func testExactClockCorrectionPreservesOtherStartFullDurationAndTravelBudget() throws {
+        let (session, events, data) = try fixture(count: 2, seconds: 3601)
+        let original = try XCTUnwrap(options(session, events, data).first)
+        let revision = try corrected(session, events, data, minute: 990)
+        XCTAssertEqual(revision.option.moves[0].proposedStart, original.moves[0].proposedStart)
+        XCTAssertEqual(PivotDate.time(revision.option.moves[1].proposedStart), "16:30")
+        XCTAssertEqual(revision.option.moves[1].proposedEnd.timeIntervalSince(revision.option.moves[1].proposedStart), 3601)
+        XCTAssertEqual(revision.session.localPins?.count, 2)
+        XCTAssertTrue(CoachPlanningAlternatives.matchesPins(revision.option, session: revision.session))
+        XCTAssertNil(CoachPlanner.validate(revision.option, events: events, data: data, now: now))
+        XCTAssertNil(session.localPins); XCTAssertTrue(data.moves.isEmpty)
+    }
+
+    func testCorrectionPinsSurviveBackupAndReopeningWithoutBecomingCalendarMoves() throws {
+        let (session, events, initial) = try fixture(count: 2)
+        let revision = try corrected(session, events, initial, minute: 990)
+        var data = initial
+        try CoachPlanningStore.save(revision.session, in: &data.coachState)
+        let restored = try BackupCodec.decode(BackupCodec.encode(data))
+        let saved = try XCTUnwrap(restored.coachState.planningSessions?.first)
+        XCTAssertEqual(saved.localPins, revision.session.localPins)
+        let reopened = try XCTUnwrap(options(saved, events, restored, at: now.addingTimeInterval(121)).first)
+        XCTAssertEqual(reopened.moves.map(\.proposedStart), revision.option.moves.map(\.proposedStart))
+        XCTAssertTrue(restored.moves.isEmpty); XCTAssertTrue(restored.coachState.pendingCalendarChanges.isEmpty)
+        XCTAssertEqual(restored.income.count, initial.income.count); XCTAssertEqual(restored.payments.count, initial.payments.count)
+    }
+
+    func testDayOnlyChoiceKeepsAbsoluteFridayAcrossMidnight() throws {
+        let (session, events, initial) = try fixture(count: 2)
+        let revision = try corrected(session, events, initial)
+        XCTAssertNil(revision.session.localPins?.last?.start)
+        var data = initial
+        try CoachPlanningStore.save(revision.session, in: &data.coachState)
+        let tomorrow = now.addingTimeInterval(20 * 3600)
+        for option in try options(revision.session, events, data, at: tomorrow) {
+            XCTAssertEqual(PivotDate.calendar.startOfDay(for: option.moves[1].proposedStart),
+                           revision.session.localPins?.last?.day)
+            XCTAssertEqual(option.moves[0].proposedStart, revision.option.moves[0].proposedStart)
+        }
+        XCTAssertFalse(try options(revision.session, events, data, at: tomorrow).isEmpty)
+    }
+
+    func testChangedExternalBusyTimeDoesNotSilentlyMovePinnedActivities() throws {
+        let (session, events, initial) = try fixture(count: 2)
+        let revision = try corrected(session, events, initial, minute: 990)
+        var data = initial
+        try CoachPlanningStore.save(revision.session, in: &data.coachState)
+        var blocker = events[0]
+        blocker.id = "external-blocker-qa"; blocker.eventIdentifier = "native-blocker-qa"
+        blocker.start = revision.option.moves[1].proposedStart; blocker.end = revision.option.moves[1].proposedEnd
+        data.rules[blocker.id] = .init(flexibility: .fixed, minimumMinutes: 1, travelConfirmed: true)
+        XCTAssertTrue(try options(revision.session, events + [blocker], data).isEmpty)
+        XCTAssertEqual(data.coachState.planningSessions?.first?.localPins, revision.session.localPins)
+        XCTAssertTrue(data.moves.isEmpty); XCTAssertTrue(data.coachState.pendingCalendarChanges.isEmpty)
+    }
+
+    func testStageCannotBypassSavedChoicesUsingAnotherStillFreshAlternative() throws {
+        let (session, events, initial) = try fixture(count: 2)
+        let original = try XCTUnwrap(options(session, events, initial).first)
+        let revision = try corrected(session, events, initial, minute: 990)
+        var data = initial
+        try CoachPlanningStore.save(revision.session, in: &data.coachState)
+        XCTAssertThrowsError(try CoachPlanningAlternatives.stage(original, session: revision.session, calendarAccess: true,
+            events: events, data: &data, now: now, preparationIncluded: true, routesReviewed: true))
+        XCTAssertTrue(data.moves.isEmpty)
+        try CoachPlanningAlternatives.stage(revision.option, session: revision.session, calendarAccess: true,
+            events: events, data: &data, now: now, preparationIncluded: true, routesReviewed: true)
+        XCTAssertEqual(data.coachState.pendingCalendarChanges.count, 2)
+        XCTAssertTrue(data.moves.allSatisfy { !$0.syncedToCalendar })
+    }
+
+    func testInvalidDuplicateUnknownOrMismatchedCivilDayPinsAreRejectedInBackups() throws {
+        let (session, events, initial) = try fixture(count: 2)
+        let revision = try corrected(session, events, initial, minute: 990)
+        let pin = try XCTUnwrap(revision.session.localPins?.first)
+        let nextDay = PivotDate.calendar.date(byAdding: .day, value: 1, to: pin.day)!
+        for bad in [
+            [pin, pin],
+            [CoachPlanningPin(sourceID: "unknown-qa", day: pin.day, start: nil)],
+            [CoachPlanningPin(sourceID: events[0].id, day: pin.day.addingTimeInterval(60), start: nil)],
+            [CoachPlanningPin(sourceID: events[0].id, day: pin.day, start: nextDay)]
+        ] {
+            var data = initial
+            data.coachState.planningSessions?[0].localPins = bad
+            XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encode(data)))
+        }
+    }
+
+    func testBackupWithoutNewOptionalPinsRemainsReadable() throws {
+        let (_, _, data) = try fixture(count: 2)
+        let decoded = try BackupCodec.decode(BackupCodec.encode(data))
+        XCTAssertNil(decoded.coachState.planningSessions?.first?.localPins)
+        XCTAssertTrue(CoachPlanningStore.valid(decoded.coachState))
+    }
+
+    func testCloudContinuationPreservesLocalPinsButNeverEncodesThemInProviderContext() throws {
+        let (session, events, initial) = try fixture(count: 2)
+        let revision = try corrected(session, events, initial, minute: 990)
+        var data = initial
+        try CoachPlanningStore.save(revision.session, in: &data.coachState)
+        let snap = try CoachV8Snapshot.make(message: "Continua il piano QA", events: events, data: data, now: now,
+            purpose: "conversation", protocolVersion: 4, calendarScope: .week)
+        let remapped = try XCTUnwrap(snap.request.planningContext?.first?.intent)
+        let response = CoachV8Response(version: 4, requestID: snap.request.requestID, mode: .recover,
+            eventIDs: [], reply: "QA", actions: [], planning: remapped)
+        let continued = try CoachPlanningSession.make(response, snapshot: snap, messageID: UUID(), userMessageID: UUID(),
+            access: .init(calendar: true, online: true), events: events, data: data, now: now)
+        XCTAssertEqual(continued.id, revision.session.id)
+        XCTAssertEqual(continued.localPins, revision.session.localPins)
+        let raw = String(decoding: snap.encodedRequest, as: UTF8.self)
+        XCTAssertFalse(raw.contains("localPins"))
+        for event in events { XCTAssertFalse(raw.contains(event.id)) }
+    }
+
+    func testExpiredOrIncompatibleSavedChoicesRequireExplicitReview() throws {
+        let (session, events, initial) = try fixture(count: 2)
+        let revision = try corrected(session, events, initial, minute: 990)
+        var changed = revision.session
+        changed.intent.allowedDayOffsets = [1, 3]
+        var data = initial
+        try CoachPlanningStore.save(changed, in: &data.coachState)
+        XCTAssertThrowsError(try options(changed, events, data))
+        XCTAssertEqual(data.coachState.planningSessions?.first?.localPins, revision.session.localPins)
+        data = initial
+        try CoachPlanningStore.save(revision.session, in: &data.coachState)
+        XCTAssertThrowsError(try options(revision.session, events, data, at: now.addingTimeInterval(2 * 86400)))
+        XCTAssertTrue(data.moves.isEmpty)
+    }
+
+    func testFailedOrCancelledCorrectionLeavesPreviouslySavedChoicesUntouched() throws {
+        let (session, events, initial) = try fixture(count: 2)
+        let revision = try corrected(session, events, initial, minute: 990)
+        var data = initial
+        try CoachPlanningStore.save(revision.session, in: &data.coachState)
+        let before = data.coachState.planningSessions
+        for minute in [0, 1439] {
+            XCTAssertThrowsError(try CoachPlanningRefinement.revise(.init(index: 1, weekday: 6, minute: minute),
+                option: revision.option, session: revision.session, events: events, data: data, calendarAccess: true, now: now))
+        }
+        XCTAssertThrowsError(try CoachPlanningRefinement.revise(.init(index: 1, weekday: 6),
+            option: revision.option, session: revision.session, events: events, data: data,
+            calendarAccess: true, now: now, isCancelled: { true })) { XCTAssertTrue($0 is CancellationError) }
+        XCTAssertEqual(data.coachState.planningSessions, before)
+        XCTAssertTrue(data.moves.isEmpty)
+    }
 }

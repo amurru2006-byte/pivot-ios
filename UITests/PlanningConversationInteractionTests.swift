@@ -81,4 +81,65 @@ final class PlanningConversationInteractionTests: XCTestCase {
         XCTAssertTrue(audit.label.contains("1 attività · 1 incassi · 500 ricevuti · 500 da incassare"), audit.label)
         XCTAssertTrue(app.buttons["coach-planning-card"].exists)
     }
+private func correctFirstAlternative(_ app: XCUIApplication, text: String) {
+        tap(app.switches["coach-planning-preparation"], app)
+        tap(app.buttons["coach-planning-search"], app)
+        let field = app.textFields.matching(identifier: "coach-planning-correction").firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 15))
+        tap(field, app); field.typeText(text)
+        let done = app.buttons["pivot-keyboard-done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 8)); done.tap()
+        tap(app.buttons.matching(identifier: "coach-planning-refine").firstMatch, app)
+    }
+    private func tomorrowWeekday() -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Rome")!
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: Date())!
+        return ["", "domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"][calendar.component(.weekday, from: tomorrow)]
+    }
+    func testExactTitleAndClockCorrectionSurvivesRelaunchAndRequiresNewRouteReview() {
+        let app = launch()
+        send("Recupera Impegno QA 1 domani pomeriggio", app, authorize: true)
+        openPlan(app)
+        correctFirstAlternative(app, text: "sposta Impegno QA 1 a \(tomorrowWeekday()) alle 14:30")
+        XCTAssertTrue(app.staticTexts["coach-planning-saved-choices"].waitForExistence(timeout: 15))
+        let stage = app.buttons.matching(identifier: "coach-planning-stage").firstMatch
+        XCTAssertTrue(stage.exists); XCTAssertFalse(stage.isEnabled)
+        let message = app.staticTexts["coach-planning-message"]
+        let saved = expectation(for: NSPredicate(format: "label CONTAINS %@", "Scelte conservate"), evaluatedWith: message)
+        wait(for: [saved], timeout: 10)
+        leavePlan(app); app.terminate(); app.launch(); tap(app.buttons["open-pivot-coach"], app)
+        openPlan(app)
+        XCTAssertTrue(app.staticTexts["coach-planning-saved-choices"].exists)
+        let clock = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "alle 14:30")).firstMatch
+        XCTAssertTrue(clock.exists)
+        tap(app.switches["coach-planning-preparation"], app)
+        tap(app.buttons["coach-planning-search"], app)
+        let proposed = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "14:30–")).firstMatch
+        XCTAssertTrue(proposed.waitForExistence(timeout: 15))
+        XCTAssertFalse(app.buttons.matching(identifier: "coach-planning-stage").firstMatch.isEnabled)
+    }
+    func testUnrecognizedCorrectionDoesNotSaveChoicesAndExplicitRemovalKeepsPlan() {
+        let app = launch()
+        send("Recupera Impegno QA 1 domani pomeriggio", app, authorize: true)
+        openPlan(app)
+        correctFirstAlternative(app, text: "sposta quello a venerdì")
+        let message = app.staticTexts["coach-planning-message"]
+        XCTAssertTrue(message.waitForExistence(timeout: 8))
+        XCTAssertTrue(message.label.contains("Indica una sola attività"), message.label)
+        XCTAssertFalse(app.staticTexts["coach-planning-saved-choices"].exists)
+        let field = app.textFields.matching(identifier: "coach-planning-correction").firstMatch
+        tap(field, app)
+        let current = field.value as? String ?? ""
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
+        field.typeText("metti il primo a \(tomorrowWeekday()) alle 14:30")
+        tap(app.buttons["pivot-keyboard-done"], app)
+        tap(app.buttons.matching(identifier: "coach-planning-refine").firstMatch, app)
+        XCTAssertTrue(app.staticTexts["coach-planning-saved-choices"].waitForExistence(timeout: 15))
+        tap(app.buttons["coach-planning-clear-choices"], app)
+        XCTAssertTrue(app.staticTexts["coach-planning-saved-choices"].waitForNonExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["1. Impegno QA 1"].exists)
+        XCTAssertTrue(app.staticTexts["coach-planning-days"].exists)
+        XCTAssertFalse(app.buttons.matching(identifier: "coach-planning-stage").firstMatch.exists)
+    }
 }

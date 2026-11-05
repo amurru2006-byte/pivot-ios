@@ -38,13 +38,30 @@ enum CoachPlanningAlternatives {
         let selected = try CoachPlanningSelection.restore(session, calendarAccess: calendarAccess, events: events, data: data, now: now)
         guard selected.unconfirmedTravelIDs.isEmpty, selected.pairedReviewIDs.isEmpty else { throw Failure.logistics }
         let budgets = try selected.sources.map { try budget(for: $0, data: data) }
+        var effectiveFixed = fixedMoves
+        var effectiveDays = restrictedDays
+        for pin in session.localPins ?? [] {
+            guard let source = selected.sources.first(where: { $0.id == pin.sourceID }), pin.isValid(for: source),
+                  session.allowedDays.contains(pin.day), !session.excludedDays.contains(pin.day),
+                  !session.protectedExcludedDays.contains(pin.day),
+                  effectiveDays[pin.sourceID].map({ $0 == pin.day }) ?? true else { throw CoachPlanningRefinement.Failure.savedChoice }
+            effectiveDays[pin.sourceID] = pin.day
+            if let start = pin.start {
+                guard start > now else { throw CoachPlanningRefinement.Failure.savedChoice }
+                let move = PlanMove(source: source, proposedStart: start,
+                    proposedEnd: start.addingTimeInterval(source.end.timeIntervalSince(source.start)))
+                if let existing = effectiveFixed.first(where: { $0.source.id == pin.sourceID }) {
+                    guard existing.proposedStart == move.proposedStart, existing.proposedEnd == move.proposedEnd else { throw CoachPlanningRefinement.Failure.savedChoice }
+                } else { effectiveFixed.append(move) }
+            }
+        }
         let sourceIDs = Set(selected.sources.map(\.id))
-        guard fixedMoves.count <= selected.sources.count,
-              Set(fixedMoves.map { $0.source.id }).count == fixedMoves.count,
-              Set(fixedMoves.map { $0.source.id }).isSubset(of: sourceIDs),
-              Set(restrictedDays.keys).isSubset(of: sourceIDs),
-              restrictedDays.values.allSatisfy({ CoachPlanningSession.validDate($0) && PivotDate.calendar.startOfDay(for: $0) == $0 }) else { throw Failure.invalid }
-        for move in fixedMoves {
+        guard effectiveFixed.count <= selected.sources.count,
+              Set(effectiveFixed.map { $0.source.id }).count == effectiveFixed.count,
+              Set(effectiveFixed.map { $0.source.id }).isSubset(of: sourceIDs),
+              Set(effectiveDays.keys).isSubset(of: sourceIDs),
+              effectiveDays.values.allSatisfy({ CoachPlanningSession.validDate($0) && PivotDate.calendar.startOfDay(for: $0) == $0 }) else { throw Failure.invalid }
+        for move in effectiveFixed {
             guard selected.sources.contains(move.source), move.proposedStart > now,
                   abs(move.proposedEnd.timeIntervalSince(move.proposedStart) - move.source.end.timeIntervalSince(move.source.start)) < 0.001 else { throw Failure.changed }
         }
@@ -72,10 +89,10 @@ enum CoachPlanningAlternatives {
             }
             let source = selected.sources[index]
             let intervals = selected.allowedIntervals.filter { interval in
-                restrictedDays[source.id].map { PivotDate.calendar.isDate(interval.start, inSameDayAs: $0) } ?? true
+                effectiveDays[source.id].map { PivotDate.calendar.isDate(interval.start, inSameDayAs: $0) } ?? true
             }
             let windows: [CalendarRecoveryWindow]
-            if let fixed = fixedMoves.first(where: { $0.source.id == source.id }) {
+            if let fixed = effectiveFixed.first(where: { $0.source.id == source.id }) {
                 let occupiedStart = fixed.proposedStart.addingTimeInterval(-Double(budgets[index].beforeMinutes) * 60)
                 let occupiedEnd = fixed.proposedStart.addingTimeInterval(Double(budgets[index].activityMinutes + budgets[index].afterMinutes) * 60)
                 guard occupiedStart >= earliest,
@@ -109,7 +126,7 @@ enum CoachPlanningAlternatives {
         guard routesReviewed, option.createdAt <= now, now.timeIntervalSince(option.createdAt) <= 120 else { throw Failure.changed }
         let selected = try CoachPlanningSelection.restore(session, calendarAccess: calendarAccess, events: events, data: data, now: now)
         guard selected.unconfirmedTravelIDs.isEmpty, selected.pairedReviewIDs.isEmpty else { throw Failure.logistics }
-        guard option.moves.count == selected.sources.count else { throw Failure.invalid }
+        guard option.moves.count == selected.sources.count, matchesPins(option, session: session) else { throw Failure.invalid }
         var occupiedEnd: Date?
         for (source, move) in zip(selected.sources, option.moves) {
             guard move.source == source, abs(move.proposedEnd.timeIntervalSince(move.proposedStart) - source.end.timeIntervalSince(source.start)) < 0.001 else { throw Failure.invalid }
@@ -129,6 +146,13 @@ enum CoachPlanningAlternatives {
         data = next
     }
 
+    static func matchesPins(_ option: CoachOption, session: CoachPlanningSession) -> Bool {
+        (session.localPins ?? []).allSatisfy { pin in
+            guard let move = option.moves.first(where: { $0.source.id == pin.sourceID }) else { return false }
+            return PivotDate.calendar.isDate(move.proposedStart, inSameDayAs: pin.day)
+                && (pin.start.map { $0 == move.proposedStart } ?? true)
+        }
+    }
     private static func budget(for source: CalendarItem, data: AppData) throws -> CalendarTimeBudget {
         let seconds = source.end.timeIntervalSince(source.start)
         guard seconds.isFinite, seconds > 0, seconds <= 86400,

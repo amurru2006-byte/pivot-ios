@@ -28,7 +28,7 @@ jobs:
           log = Path('build/ai-preflight-core.log').read_text()
           assert not re.search(r'Test Case .* (?:skipped|failed)', log)
           count = 0
-          for suite, expected in [('CoachPlanningAlternativesTests', 20), ('CoachAgendaSignalsTests', 7)]:
+          for suite, expected in [('CoachPlanningAlternativesTests', 32), ('CoachAgendaSignalsTests', 7)]:
               source = Path(f'Tests/PivotCoreTests/{suite}.swift').read_text()
               names = re.findall(r'func (test\w+)\(', source)
               assert len(names) == len(set(names)) == expected
@@ -56,7 +56,11 @@ jobs:
         with:
           persist-credentials: false
       - run: bash Scripts/prepare-ios-ci.sh
-      - name: Compilazione simulatore e due regressioni conversazione esistenti
+      - name: Calendario civile del simulatore coerente con Pivot
+        run: |
+          sudo systemsetup -settimezone Europe/Rome
+          swift -e 'import Foundation; guard TimeZone.current.identifier == "Europe/Rome" else { fatalError("Unexpected simulator host timezone") }'
+      - name: Compilazione simulatore e quattro prove conversazione e scelte salvate
         env:
           PIVOT_UI_ONLY_TESTING: v8-089-planning-regression
         run: bash Scripts/preview-ui.sh

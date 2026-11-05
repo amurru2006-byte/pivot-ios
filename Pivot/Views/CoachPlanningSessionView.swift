@@ -11,6 +11,7 @@ struct CoachPlanningSessionView: View {
     @State private var message: String?
     @State private var planning = false
     @State private var task: Task<Void, Never>?
+    @State private var preservedUpdate: Date?
     private var session: CoachPlanningSession? { store.data.coachState.planningSessions?.first { $0.id == sessionID } }
 
     var body: some View {
@@ -34,6 +35,20 @@ struct CoachPlanningSessionView: View {
                     if let minute = session.intent.earliestMinute { Text("Non prima delle \(minute / 60):\(String(format: "%02d", minute % 60))") }
                     if let minute = session.intent.latestMinute { Text("Entro le \(minute / 60):\(String(format: "%02d", minute % 60))") }
                     if let alias = session.intent.afterEventID, let reference = session.bindings[alias] { Text("Dopo: " + reference.title) }
+                    if let pins = session.localPins, !pins.isEmpty {
+                        Text("Scelte conservate nel piano").font(.headline).accessibilityIdentifier("coach-planning-saved-choices")
+                        ForEach(pins, id: \.sourceID) { pin in
+                            if let source = session.bindings.values.first(where: { $0.id == pin.sourceID }) {
+                                Text(source.title + " · " + PivotDate.shortDate(pin.day) + (pin.start.map { " alle " + PivotDate.time($0) } ?? " · orario da cercare"))
+                            }
+                        }
+                        Text("Restano valide anche riaprendo il piano o continuando la chat. Se l’agenda cambia, le ricontrollo senza spostarle automaticamente.").font(.caption)
+                        if session.status == .draft {
+                            Button("Rimuovi queste scelte di giorno e orario") { clearPins(session) }
+                                .frame(minHeight: 44).disabled(planning || store.locked)
+                                .accessibilityIdentifier("coach-planning-clear-choices")
+                        }
+                    }
                     if session.status == .staged {
                         Text("Alternativa preparata in Pivot. Restano le conferme finali per il Calendario.")
                         NavigationLink("Apri le conferme per il Calendario") { CoachView() }.frame(minHeight: 44)
@@ -62,10 +77,10 @@ struct CoachPlanningSessionView: View {
                     PivotCard(tint: PivotTheme.blue) {
                         Text(option.explanation).font(.headline)
                         Text(option.consequences).font(.subheadline).foregroundStyle(PivotTheme.muted)
-                        TextField("Es. sposta il secondo a venerdì", text: Binding(
+                        TextField("Es. sposta il secondo a venerdì alle 16:30", text: Binding(
                             get: { corrections[option.id] ?? "" }, set: { corrections[option.id] = $0 }))
                             .textFieldStyle(.roundedBorder).accessibilityIdentifier("coach-planning-correction")
-                        Text("Correzione locale di questa alternativa: le altre attività restano agli orari mostrati. Giorni esclusi e ordine restano validi.")
+                        Text("Puoi usare il nome esatto dell’attività. Le altre restano agli orari mostrati; salvo queste scelte nel piano. Giorni esclusi e ordine restano validi.")
                             .font(.caption).foregroundStyle(PivotTheme.muted)
                         Button("Ricalcola questa alternativa") { refine(option, session: session) }
                             .frame(minHeight: 44).disabled(planning || store.locked || (corrections[option.id] ?? "").isEmpty)
@@ -97,21 +112,23 @@ struct CoachPlanningSessionView: View {
             if let message { Text(message).foregroundStyle(PivotTheme.amber).accessibilityIdentifier("coach-planning-message") }
         }.navigationTitle("Piano di recupero")
             .onChange(of: preparationIncluded) { _, _ in invalidate() }
-            .onChange(of: store.data.updatedAt) { _, _ in invalidate() }
+            .onChange(of: store.data.updatedAt) { _, value in
+                if preservedUpdate == value { preservedUpdate = nil } else { invalidate() }
+            }
             .onChange(of: calendar.events) { _, _ in invalidate() }
             .onDisappear { task?.cancel(); planning = false }
     }
-    private func invalidate() { task?.cancel(); planning = false; options = []; reviewed = []; corrections = [:] }
+    private func invalidate() { task?.cancel(); planning = false; options = []; reviewed = []; corrections = [:]; preservedUpdate = nil }
     private func refine(_ option: CoachOption, session: CoachPlanningSession) {
         guard !store.locked, !store.isRestoring, !planning else { return }
         do {
-            let request = try CoachPlanningRefinement.parse(corrections[option.id] ?? "", count: option.moves.count)
+            let request = try CoachPlanningRefinement.parse(corrections[option.id] ?? "", sources: option.moves.map(\.source))
             let data = store.data, events = calendar.events, access = calendar.hasAccess, now = Date()
             planning = true; message = nil
             task = Task { @MainActor in
                 do {
                     let worker = Task.detached(priority: .userInitiated) {
-                        try CoachPlanningRefinement.apply(request, to: option, session: session,
+                        try CoachPlanningRefinement.revise(request, option: option, session: session,
                             events: events, data: data, calendarAccess: access, now: now,
                             isCancelled: { Task<Never, Never>.isCancelled })
                     }
@@ -120,11 +137,36 @@ struct CoachPlanningSessionView: View {
                     guard !Task.isCancelled else { return }
                     planning = false
                     guard data.updatedAt == store.data.updatedAt, events == calendar.events, !store.locked,
-                          let index = options.firstIndex(where: { $0.id == option.id }) else { return }
-                    options[index] = revised; reviewed.remove(option.id); corrections.removeValue(forKey: option.id)
-                    message = "Alternativa ricalcolata. Le altre attività sono rimaste ferme; ricontrolla i tragitti prima di sceglierla."
+                          !store.isRestoring, calendar.hasAccess, options.contains(where: { $0.id == option.id }),
+                          Date().timeIntervalSince(revised.option.createdAt) <= 120,
+                          CoachPlanner.validate(revised.option, events: calendar.events, data: store.data, now: Date()) == nil else {
+                        message = "L’agenda o i permessi sono cambiati: nessuna correzione salvata. Cerca nuovamente."; return
+                    }
+                    var failure: String?
+                    let saved = store.change { value in
+                        do { try CoachPlanningStore.save(revised.session, in: &value.coachState) }
+                        catch { failure = error.localizedDescription }
+                    }
+                    guard saved, failure == nil else { message = failure ?? "Non riesco a salvare le scelte."; return }
+                    preservedUpdate = store.data.updatedAt
+                    options = [revised.option]; reviewed = []; corrections = [:]
+                    message = "Scelte conservate nel piano. Le altre attività sono rimaste ferme; ricontrolla i tragitti prima di scegliere. Il Calendario non è cambiato."
+                    if !(await store.flushPendingWrites()) {
+                        message = "Scelte ancora in memoria: il salvataggio su disco non è riuscito. Tieni Pivot aperto e riprova il salvataggio nelle Impostazioni."
+                    }
                 } catch { guard !Task.isCancelled else { return }; planning = false; message = error.localizedDescription }
             }
+        } catch { message = error.localizedDescription }
+    }
+    private func clearPins(_ value: CoachPlanningSession) {
+        guard !store.locked, !store.isRestoring, !planning else { return }
+        do {
+            var next = value; next.localPins = nil; next.updatedAt = Date()
+            guard next.isActive(at: next.updatedAt) else { throw CoachPlanningSession.Failure.expired }
+            var state = store.data.coachState; try CoachPlanningStore.save(next, in: &state)
+            guard store.change({ $0.coachState = state }) else { message = "Non riesco a salvare la modifica."; return }
+            invalidate()
+            message = "Rimosse soltanto le scelte locali di giorno e orario. Giorni esclusi, ordine, durate e Calendario restano invariati."
         } catch { message = error.localizedDescription }
     }
     private func readmit(_ value: CoachPlanningSession) {

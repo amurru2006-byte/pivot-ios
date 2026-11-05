@@ -39,6 +39,9 @@ struct CoachPlanningSession: Codable, Equatable, Identifiable {
     var bindings: [String: CalendarItem]
     // Earlier exclusions cannot be silently lifted by an inconsistent model turn.
     var protectedExcludedDays: [Date] = []
+    // Local decisions, keyed by native source identity, never provider aliases.
+    // Optional so backups created before this feature remain readable.
+    var localPins: [CoachPlanningPin]? = nil
     var status: Status = .draft
 
     var isValid: Bool {
@@ -52,7 +55,8 @@ struct CoachPlanningSession: Codable, Equatable, Identifiable {
               }),
               [createdAt, updatedAt, anchor].allSatisfy(Self.validDate), createdAt <= anchor, anchor <= updatedAt,
               dayKey == PivotDate.key(anchor), protectedExcludedDays.count <= 7,
-              Set(protectedExcludedDays).count == protectedExcludedDays.count else { return false }
+              Set(protectedExcludedDays).count == protectedExcludedDays.count,
+              validLocalPins else { return false }
         return protectedExcludedDays.allSatisfy { date in
             guard Self.validDate(date), date == PivotDate.calendar.startOfDay(for: date),
                   let offset = Self.offset(of: date, from: anchor) else { return false }
@@ -90,6 +94,7 @@ struct CoachPlanningSession: Codable, Equatable, Identifiable {
             createdAt: parent?.createdAt ?? snapshot.request.now, updatedAt: now, anchor: snapshot.request.now,
             intent: rawIntent, bindings: bindings)
         if let parent { value.id = parent.id }
+        value.localPins = parent?.localPins
         let protected = (parent?.protectedExcludedDays ?? []) + value.excludedDays
         value.protectedExcludedDays = Array(Set(protected.filter {
             Self.offset(of: $0, from: value.anchor).map { (0...6).contains($0) } ?? false
@@ -147,6 +152,15 @@ struct CoachPlanningSession: Codable, Equatable, Identifiable {
         let readmitted = Set(pendingReadmittedDays)
         guard !readmitted.isEmpty else { throw Failure.invalid }
         protectedExcludedDays.removeAll { readmitted.contains($0) }; updatedAt = now
+    }
+    private var validLocalPins: Bool {
+        let pins = localPins ?? []
+        let sources = intent.eventIDs.compactMap { bindings[$0] }
+        return pins.count <= sources.count && Set(pins.map(\.sourceID)).count == pins.count
+            && pins.allSatisfy { pin in
+                guard let source = sources.first(where: { $0.id == pin.sourceID }) else { return false }
+                return pin.isValid(for: source)
+            }
     }
     private func days(_ offsets: [Int]) -> [Date] {
         guard Self.validDate(anchor) else { return [] }
