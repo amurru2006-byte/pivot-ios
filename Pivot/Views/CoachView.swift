@@ -76,7 +76,7 @@ struct CoachView: View {
                         }
                             .frame(minHeight: 44).disabled(isPlanning || store.locked)
                     }
-                }.accessibilityIdentifier("coach-agenda-signals")
+                }
             }
             NavigationLink { PersonalForecastView() } label: {
                 Label("Previsioni personali", systemImage: "sparkles").frame(maxWidth: .infinity)
