@@ -20,7 +20,11 @@ struct CoachDocumentsView: View {
     private var unavailable: Bool { busy || store.locked || store.isLoading || store.isRestoring || store.isImportingCoachDocument }
 
     var body: some View {
+        ScrollViewReader { proxy in
         List {
+            // Keep import/read feedback at the beginning of the list instead
+            // of virtualizing it below the newly inserted document rows.
+            if let status { Section { Text(status).accessibilityIdentifier("coach-document-status").id("coach-document-feedback") } }
             #if DEBUG && targetEnvironment(simulator)
             if ProcessInfo.processInfo.arguments.contains("--interaction-test"),
                UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_DOCUMENT_ID"] ?? "") != nil {
@@ -100,7 +104,6 @@ struct CoachDocumentsView: View {
                     .accessibilityIdentifier("coach-document-read")
             }
             if busy { ProgressView("Elaborazione locale…") }
-            if let status { Section { Text(status).accessibilityIdentifier("coach-document-status") } }
             if let packet {
                 Section("Controlla la lettura") {
                     ForEach(packet.sources) { source in
@@ -118,6 +121,10 @@ struct CoachDocumentsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
+        }
+        .onChange(of: status) { _, value in
+            if value != nil { proxy.scrollTo("coach-document-feedback", anchor: .top) }
+        }
         }
         .navigationTitle("Foto e documenti")
         .toolbar {

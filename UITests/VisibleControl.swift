@@ -13,9 +13,27 @@ extension XCTestCase {
               let snapshot = try? element.snapshot() else {
             XCTFail("Switch must be visible, enabled and in its expected initial state", file: file, line: line); return
         }
-        var nodes: [any XCUIElementSnapshot] = [snapshot], pending = snapshot.children
-        while let node = pending.popLast() { nodes.append(node); pending.append(contentsOf: node.children) }
-        guard let thumb = nodes.last(where: { $0.elementType == .switch && $0.frame.width > 0 && $0.frame.height > 0 })?.frame,
+        func flattened(_ value: any XCUIElementSnapshot) -> [any XCUIElementSnapshot] {
+            var nodes: [any XCUIElementSnapshot] = [], pending: [any XCUIElementSnapshot] = [value]
+            while let node = pending.popLast() { nodes.append(node); pending.append(contentsOf: node.children) }
+            return nodes
+        }
+        // A targeted snapshot can omit the native thumb while the full app
+        // snapshot still contains it. Do not mistake a full-width label row
+        // for the switch and touch the middle of its text.
+        guard let appSnapshot = try? app.snapshot() else {
+            XCTFail("Cannot capture the visible switch hierarchy", file: file, line: line); return
+        }
+        let wrappers = flattened(appSnapshot).filter {
+            $0.elementType == snapshot.elementType && $0.identifier == snapshot.identifier
+                && $0.label == snapshot.label && $0.frame == snapshot.frame
+        }
+        guard wrappers.count == 1,
+              let thumb = flattened(wrappers[0]).filter({
+                  $0.elementType == .switch && $0.frame.width > 0 && $0.frame.height > 0
+                      && snapshot.frame.contains($0.frame)
+              }).min(by: { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height })?.frame,
+              thumb.width <= thumb.height * 3,
               snapshot.frame.width > 0, snapshot.frame.height > 0 else {
             XCTFail("Cannot locate the native switch thumb", file: file, line: line); return
         }
@@ -121,6 +139,17 @@ extension XCTestCase {
             lastFrame = frame
             if let target, !target.identifier.isEmpty { diagnosticIdentifier = target.identifier }
             let finite = frame.minY.isFinite && frame.maxY.isFinite && frame.height > 0
+            // Toolbar buttons belong inside the foremost navigation bar,
+            // unlike scrolling content, which must remain below that bar.
+            // Require actual AX ancestry as well as complete visible bounds.
+            if finite, let target, let navigationFrame,
+               let bar = nodes.last(where: { $0.elementType == .navigationBar && $0.frame == navigationFrame }),
+               flattened(bar).contains(where: {
+                   $0.elementType == target.elementType && $0.identifier == target.identifier
+                       && $0.label == target.label && $0.frame == frame
+               }), screen.contains(frame), navigationFrame.contains(frame), element.isHittable {
+                return
+            }
             if finite && frame.minY >= top + 8 && frame.maxY <= bottom - 8 && element.isHittable {
                 return
             }
