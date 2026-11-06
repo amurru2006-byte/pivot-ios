@@ -79,7 +79,8 @@ final class CoachDocumentEventProposalTests: XCTestCase {
         XCTAssertThrowsError(try CoachDocumentEventResponse.decode(body([event(), event()], packet: p), packet: p))
     }
     func testSeveralEventsAndClarificationWithoutAnyEventRemainReviewable() throws {
-        let p = packet(); var timed = event(); timed["title"] = "Esperienza QA"; timed["kind"] = "timed"
+        var p = packet(); p.instruction += " Gli orari di questa prova sono Europe/Rome."
+        var timed = event(); timed["title"] = "Esperienza QA"; timed["kind"] = "timed"
         timed["day"] = "2027-04-13"; timed["startClock"] = "17:20"; timed["endClock"] = "18:05"
         timed["citations"] = [["document": "d1", "page": 1, "quote": "Esperienza QA: 13 aprile 2027 dalle 17:20 alle 18:05."]]
         let review = try CoachDocumentEventResponse.decode(body([event(), timed], packet: p), packet: p)
