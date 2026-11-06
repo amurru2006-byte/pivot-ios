@@ -76,7 +76,7 @@ final class DocumentCalendarInteractionTests: XCTestCase {
         XCTAssertTrue(app.buttons["Imposta inizio"].exists); XCTAssertTrue(app.buttons["Imposta fine"].exists)
         tap(app.buttons["creation-top-save"], app)
         XCTAssertFalse(app.alerts["Creare questo impegno nel Calendario?"].exists)
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Conferma inizio e fine")).firstMatch.exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Conferma inizio e fine")).firstMatch.waitForExistence(timeout: 8))
         close(app); audit(app, equals: "0 eventi · 0 spostamenti · 0 incassi")
     }
 }

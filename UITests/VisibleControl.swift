@@ -18,24 +18,39 @@ extension XCTestCase {
             while let node = pending.popLast() { nodes.append(node); pending.append(contentsOf: node.children) }
             return nodes
         }
-        // A targeted snapshot can omit the native thumb while the full app
-        // snapshot still contains it. Do not mistake a full-width label row
-        // for the switch and touch the middle of its text.
-        guard let appSnapshot = try? app.snapshot() else {
-            XCTFail("Cannot capture the visible switch hierarchy", file: file, line: line); return
-        }
-        let wrappers = flattened(appSnapshot).filter {
-            $0.elementType == snapshot.elementType && $0.identifier == snapshot.identifier
-                && $0.label == snapshot.label && $0.frame == snapshot.frame
-        }
-        guard wrappers.count == 1,
-              let thumb = flattened(wrappers[0]).filter({
-                  $0.elementType == .switch && $0.frame.width > 0 && $0.frame.height > 0
-                      && snapshot.frame.contains($0.frame)
-              }).min(by: { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height })?.frame,
-              thumb.width <= thumb.height * 3,
-              snapshot.frame.width > 0, snapshot.frame.height > 0 else {
-            XCTFail("Cannot locate the native switch thumb", file: file, line: line); return
+        let thumb: CGRect
+        if useAppCoordinates {
+            // Only the routing Form opts into app coordinates. Its targeted
+            // snapshot can omit the native child; resolve that child from
+            // the full app hierarchy without changing other controls' path.
+            guard let appSnapshot = try? app.snapshot() else {
+                XCTFail("Cannot capture the visible switch hierarchy", file: file, line: line); return
+            }
+            let wrappers = flattened(appSnapshot).filter {
+                $0.elementType == snapshot.elementType && $0.identifier == snapshot.identifier
+                    && $0.label == snapshot.label && $0.frame == snapshot.frame
+            }
+            guard wrappers.count == 1,
+                  let native = flattened(wrappers[0]).filter({
+                      $0.elementType == .switch && $0.frame.width > 0 && $0.frame.height > 0
+                          && snapshot.frame.contains($0.frame)
+                  }).min(by: { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height })?.frame,
+                  native.width <= native.height * 3,
+                  snapshot.frame.width > 0, snapshot.frame.height > 0 else {
+                XCTFail("Cannot locate the native switch thumb in the routing Form", file: file, line: line); return
+            }
+            thumb = native
+        } else {
+            // Preserve the previously verified element-relative touch for
+            // ordinary controls and sheets. Their AX snapshots differ from
+            // the routing Form and must not inherit its special lookup.
+            var nodes: [any XCUIElementSnapshot] = [snapshot], pending = snapshot.children
+            while let node = pending.popLast() { nodes.append(node); pending.append(contentsOf: node.children) }
+            guard let native = nodes.last(where: { $0.elementType == .switch && $0.frame.width > 0 && $0.frame.height > 0 })?.frame,
+                  snapshot.frame.width > 0, snapshot.frame.height > 0 else {
+                XCTFail("Cannot locate the native switch thumb", file: file, line: line); return
+            }
+            thumb = native
         }
         let dx = (thumb.midX - snapshot.frame.minX) / snapshot.frame.width
         let dy = (thumb.midY - snapshot.frame.minY) / snapshot.frame.height
@@ -117,6 +132,7 @@ extension XCTestCase {
         var owningScroll: XCUIElement?
         var diagnosticIdentifier = "unresolved-control"
         var lastFrame = CGRect.zero
+        var previousVisibleFrame: CGRect?
         for attempt in 0...maxSwipes {
             // Navigation/scroll ownership does not change when swiping this
             // screen. Avoid rediscovering the entire AX tree on every swipe.
@@ -138,7 +154,9 @@ extension XCTestCase {
             let frame = target?.frame ?? .zero
             lastFrame = frame
             if let target, !target.identifier.isEmpty { diagnosticIdentifier = target.identifier }
-            let finite = frame.minY.isFinite && frame.maxY.isFinite && frame.height > 0
+            let finite = frame.minX.isFinite && frame.maxX.isFinite
+                && frame.minY.isFinite && frame.maxY.isFinite
+                && frame.width > 0 && frame.height > 0
             // Toolbar buttons belong inside the foremost navigation bar,
             // unlike scrolling content, which must remain below that bar.
             // Require actual AX ancestry as well as complete visible bounds.
@@ -150,9 +168,27 @@ extension XCTestCase {
                }), screen.contains(frame), navigationFrame.contains(frame), element.isHittable {
                 return
             }
-            if finite && frame.minY >= top + 8 && frame.maxY <= bottom - 8 && element.isHittable {
-                return
+            if finite && screen.contains(frame) && frame.minY >= top + 8 && frame.maxY <= bottom - 8 {
+                // A Form can materialize a row between the app snapshot and
+                // its targeted snapshot after scrolling. Do not ask XCTest
+                // for an activation point until both hierarchies agree and
+                // the row keeps the same frame across two observations.
+                // This waits for layout only: it never retries a touch or
+                // replaces the live hittability check with geometry.
+                let agrees = target.map { target in
+                    nodes.contains {
+                        $0.elementType == target.elementType && $0.identifier == target.identifier
+                            && $0.label == target.label && $0.frame == frame
+                    }
+                } ?? false
+                if agrees && previousVisibleFrame == frame {
+                    if element.isHittable { return }
+                } else {
+                    previousVisibleFrame = agrees ? frame : nil
+                    continue
+                }
             }
+            previousVisibleFrame = nil
             if attempt == maxSwipes { break }
             // Form exposes a collection/table instead of a ScrollView. Find
             // the container owning the target, not a covered screen behind it.

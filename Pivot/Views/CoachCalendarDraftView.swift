@@ -50,7 +50,12 @@ struct CoachCalendarDraftView: View {
     }
     var body: some View {
         NavigationStack {
+            ScrollViewReader { proxy in
             Form {
+                if let problem {
+                    Section { Text(problem).foregroundStyle(PivotTheme.amber)
+                        .accessibilityIdentifier("creation-problem").id("creation-problem") }
+                }
                 if alreadyCreated {
                     Section { Label("Questa bozza è già stata creata nel Calendario.", systemImage: "checkmark.circle") }
                 }
@@ -79,7 +84,6 @@ struct CoachCalendarDraftView: View {
                         focusedField: $focusedField, message: preferenceMessage, save: { _ = savePreferences() })
                 }
                 }.disabled(needsVerification || !loaded || alreadyCreated)
-                if let problem { Section { Text(problem).foregroundStyle(PivotTheme.amber) } }
                 Section {
                     Button(busy ? "Verifico…" : "Verifica e prepara il salvataggio") { review() }
                         .disabled(!loaded || busy || needsVerification || alreadyCreated || store.locked || !calendar.hasAccess)
@@ -87,6 +91,9 @@ struct CoachCalendarDraftView: View {
                     if !calendar.hasAccess { Text("Serve l'accesso completo ai calendari nelle Impostazioni di iOS.").font(.caption) }
                 }
             }.disabled(busy).scrollDismissesKeyboard(.interactively)
+                .onChange(of: problem) { _, value in
+                    if value != nil { proxy.scrollTo("creation-problem", anchor: .top) }
+                }
                 .tint(PivotTheme.accent).listSectionSpacing(20)
                 .navigationTitle("Nuovo impegno")
                 .navigationBarTitleDisplayMode(.inline)
@@ -131,6 +138,7 @@ struct CoachCalendarDraftView: View {
                         options.location = place.address; options.travel = nil; options.appleCalendarTravel = nil
                     } }
                 }
+            }
         }.interactiveDismissDisabled(busy)
     }
     private var identitySection: some View {
