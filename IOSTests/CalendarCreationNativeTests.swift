@@ -46,13 +46,17 @@ final class CalendarCreationNativeTests: XCTestCase {
         XCTAssertEqual(event.startDate, before)
     }
     func testMalformedNativeFloatingDatesAreNotSilentlyAccepted() throws {
-        let zone = TimeZone.current, (options, parts) = try sample(zone: zone)
-        let event = EKEvent(eventStore: EKEventStore())
-        try CalendarCreationNative.assign(parts[0], options: options, to: event, nativeTimeZone: zone)
-        event.startDate = event.startDate.addingTimeInterval(60)
-        XCTAssertThrowsError(try CalendarCreationNative.interval(event, nativeTimeZone: zone, normalizeFloating: true))
-        event.endDate = event.startDate
-        XCTAssertThrowsError(try CalendarCreationNative.interval(event, nativeTimeZone: zone, normalizeFloating: true))
+        let zone = TimeZone.current, (options, _) = try sample(zone: zone)
+        let native = try XCTUnwrap(options.allDay?.nativeInterval(currentTimeZone: zone))
+        let inclusiveEnd = native.end.addingTimeInterval(-1)
+        // Pass malformed raw dates to the same validator used by the reader.
+        // EKEvent's all-day setters silently normalize these test inputs.
+        XCTAssertThrowsError(try CalendarCreationNative.floatingInterval(start: native.start.addingTimeInterval(60), end: inclusiveEnd, nativeTimeZone: zone))
+        XCTAssertThrowsError(try CalendarCreationNative.floatingInterval(start: native.start, end: native.start, nativeTimeZone: zone))
+        XCTAssertThrowsError(try CalendarCreationNative.floatingInterval(start: native.start, end: inclusiveEnd.addingTimeInterval(-60), nativeTimeZone: zone))
+        XCTAssertThrowsError(try CalendarCreationNative.floatingInterval(start: native.start, end: Date(timeIntervalSinceReferenceDate: .infinity), nativeTimeZone: zone))
+        XCTAssertEqual(try CalendarCreationNative.floatingInterval(start: native.start, end: inclusiveEnd, nativeTimeZone: zone), options.allDay?.canonicalInterval)
+        XCTAssertEqual(try CalendarCreationNative.floatingInterval(start: native.start, end: native.end, nativeTimeZone: zone), options.allDay?.canonicalInterval)
     }
     func testTimedCreationKeepsAbsoluteTimesAndTheExistingRomeTimeZone() throws {
         let start = Date(timeIntervalSince1970: 1_790_000_000), end = start.addingTimeInterval(3600)

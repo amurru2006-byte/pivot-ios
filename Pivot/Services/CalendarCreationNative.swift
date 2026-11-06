@@ -34,21 +34,28 @@ enum CalendarCreationNative {
               start.timeIntervalSinceReferenceDate.isFinite, end.timeIntervalSinceReferenceDate.isFinite,
               end > start else { throw Failure.timing }
         if event.isAllDay && normalizeFloating {
-            // EventKit may expose the last included day's final second. Keep
-            // that representation at this boundary: Core uses exclusive civil
-            // midnights. Accept only the exact endpoint, never a rounded time.
-            var native = Calendar(identifier: .gregorian); native.timeZone = nativeTimeZone
-            let exclusiveEnd: Date
-            if native.startOfDay(for: end) == end {
-                exclusiveEnd = end
-            } else if let day = native.dateInterval(of: .day, for: end),
-                      end == day.end.addingTimeInterval(-1) {
-                exclusiveEnd = day.end
-            } else { throw Failure.timing }
-            guard let result = CalendarCreationAllDay.normalizeNative(start: start, end: exclusiveEnd, timeZone: nativeTimeZone) else { throw Failure.timing }
-            return result
+            return try floatingInterval(start: start, end: end, nativeTimeZone: nativeTimeZone)
         }
         return .init(start: start, end: end)
+    }
+    /// Validate the exact dates returned by EventKit, without using its setters
+    /// to manufacture malformed test values (the setters normalize those).
+    static func floatingInterval(start: Date, end: Date, nativeTimeZone: TimeZone) throws -> DateInterval {
+        guard start.timeIntervalSinceReferenceDate.isFinite, end.timeIntervalSinceReferenceDate.isFinite,
+              end > start else { throw Failure.timing }
+        // EventKit may expose the last included day's final second. Keep
+        // that representation at this boundary: Core uses exclusive civil
+        // midnights. Accept only the exact endpoint, never a rounded time.
+        var native = Calendar(identifier: .gregorian); native.timeZone = nativeTimeZone
+        let exclusiveEnd: Date
+        if native.startOfDay(for: end) == end {
+            exclusiveEnd = end
+        } else if let day = native.dateInterval(of: .day, for: end),
+                  end == day.end.addingTimeInterval(-1) {
+            exclusiveEnd = day.end
+        } else { throw Failure.timing }
+        guard let result = CalendarCreationAllDay.normalizeNative(start: start, end: exclusiveEnd, timeZone: nativeTimeZone) else { throw Failure.timing }
+        return result
     }
     /// Mutates only the supplied in-memory EKEvent. No EventKit commit occurs.
     static func assign(_ part: CalendarCreationPart, options: CalendarCreationOptions,
