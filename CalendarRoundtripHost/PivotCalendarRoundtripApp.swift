@@ -107,7 +107,7 @@ private enum CalendarRoundtrip {
             let external = EKEvent(eventStore: store); external.calendar = calendar
             external.title = "Unmarked external all-day QA"; external.isAllDay = true; external.timeZone = nil
             let floating = try CalendarCreationNative.query(parts: [part], options: options, nativeTimeZone: zone, readOnly: true)
-            external.startDate = floating.start; external.endDate = floating.end
+            external.startDate = floating.start; external.endDate = floating.end.addingTimeInterval(-1)
             try store.save(external, span: .thisEvent, commit: true)
         }
         guard let id = event.eventIdentifier, !id.isEmpty else { throw Failure(reason: "Committed event has no identifier") }

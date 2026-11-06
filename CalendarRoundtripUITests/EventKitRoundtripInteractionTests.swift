@@ -30,6 +30,8 @@ final class EventKitRoundtripInteractionTests: XCTestCase {
         let report = app.staticTexts["calendar-native-result"]
         let completed = expectation(for: NSPredicate(format: "label == %@", "PASS \(attempt): spring23 autumn25 timed45 cleanupOK"), evaluatedWith: report)
         wait(for: [completed], timeout: 40)
+        XCTAssertEqual(report.label, "PASS \(attempt): spring23 autumn25 timed45 cleanupOK",
+                       "The isolated host must report the committed reread and verified cleanup")
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "owned-eventkit-roundtrip-\(attempt)"; shot.lifetime = .keepAlways; add(shot)
     }
     func testCommittedFloatingCivilDaysAndTimedEventCanBeReadByANewEventStore() {

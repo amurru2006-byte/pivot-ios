@@ -13,13 +13,17 @@ final class CalendarCreationNativeTests: XCTestCase {
         return (options, options.parts(draft: draft, creationID: UUID()))
     }
     func testEventKitObjectReceivesAllDayFlagAndFloatingBoundariesWithoutSaving() throws {
-        let zone = TimeZone.current, (options, parts) = try sample(zone: zone), store = EKEventStore()
-        let event = EKEvent(eventStore: store)
-        try CalendarCreationNative.assign(try XCTUnwrap(parts.first), options: options, to: event, nativeTimeZone: zone)
-        XCTAssertTrue(event.isAllDay); XCTAssertNil(event.timeZone)
-        let expected = try XCTUnwrap(options.allDay?.nativeInterval(currentTimeZone: zone))
-        XCTAssertEqual(event.startDate, expected.start); XCTAssertEqual(event.endDate, expected.end)
-        XCTAssertEqual(try CalendarCreationNative.interval(event, nativeTimeZone: zone, normalizeFloating: true), options.allDay?.canonicalInterval)
+        let zone = TimeZone.current, store = EKEventStore()
+        for day in ["2026-03-29", "2026-10-25"] {
+            let (options, parts) = try sample(day: day, zone: zone)
+            let event = EKEvent(eventStore: store)
+            try CalendarCreationNative.assign(try XCTUnwrap(parts.first), options: options, to: event, nativeTimeZone: zone)
+            XCTAssertTrue(event.isAllDay); XCTAssertNil(event.timeZone)
+            let expected = try XCTUnwrap(options.allDay?.nativeInterval(currentTimeZone: zone))
+            XCTAssertEqual(event.startDate, expected.start)
+            XCTAssertEqual(event.endDate, expected.end.addingTimeInterval(-1))
+            XCTAssertEqual(try CalendarCreationNative.interval(event, nativeTimeZone: zone, normalizeFloating: true), options.allDay?.canonicalInterval)
+        }
     }
     func testQueryAndCivilNormalizationCoverSeveralDefaultZonesAndDST() throws {
         for name in ["Etc/UTC", "America/New_York", "Asia/Tokyo", "Pacific/Auckland"] {
@@ -80,7 +84,7 @@ final class CalendarCreationNativeTests: XCTestCase {
         let first = try XCTUnwrap(CoachDocumentCivilDay.interval("2026-03-28", timeZone: zone))
         let end = try XCTUnwrap(CoachDocumentCivilDay.interval("2026-03-31", timeZone: zone))
         let event = EKEvent(eventStore: EKEventStore()); event.isAllDay = true; event.timeZone = nil
-        event.startDate = first.start; event.endDate = end.start
+        event.startDate = first.start; event.endDate = end.start.addingTimeInterval(-1)
         let beforeStart = event.startDate, beforeEnd = event.endDate
         let normalized = try CalendarCreationNative.interval(event, nativeTimeZone: zone, normalizeFloating: true)
         XCTAssertEqual(PivotDate.key(normalized.start), "2026-03-28"); XCTAssertEqual(PivotDate.key(normalized.end), "2026-03-31")

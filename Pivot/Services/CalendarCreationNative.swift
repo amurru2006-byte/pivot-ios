@@ -34,7 +34,18 @@ enum CalendarCreationNative {
               start.timeIntervalSinceReferenceDate.isFinite, end.timeIntervalSinceReferenceDate.isFinite,
               end > start else { throw Failure.timing }
         if event.isAllDay && normalizeFloating {
-            guard let result = CalendarCreationAllDay.normalizeNative(start: start, end: end, timeZone: nativeTimeZone) else { throw Failure.timing }
+            // EventKit may expose the last included day's final second. Keep
+            // that representation at this boundary: Core uses exclusive civil
+            // midnights. Accept only the exact endpoint, never a rounded time.
+            var native = Calendar(identifier: .gregorian); native.timeZone = nativeTimeZone
+            let exclusiveEnd: Date
+            if native.startOfDay(for: end) == end {
+                exclusiveEnd = end
+            } else if let day = native.dateInterval(of: .day, for: end),
+                      end == day.end.addingTimeInterval(-1) {
+                exclusiveEnd = day.end
+            } else { throw Failure.timing }
+            guard let result = CalendarCreationAllDay.normalizeNative(start: start, end: exclusiveEnd, timeZone: nativeTimeZone) else { throw Failure.timing }
             return result
         }
         return .init(start: start, end: end)
@@ -53,6 +64,10 @@ enum CalendarCreationNative {
         }
         event.isAllDay = part.isAllDay
         event.timeZone = part.isAllDay ? nil : PivotDate.calendar.timeZone
-        event.startDate = dates.start; event.endDate = dates.end
+        event.startDate = dates.start
+        // An all-day end selects its included civil day. Supplying the next
+        // midnight makes EventKit include an extra day on the tested SDK.
+        // Subtract only the final second, not a fixed-length civil day.
+        event.endDate = part.isAllDay ? dates.end.addingTimeInterval(-1) : dates.end
     }
 }
