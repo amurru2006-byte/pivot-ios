@@ -147,6 +147,7 @@ struct CoachV8Snapshot {
     // Local permission boundary for explicitly continuing an already reviewed
     // plan whose source is now outside the chosen calendar window.
     private(set) var additionalPlanningSourceIDs: [String] = []
+    private(set) var localDocumentContextExcluded = false
 
     static func make(message: String, events: [CalendarItem], data: AppData, now: Date, purpose: String? = nil,
         protocolVersion: Int = 2, calendarScope: CoachCalendarScope = .today) throws -> Self {
@@ -204,8 +205,19 @@ struct CoachV8Snapshot {
                                      message: CoachPrivacy.text(clean, events: events, data: data), events: summaries, history: history,
                                      memories: sharedMemories)
         var focusedDraft: CoachSavedCalendarDraft?
+        var localDocumentContextExcluded = false
         if version >= 3 {
-            let selected = CoachConversationFocus.draft(in: data.coachState, dayKey: PivotDate.key(now))
+            let state = data.coachState
+            let eligible = CoachConversationFocus.draft(in: state, dayKey: PivotDate.key(now))
+            let localFocus = state.focusedCalendarDraftID.flatMap { id in state.calendarDrafts?.first { $0.id == id } } ?? eligible
+            localDocumentContextExcluded = state.omitPreviousDraft != true && localFocus.map {
+                $0.dayKey == PivotDate.key(now) && ($0.creationOptions?.allDay != nil || !($0.documentReferences ?? []).isEmpty)
+            } == true
+            // The legacy provider DTO cannot represent a civil all-day event,
+            // and a document review never opts its contents into ordinary chat.
+            // Drop the prior context without falling through to another draft.
+            let selected = localDocumentContextExcluded ? nil : eligible
+            if localDocumentContextExcluded { request.history = [] }
             if data.coachState.focusedCalendarDraftID != nil { focusedDraft = selected }
             request.draftContext = selected.map { saved in
                 var draft = saved.draft
@@ -222,7 +234,7 @@ struct CoachV8Snapshot {
                 let title = EventCoalescer.normalized(source.title)
                 return title.count >= 4 && (" " + mentions + " ").contains(" " + title + " ")
             }
-            request.historyOmittedCount = eligibleHistory.count - history.count
+            request.historyOmittedCount = eligibleHistory.count - request.history.count
             if version == 4 {
                 request.planningContext = try focusedPlanning.map { [try $0.context(remapping: sources, now: now)] } ?? []
             }
@@ -239,7 +251,7 @@ struct CoachV8Snapshot {
         guard bytes.count <= 24_000 else { throw CoachV8Error.contextTooLarge }
         return .init(request: request, encodedRequest: bytes, originalEvents: events, dataUpdatedAt: data.updatedAt, sources: sources,
             focusedDraft: focusedDraft, calendarScope: effectiveScope, focusedPlanningSession: focusedPlanning,
-            additionalPlanningSourceIDs: additional.map(\.id).sorted())
+            additionalPlanningSourceIDs: additional.map(\.id).sorted(), localDocumentContextExcluded: localDocumentContextExcluded)
     }
 
     /// A local reopen is not a provider preflight. Only the already-bound

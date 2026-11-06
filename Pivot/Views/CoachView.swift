@@ -58,6 +58,9 @@ struct CoachView: View {
         PivotScreen {
             PivotHeader(title: "Parla con Pivot", subtitle: "Racconta cosa è cambiato. Decidi tu cosa applicare.")
             onlineStatusCard
+            NavigationLink { CoachDocumentsView() } label: {
+                Label("Foto e documenti", systemImage: "paperclip").frame(maxWidth: .infinity)
+            }.buttonStyle(PivotSecondaryButton()).accessibilityIdentifier("coach-documents")
             let agendaReport = CoachAgendaSignals.report(events: calendar.events, data: store.data, now: Date(), calendarAccess: calendar.hasAccess)
             if !agendaReport.signals.isEmpty || agendaReport.coverage != .observedToday {
                 PivotCard(tint: PivotTheme.amber) {
@@ -302,7 +305,7 @@ struct CoachView: View {
                         Text("Autorizza questa conversazione").font(.headline)
                         Text("Questo messaggio, il suo eventuale riordino e i successivi messaggi online di oggi useranno le categorie di dati indicate sotto, senza chiedere conferma ogni volta. Vale finché Pivot resta in esecuzione; puoi interrompere gli invii diretti dal Coach. Le modifiche al calendario richiedono sempre una conferma separata.")
                             .font(.subheadline)
-                        CoachCloudDisclosure(request: review.snapshot.request)
+                        CoachCloudDisclosure(request: review.snapshot.request, localDocumentContextExcluded: review.snapshot.localDocumentContextExcluded)
                         Button("Autorizza conversazione e invia") { sendReviewed(review) }
                             .buttonStyle(PivotPrimaryButton()).accessibilityIdentifier("coach-online-approve")
                         Button("Annulla e modifica") { onlineReview = nil }

@@ -8,8 +8,8 @@ settings:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "1,2"
     CODE_SIGNING_ALLOWED: NO
-    MARKETING_VERSION: "0.8.11"
-    CURRENT_PROJECT_VERSION: "33"
+    MARKETING_VERSION: "0.8.12"
+    CURRENT_PROJECT_VERSION: "34"
 packages:
   LLM:
     url: https://github.com/eastriverlee/LLM.swift.git
@@ -48,6 +48,7 @@ targets:
         NSHealthShareUsageDescription: Pivot legge sonno e allenamenti per collegarli ai tuoi eventi. Su tua richiesta legge anche data di nascita, peso e altezza per il profilo forza. I dati restano sul dispositivo e sono esclusi dalle esportazioni salvo tua scelta.
         NSMicrophoneUsageDescription: Pivot usa il microfono solo quando premi Dettatura, per scrivere il messaggio che potrai controllare prima di inviare.
         NSSpeechRecognitionUsageDescription: Pivot trascrive in italiano sul dispositivo quando disponibile. L’audio non viene salvato né inviato dal Coach.
+        NSCameraUsageDescription: Pivot apre la fotocamera soltanto quando scegli Scatta foto, per allegare un documento da rileggere e trasformare in proposte da confermare.
         NSAlarmKitUsageDescription: Se attivi Avviso recupero, Pivot programma un allarme di sistema alla fine dei recuperi degli allenamenti. Lo fermi manualmente. Puoi anche avviare una prova esplicita a schermo spento.
         LSSupportsOpeningDocumentsInPlace: YES
         UIFileSharingEnabled: YES
@@ -83,12 +84,49 @@ targets:
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: PIVOT_WIDGET
         APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: YES
+  PivotCalendarRoundtripHost:
+    type: application
+    platform: iOS
+    sources:
+      - path: Core
+      - path: Pivot/Services/CalendarCreationNative.swift
+      - path: CalendarRoundtripHost
+    info:
+      path: build/CalendarRoundtrip-Info.plist
+      properties:
+        CFBundleDisplayName: Pivot Calendar QA
+        CFBundleIdentifier: app.pivot.calendar-roundtrip-host
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        CFBundlePackageType: APPL
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        NSCalendarsFullAccessUsageDescription: Only the owned synthetic calendar in this fresh CI simulator is used for save/read tests. No user accounts or documents are imported.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.pivot.calendar-roundtrip-host
+        GENERATE_INFOPLIST_FILE: NO
+        SUPPORTED_PLATFORMS: iphonesimulator
+  PivotCalendarRoundtripTests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: CalendarRoundtripUITests
+    dependencies:
+      - target: PivotCalendarRoundtripHost
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.pivot.calendar-roundtrip-tests
+        GENERATE_INFOPLIST_FILE: YES
+        SUPPORTED_PLATFORMS: iphonesimulator
   PivotDocumentNativeTests:
     type: bundle.unit-test
     platform: iOS
     sources:
       - path: Core
       - path: Pivot/Services/CoachDocumentReader.swift
+      - path: Pivot/Services/CoachDocumentStorage.swift
+      - path: Pivot/Services/CoachDocumentReplyFile.swift
+      - path: Pivot/Services/CalendarCreationNative.swift
       - path: IOSTests
     settings:
       base:
@@ -108,6 +146,13 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.pivot.interaction-tests
         GENERATE_INFOPLIST_FILE: YES
 schemes:
+  PivotCalendarRoundtrip:
+    build:
+      targets:
+        PivotCalendarRoundtripHost: all
+    test:
+      targets:
+        - PivotCalendarRoundtripTests
   PivotDocumentChecks:
     build:
       targets:

@@ -40,6 +40,7 @@ enum CoachDraftStore {
                   saved.calendarID.map({ !$0.isEmpty && $0.count <= 1024 }) ?? true,
                   saved.createdEventID.map({ !$0.isEmpty && $0.count <= 2048 }) ?? true,
                   saved.creationOptions?.isValid ?? true else { return false }
+            if let allDay = saved.creationOptions?.allDay, !allDay.matches(saved.draft) { return false }
             if let userID = saved.userMessageID {
                 guard let user = messages[userID], user.role == .user, user.dayKey == saved.dayKey else { return false }
             }

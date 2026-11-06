@@ -16,6 +16,10 @@
   "workout": [
     "WorkoutRestAudioInteractionTests",
     "CalendarCreationInteractionTests/testNativeEditorManualJourneySurvivesRelaunchAndCreatesExactlyTwoAfterConfirmation",
+    "DocumentCalendarInteractionTests",
+    "DocumentLibraryInteractionTests",
+    "DocumentProposalInteractionTests",
+    "DocumentExchangeInteractionTests",
     "PremiumCoachInteractionTests",
     "PivotInteractionTests/testDayHistoryCorrectsCompletedWorkoutWithoutStartingRecoveryAndPersists",
     "PivotInteractionTests/testDayHistoryConfirmsDeletionOfRealAndEmptyWorkoutsAndPersists",

@@ -5,7 +5,10 @@ struct CalendarCreationReceipt: Equatable {
     var activity: CalendarItem
     var travel: CalendarItem?
     var isValid: Bool {
-        guard CalendarEventBackup.valid(activity), activity.writable, !activity.isAllDay, activity.recurring != true else { return false }
+        guard CalendarEventBackup.valid(activity), activity.writable, activity.recurring != true else { return false }
+        if activity.isAllDay {
+            return travel == nil && CalendarCreationAllDay.isCanonicalDay(start: activity.start, end: activity.end)
+        }
         guard let travel else { return true }
         return CalendarEventBackup.valid(travel) && travel.writable && !travel.isAllDay && travel.recurring != true
             && travel.eventIdentifier != activity.eventIdentifier
@@ -58,8 +61,15 @@ enum CalendarActivityLinks {
     }
     @discardableResult static func capture(id: UUID, receipt: CalendarCreationReceipt, options: CalendarCreationOptions,
         data: inout AppData, now: Date) -> Bool {
-        guard receipt.isValid else { return false }
-        guard let travel = receipt.travel else { return options.travel == nil }
+        guard receipt.isValid, options.isValid else { return false }
+        guard let travel = receipt.travel else {
+            guard options.travel == nil else { return false }
+            if let allDay = options.allDay {
+                return receipt.activity.isAllDay && allDay.canonicalInterval?.start == receipt.activity.start
+                    && allDay.canonicalInterval?.end == receipt.activity.end
+            }
+            return !receipt.activity.isAllDay
+        }
         guard let settings = options.travel else { return false }
         let value = CalendarActivityLink(id: id, activity: receipt.activity, travel: travel, settings: settings, capturedAt: now)
         guard value.isValid else { return false }

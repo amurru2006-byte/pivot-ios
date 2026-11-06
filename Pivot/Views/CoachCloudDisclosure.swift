@@ -3,6 +3,7 @@ import SwiftUI
 /// Human-readable counterpart of the exact bounded cloud request. No credentials.
 struct CoachCloudDisclosure: View {
     let request: CoachV8Request
+    var localDocumentContextExcluded = false
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Destinazione: Cloudflare → Groq").font(.headline)
@@ -12,6 +13,10 @@ struct CoachCloudDisclosure: View {
             }
             Text(request.message).textSelection(.enabled)
                 .accessibilityIdentifier("coach-online-reviewed-message")
+            if localDocumentContextExcluded {
+                Text("La bozza da documento o giornaliera resta nell’editor locale. Questa richiesta non include quella bozza né la conversazione precedente.")
+                    .font(.caption).accessibilityIdentifier("coach-online-local-document-context")
+            }
             Text("Il testo viene filtrato, ma nomi o informazioni personali possono rimanere. I servizi online leggono ciò che invii. Per informazioni sanitarie usa la base locale.")
                 .font(.caption).foregroundStyle(PivotTheme.muted)
             if !request.memories.isEmpty {
@@ -30,7 +35,7 @@ struct CoachCloudDisclosure: View {
                 }
             }
             if let omitted = request.historyOmittedCount, omitted > 0 {
-                Text("\(omitted) messaggi precedenti esclusi per rispettare il limite. I messaggi inclusi non sono tagliati a metà.").font(.caption)
+                Text("\(omitted) messaggi precedenti esclusi dalla richiesta. I messaggi inclusi non sono tagliati a metà.").font(.caption)
             }
             if let drafts = request.draftContext, !drafts.isEmpty {
                 DisclosureGroup("Dati della bozza da continuare") {

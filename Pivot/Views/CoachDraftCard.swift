@@ -9,7 +9,14 @@ struct CoachDraftCard: View {
                 PivotCard(tint: PivotTheme.blue) {
                     Label("Bozza da controllare", systemImage: "calendar.badge.plus").font(.caption).foregroundStyle(PivotTheme.blue)
                     Text(saved.draft.title.isEmpty ? "Nuovo impegno" : saved.draft.title).font(.headline).foregroundStyle(PivotTheme.text)
-                    if let start = saved.draft.start { Text(DisplayDate.label(start, format: "d MMM · HH:mm")).font(.subheadline).foregroundStyle(PivotTheme.muted) }
+                    if let allDay = saved.creationOptions?.allDay, let date = allDay.canonicalInterval?.start {
+                        Text("\(PivotDate.shortDate(date)) \(PivotDate.calendar.component(.year, from: date)) · Tutto il giorno")
+                            .font(.subheadline).foregroundStyle(PivotTheme.muted)
+                    } else if saved.creationOptions?.allDay != nil {
+                        Text("Giorno da verificare").font(.subheadline).foregroundStyle(PivotTheme.amber)
+                    } else if let start = saved.draft.start {
+                        Text(DisplayDate.label(start, format: "d MMM · HH:mm")).font(.subheadline).foregroundStyle(PivotTheme.muted)
+                    }
                     Label("Apri e modifica", systemImage: "arrow.up.right.square").font(.subheadline.weight(.semibold)).foregroundStyle(PivotTheme.accent)
                 }
             }.buttonStyle(.plain).accessibilityIdentifier("coach-saved-draft-" + saved.id.uuidString)

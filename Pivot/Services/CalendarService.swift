@@ -376,10 +376,13 @@ private actor CalendarWorker {
     #endif
     func reviewCreation(_ draft: CoachCalendarDraft, calendarID: String, settings: Settings,
                         options: CalendarCreationOptions, creationID: UUID, mapsConsent: Bool) throws -> [CalendarItem] {
-        guard draft.problem(now: Date(), calendarID: calendarID) == nil else { throw CalendarFailure.notWritable }
-        if let message = options.problem(draft: draft, now: Date(), mapsConsent: mapsConsent) { throw CalendarFailure.invalidCreationOptions(message) }
+        let nativeZone = TimeZone.current
+        guard draft.problem(now: Date(), calendarID: calendarID, allDay: options.allDay) == nil else { throw CalendarFailure.notWritable }
+        if let message = options.problem(draft: draft, now: Date(), mapsConsent: mapsConsent, nativeTimeZone: nativeZone) { throw CalendarFailure.invalidCreationOptions(message) }
         let parts = options.occupiedParts(draft: draft, creationID: creationID)
-        guard let start = parts.first?.start, let end = parts.last?.end else { throw CalendarFailure.notWritable }
+        let query: DateInterval
+        do { query = try CalendarCreationNative.query(parts: parts, options: options, nativeTimeZone: nativeZone, readOnly: false) }
+        catch { throw CalendarFailure.invalidCreationOptions(error.localizedDescription) }
         #if DEBUG && targetEnvironment(simulator)
         if creationFixture {
             guard calendarID == "create-fixture" else { throw CalendarFailure.notWritable }
@@ -387,21 +390,24 @@ private actor CalendarWorker {
         }
         #endif
         guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { throw CalendarFailure.noAccess }
-        guard draft.problem(now: Date(), calendarID: calendarID) == nil,
-              let calendar = eventStore.calendar(withIdentifier: calendarID), calendar.allowsContentModifications,
+        guard draft.problem(now: Date(), calendarID: calendarID, allDay: options.allDay) == nil,
+              let calendar = eventStore.calendar(withIdentifier: calendarID), enabled(calendar, settings: settings),
               !parts.isEmpty else { throw CalendarFailure.notWritable }
         let calendars = eventStore.calendars(for: .event).filter {
             !settings.excludedCalendarIDs.contains($0.calendarIdentifier) && !settings.excludedCalendarTitles.contains($0.title)
                 && !(settings.excludeHolidays && Self.isHoliday($0.title))
         }
         guard !calendars.isEmpty else { return [] }
-        let predicate = eventStore.predicateForEvents(withStart: start, end: end, calendars: calendars)
-        return eventStore.events(matching: predicate).filter { $0.startDate < end && $0.endDate > start && $0.availability != .free && $0.status != .canceled }
-            .map(Self.item).sorted { $0.id < $1.id }
+        let predicate = eventStore.predicateForEvents(withStart: query.start, end: query.end, calendars: calendars)
+        let items = try eventStore.events(matching: predicate).filter { $0.availability != .free && $0.status != .canceled }
+            .map { try Self.creationItem($0, nativeTimeZone: nativeZone, normalizeFloating: options.allDay != nil) }
+        guard options.allDay == nil || nativeZone.identifier == TimeZone.current.identifier else { throw CalendarFailure.changed }
+        return CalendarCreationBundle.conflicts(parts: parts, events: items)
     }
     func create(_ draft: CoachCalendarDraft, calendarID: String, expectedConflicts: [CalendarItem], settings: Settings,
                 options: CalendarCreationOptions, creationID: UUID, mapsConsent: Bool, verifyOnly: Bool) throws -> (receipt: CalendarCreationReceipt, existing: Bool) {
-        guard options.isValid, draft.problem(now: Date(), calendarID: calendarID) == nil else { throw CalendarFailure.notWritable }
+        let nativeZone = TimeZone.current
+        guard options.isValid, draft.problem(now: Date(), calendarID: calendarID, allDay: options.allDay) == nil else { throw CalendarFailure.notWritable }
         // Reconciliation is a read, not a new use of an expired route or permission.
         let fresh: [CalendarItem]
         if verifyOnly { fresh = [] }
@@ -419,14 +425,17 @@ private actor CalendarWorker {
             guard fresh == expectedConflicts else { throw CalendarFailure.changed }
             let added = parts.map { part in CalendarItem(id: part.marker, eventIdentifier: part.marker, calendarIdentifier: calendarID,
                 calendarTitle: "Personale test", title: part.title, start: part.start, end: part.end,
-                location: part.location, notes: part.notes, colorHex: "7EE6CD", isAllDay: false, writable: true, kind: .other) }
+                location: part.location, notes: part.notes, colorHex: "7EE6CD", isAllDay: part.isAllDay, writable: true, kind: .other) }
             createdFixtureItems.append(contentsOf: added)
             return (.init(activity: added.last!, travel: added.count == 2 ? added.first : nil), false)
         }
         #endif
         guard let target = eventStore.calendar(withIdentifier: calendarID), target.allowsContentModifications,
-              let start = parts.first?.start else { throw CalendarFailure.notWritable }
-        let predicate = eventStore.predicateForEvents(withStart: start, end: main.end, calendars: [target])
+              verifyOnly || enabled(target, settings: settings) else { throw CalendarFailure.notWritable }
+        let query: DateInterval
+        do { query = try CalendarCreationNative.query(parts: parts, options: options, nativeTimeZone: nativeZone, readOnly: verifyOnly) }
+        catch { throw CalendarFailure.invalidCreationOptions(error.localizedDescription) }
+        let predicate = eventStore.predicateForEvents(withStart: query.start, end: query.end, calendars: [target])
         let candidates = eventStore.events(matching: predicate)
         // A retry after save succeeded must not create another copy, even if the
         // previous UI acknowledgement or local conversation write failed.
@@ -434,32 +443,42 @@ private actor CalendarWorker {
         if matches.contains(where: { !$0.isEmpty }) {
             guard matches.allSatisfy({ $0.count == 1 }) else { throw CalendarFailure.uncertainOccurrence }
             let existing = matches.compactMap(\.first)
-            guard CalendarCreationBundle.existing(parts: parts, items: existing.map(Self.item)),
+            let snapshots = try existing.map { try Self.creationItem($0, nativeTimeZone: nativeZone, normalizeFloating: options.allDay != nil) }
+            guard CalendarCreationBundle.existing(parts: parts, items: snapshots),
                   zip(parts, existing).allSatisfy({ part, event in
-                      event.availability.rawValue == part.availability && !event.isAllDay
+                      event.availability.rawValue == part.availability && event.isAllDay == part.isAllDay
                           && (event.alarms ?? []).count == (part.alertMinutes == nil ? 0 : 1)
                           && (part.alertMinutes.map { minutes in event.alarms?.first?.relativeOffset == -Double(minutes) * 60 } ?? true)
                   }) else { throw CalendarFailure.uncertainOccurrence }
-            return (.init(activity: Self.item(existing.last!), travel: existing.count == 2 ? Self.item(existing[0]) : nil), true)
+            guard options.allDay == nil || nativeZone.identifier == TimeZone.current.identifier else { throw CalendarFailure.uncertainOccurrence }
+            return (.init(activity: snapshots.last!, travel: snapshots.count == 2 ? snapshots.first : nil), true)
         }
-        if let duplicate = candidates.first(where: { $0.startDate == main.start && $0.endDate == main.end &&
-            EventCoalescer.normalized($0.title ?? "") == EventCoalescer.normalized(main.title) }) {
+        let snapshots = try candidates.map { try Self.creationItem($0, nativeTimeZone: nativeZone, normalizeFloating: options.allDay != nil) }
+        let duplicateIndices = snapshots.indices.filter { snapshots[$0].start == main.start && snapshots[$0].end == main.end &&
+            EventCoalescer.normalized(snapshots[$0].title) == EventCoalescer.normalized(main.title) }
+        guard duplicateIndices.count <= 1 else { throw CalendarFailure.uncertainOccurrence }
+        if let index = duplicateIndices.first {
+            let duplicate = candidates[index], snapshot = snapshots[index]
             guard parts.count == 1, (duplicate.location ?? "") == main.location,
+                  duplicate.isAllDay == main.isAllDay,
                   duplicate.availability.rawValue == main.availability,
                   (duplicate.alarms ?? []).count == (main.alertMinutes == nil ? 0 : 1),
                   main.alertMinutes.map({ duplicate.alarms?.first?.relativeOffset == -Double($0) * 60 }) ?? true else { throw CalendarFailure.uncertainOccurrence }
-            try draft.checkExistingNotes(Self.item(duplicate).notes)
-            return (.init(activity: Self.item(duplicate), travel: nil), true)
+            try draft.checkExistingNotes(snapshot.notes)
+            guard options.allDay == nil || nativeZone.identifier == TimeZone.current.identifier else { throw CalendarFailure.uncertainOccurrence }
+            return (.init(activity: snapshot, travel: nil), true)
         }
         guard !verifyOnly else { throw CalendarFailure.uncertainOccurrence }
         guard fresh == expectedConflicts else { throw CalendarFailure.changed }
+        guard options.allDay == nil || nativeZone.identifier == TimeZone.current.identifier else { throw CalendarFailure.changed }
         try Task.checkCancellation()
         var staged: [EKEvent] = []
         do {
             for part in parts {
                 let event = EKEvent(eventStore: eventStore)
-                event.calendar = target; event.title = part.title; event.startDate = part.start; event.endDate = part.end
-                event.timeZone = PivotDate.calendar.timeZone; event.location = part.location; event.notes = part.notes
+                event.calendar = target; event.title = part.title
+                try CalendarCreationNative.assign(part, options: options, to: event, nativeTimeZone: nativeZone)
+                event.location = part.location; event.notes = part.notes
                 event.url = URL(string: part.marker); event.availability = EKEventAvailability(rawValue: part.availability) ?? .busy
                 if let minutes = part.alertMinutes { event.addAlarm(EKAlarm(relativeOffset: -Double(minutes) * 60)) }
                 try eventStore.save(event, span: .thisEvent, commit: false); staged.append(event)
@@ -468,15 +487,31 @@ private actor CalendarWorker {
             eventStore.reset()
             throw CalendarFailure.invalidCreationOptions("Non riesco a preparare attività e spostamento. Nessun evento è stato salvato: controlla calendario, luogo e avviso.")
         }
+        guard options.allDay == nil || nativeZone.identifier == TimeZone.current.identifier else {
+            eventStore.reset(); throw CalendarFailure.changed
+        }
         do {
             // Stage both before the one commit. A failed commit is not evidence
             // that nothing reached the calendar: reconcile before another write.
             try eventStore.commit()
-            return (.init(activity: Self.item(staged.last!), travel: staged.count == 2 ? Self.item(staged[0]) : nil), false)
+            guard options.allDay == nil || nativeZone.identifier == TimeZone.current.identifier else { throw CalendarFailure.uncertainOccurrence }
+            let written = try staged.map { try Self.creationItem($0, nativeTimeZone: nativeZone, normalizeFloating: options.allDay != nil) }
+            return (.init(activity: written.last!, travel: written.count == 2 ? written.first : nil), false)
         } catch {
             eventStore.reset()
             throw CalendarFailure.creationOptions("Salvataggio non confermato. Controlla attività e spostamento nel Calendario prima di riprovare: non aggiungere copie manualmente.")
         }
+    }
+    private static func creationItem(_ event: EKEvent, nativeTimeZone: TimeZone, normalizeFloating: Bool) throws -> CalendarItem {
+        let floating: DateInterval?
+        if event.isAllDay && normalizeFloating {
+            do {
+                floating = try CalendarCreationNative.interval(event, nativeTimeZone: nativeTimeZone, normalizeFloating: true)
+            } catch { throw CalendarFailure.invalidCreationOptions(error.localizedDescription) }
+        } else { floating = nil }
+        var value = item(event)
+        if let floating { value.start = floating.start; value.end = floating.end }
+        return value
     }
     func requestAccess() async throws -> Bool { try await eventStore.requestFullAccessToEvents() }
     private func enabled(_ calendar: EKCalendar, settings: Settings) -> Bool {
@@ -981,9 +1016,16 @@ private actor CalendarWorker {
         let writtenLocation = event.location ?? ""
         let location = writtenLocation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? (event.structuredLocation?.title ?? writtenLocation) : writtenLocation
+        // Only Pivot-created floating events use the new civil-date display
+        // bridge here. Conflict review separately normalizes external all-day
+        // events, without changing the general reader for unrelated calendars.
+        let floating: DateInterval?
+        if event.isAllDay && Self.isCreationMarker(event.url) {
+            floating = try? CalendarCreationNative.interval(event, nativeTimeZone: .current, normalizeFloating: true)
+        } else { floating = nil }
         return CalendarItem(id: key, eventIdentifier: eventID, externalIdentifier: external,
             calendarIdentifier: event.calendar.calendarIdentifier, calendarTitle: event.calendar.title,
-            title: event.title ?? "Evento", start: event.startDate, end: event.endDate,
+            title: event.title ?? "Evento", start: floating?.start ?? event.startDate, end: floating?.end ?? event.endDate,
             location: location, notes: CalendarNoteText.plain(event.notes ?? ""),
             colorHex: Self.hex(event.calendar.cgColor), isAllDay: event.isAllDay,
             writable: event.calendar.allowsContentModifications,
@@ -991,6 +1033,11 @@ private actor CalendarWorker {
             sourceIdentifier: event.calendar.source.sourceIdentifier, sourceTitle: event.calendar.source.title,
             calendarModifiedAt: event.lastModifiedDate, recurring: recurring, occurrenceAnchor: anchor,
             calendarRGB: Self.rgb(event.calendar.cgColor), calendarCreatedAt: event.creationDate)
+    }
+    private static func isCreationMarker(_ url: URL?) -> Bool {
+        guard let url, url.scheme == "pivot", url.host == "created", url.user == nil, url.password == nil,
+              url.port == nil, url.query == nil, url.fragment == nil, url.path.count == 37 else { return false }
+        return UUID(uuidString: String(url.path.dropFirst())) != nil
     }
     private static func isTravelMarker(_ url: URL?) -> Bool {
         guard let url, url.scheme == "pivot", url.host == "travel" else { return false }

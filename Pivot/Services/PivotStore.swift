@@ -23,6 +23,7 @@ final class PivotStore: ObservableObject {
     @Published private(set) var backupPasswordConfigured = false
     @Published private(set) var isConfiguringBackupPassword = false
     @Published private(set) var isExportingBackup = false
+    @Published private(set) var isImportingCoachDocument = false
     private let directory: URL
     private let file: URL
     private let documentsDirectory: URL
@@ -56,6 +57,10 @@ final class PivotStore: ObservableObject {
     init() {
         var storageName = "Pivot"
         #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--interaction-test"),
+           let id = UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_DOCUMENT_ID"] ?? "") {
+            storageName = "PivotDocumentQA-" + id.uuidString
+        }
         if ProcessInfo.processInfo.arguments.contains("--online-coach-action-test") { storageName = "PivotCoachActionTests" }
         if ProcessInfo.processInfo.arguments.contains("--online-coach-action-test"),
            let value = ProcessInfo.processInfo.environment["PIVOT_QA_COACH_ACTION_ID"], let id = UUID(uuidString: value) {
@@ -438,7 +443,7 @@ final class PivotStore: ObservableObject {
     }
 
     func exportURL() async throws -> URL {
-        guard !isLoading, !isRestoring, !isConfiguringBackupPassword, !isExportingBackup else { throw EncryptedBackupError.unavailable }
+        guard !isLoading, !isRestoring, !isConfiguringBackupPassword, !isExportingBackup, !isImportingCoachDocument else { throw EncryptedBackupError.unavailable }
         isExportingBackup = true
         defer { isExportingBackup = false }
         guard await flushPendingWrites() else { throw BackupError.invalidData }
@@ -468,6 +473,10 @@ final class PivotStore: ObservableObject {
     func restore(_ url: URL, password: String? = nil) async {
         guard !calendarMutationInProgress else {
             error = "Attendi la conclusione della modifica al Calendario prima di ripristinare un backup."
+            return
+        }
+        guard !isImportingCoachDocument else {
+            error = "Attendi il salvataggio del documento prima di ripristinare un backup."
             return
         }
         guard !isRestoring, !isLoading, !isConfiguringBackupPassword, !isExportingBackup else { return }
@@ -511,6 +520,172 @@ final class PivotStore: ObservableObject {
             refreshBackupProtection()
             writeExternal(restored)
         } catch { self.error = "Ripristino non eseguito: \(error.localizedDescription)" }
+    }
+
+    /// The immutable file is synchronized before its metadata enters a writer
+    /// snapshot. Revalidate current data after detached work, preserving edits
+    /// made elsewhere while import was running. A repair changes only file ID.
+    func importCoachDocument(_ prepared: CoachDocumentReader.Prepared) async throws -> CoachDocumentSource {
+        guard !locked, !isLoading, !isRestoring, !isImportingCoachDocument,
+              !isExportingBackup, !isConfiguringBackupPassword else { throw CoachDocumentStorage.Failure.busy }
+        isImportingCoachDocument = true
+        defer { isImportingCoachDocument = false }
+        let directory = documentsDirectory
+        try await Task.detached(priority: .utility) {
+            try CoachDocumentStorage.validate(prepared.source, bytes: prepared.bytes)
+        }.value
+        try Task.checkCancellation()
+        let matches = (data.coachDocuments ?? []).filter { $0.sha256 == prepared.source.sha256 }
+        guard matches.count <= 1 else { throw CoachDocumentLibrary.ImportFailure.duplicate }
+        let existing = matches.first
+        var source = prepared.source
+        if let existing {
+            guard existing.document.byteCount == prepared.bytes.count,
+                  existing.pageCount == prepared.source.pageCount else { throw CoachDocumentLibrary.ImportFailure.changed }
+            let healthy = await Task.detached(priority: .utility) {
+                (try? CoachDocumentStorage.verifiedBytes(existing, directory: directory)) != nil
+            }.value
+            try Task.checkCancellation()
+            guard data.coachDocuments?.first(where: { $0.id == existing.id }) == existing else {
+                throw CoachDocumentLibrary.ImportFailure.changed
+            }
+            if healthy {
+                guard await flushPendingWrites() else { throw CoachDocumentStorage.Failure.notSaved }
+                return existing
+            }
+            source = existing
+            source.document.id = UUID()
+        }
+        var preflight = data
+        try CoachDocumentLibrary.register(source, replacing: existing, data: &preflight)
+        let immutableSource = source
+        try await Task.detached(priority: .utility) {
+            try CoachDocumentStorage.writeNew(immutableSource, bytes: prepared.bytes, directory: directory)
+        }.value
+        try Task.checkCancellation()
+        var current = data
+        try CoachDocumentLibrary.register(source, replacing: existing, data: &current)
+        guard change({ $0.coachDocuments = current.coachDocuments }) else { throw CoachDocumentStorage.Failure.busy }
+        // Once referenced, never delete or roll back on cancellation/save error.
+        guard await flushPendingWrites() else { throw CoachDocumentStorage.Failure.notSaved }
+        return source
+    }
+
+    /// Viewer receives verified immutable bytes, not a URL which can change
+    /// between validation and PDFKit opening it.
+    func coachDocumentBytes(_ id: UUID) async throws -> Data {
+        guard !locked, !isLoading, !isRestoring,
+              let source = data.coachDocuments?.first(where: { $0.id == id }) else { throw CoachDocumentStorage.Failure.busy }
+        let directory = documentsDirectory
+        let bytes = try await Task.detached(priority: .utility) {
+            try CoachDocumentStorage.verifiedBytes(source, directory: directory)
+        }.value
+        guard !locked, !isRestoring, data.coachDocuments?.first(where: { $0.id == id }) == source else {
+            throw CoachDocumentStorage.Failure.changed
+        }
+        return bytes
+    }
+
+    func coachDocumentPages(_ id: UUID, numbers: [Int], forceOCR: Bool = false) async throws -> [CoachDocumentPage] {
+        guard let source = data.coachDocuments?.first(where: { $0.id == id }) else { throw CoachDocumentStorage.Failure.changed }
+        let bytes = try await coachDocumentBytes(id)
+        let pages = try await Task.detached(priority: .utility) {
+            try CoachDocumentReader.pages(source, bytes: bytes, numbers: numbers, forceOCR: forceOCR)
+        }.value
+        guard !locked, !isRestoring, data.coachDocuments?.first(where: { $0.id == id }) == source else {
+            throw CoachDocumentStorage.Failure.changed
+        }
+        return pages
+    }
+
+    func saveCoachDocumentReading(_ packet: CoachDocumentPacket, review: CoachDocumentEventResponse.Review) async throws -> UUID {
+        guard !locked, !isLoading, !isRestoring else { throw CoachDocumentStorage.Failure.busy }
+        var current = data
+        let id = try CoachDocumentReviewStore.save(packet: packet, review: review, data: &current)
+        guard change({ $0.coachDocumentReviews = current.coachDocumentReviews }) else { throw CoachDocumentStorage.Failure.busy }
+        guard await flushPendingWrites() else { throw CoachDocumentStorage.Failure.notSaved }
+        guard !isRestoring, data.coachDocumentReviews?.contains(where: { $0.id == id }) == true else { throw CoachDocumentReviewStore.Failure.stale }
+        return id
+    }
+
+    func updateCoachDocumentProposal(batch: CoachDocumentReviewBatch, event: CoachDocumentEventProposal) async throws {
+        guard !locked, !isLoading, !isRestoring else { throw CoachDocumentStorage.Failure.busy }
+        var current = data
+        try CoachDocumentReviewStore.update(batchID: batch.id, expected: batch, event: event, data: &current)
+        guard change({ $0.coachDocumentReviews = current.coachDocumentReviews }) else { throw CoachDocumentStorage.Failure.busy }
+        guard await flushPendingWrites() else { throw CoachDocumentStorage.Failure.notSaved }
+    }
+
+    func stageCoachDocumentProposals(_ expected: CoachDocumentReviewBatch, selected: [UUID]) async throws -> [UUID] {
+        guard !locked, !isLoading, !isRestoring,
+              data.coachDocumentReviews?.first(where: { $0.id == expected.id }) == expected,
+              expected.packet.isCurrent(in: data.coachDocuments ?? []) else { throw CoachDocumentReviewStore.Failure.stale }
+        // Do not trust retained OCR alone. Hash/page-count verify the originals
+        // again before staging; a restore/edit during these awaits is rejected.
+        for source in expected.packet.sources {
+            _ = try await coachDocumentBytes(source.id)
+            try Task.checkCancellation()
+        }
+        guard !locked, !isRestoring else { throw CoachDocumentReviewStore.Failure.stale }
+        var current = data
+        let ids = try CoachDocumentReviewStore.stage(batchID: expected.id, expected: expected, selected: selected, data: &current)
+        guard change({ $0.coach = current.coach; $0.coachDocumentReviews = current.coachDocumentReviews }) else {
+            throw CoachDocumentStorage.Failure.busy
+        }
+        guard await flushPendingWrites() else { throw CoachDocumentStorage.Failure.notSaved }
+        return ids
+    }
+
+    func rereadCoachDocumentReview(_ expected: CoachDocumentReviewBatch) async throws -> UUID {
+        guard !locked, !isLoading, !isRestoring,
+              data.coachDocumentReviews?.first(where: { $0.id == expected.id }) == expected else { throw CoachDocumentReviewStore.Failure.stale }
+        var sources = [CoachDocumentSource](), pages = [CoachDocumentPage]()
+        for old in expected.packet.sources {
+            guard let current = data.coachDocuments?.first(where: { $0.id == old.id }) else { throw CoachDocumentReviewStore.Failure.stale }
+            sources.append(current)
+            let numbers = expected.packet.pages.filter { $0.sourceID == old.id }.map(\.number)
+            pages += try await coachDocumentPages(current.id, numbers: numbers)
+        }
+        guard data.coachDocumentReviews?.first(where: { $0.id == expected.id }) == expected else { throw CoachDocumentReviewStore.Failure.stale }
+        let packet = CoachDocumentPacket(createdAt: Date(), instruction: expected.packet.instruction, sources: sources, pages: pages)
+        return try await saveCoachDocumentReading(packet, review: CoachDocumentLocalProposals.analyze(packet))
+    }
+
+    func prepareCoachDocumentExchange(_ expected: CoachDocumentReviewBatch) async throws -> CoachDocumentExchange.Preview {
+        guard !locked, !isLoading, !isRestoring,
+              data.coachDocumentReviews?.first(where: { $0.id == expected.id }) == expected else { throw CoachDocumentReviewStore.Failure.stale }
+        for source in expected.packet.sources { _ = try await coachDocumentBytes(source.id); try Task.checkCancellation() }
+        var current = data
+        _ = try CoachDocumentExchange.begin(expected: expected, data: &current)
+        guard change({ $0.coachDocumentReviews = current.coachDocumentReviews }) else { throw CoachDocumentStorage.Failure.busy }
+        guard await flushPendingWrites() else { throw CoachDocumentStorage.Failure.notSaved }
+        return try await loadCoachDocumentExchange(expected.id)
+    }
+
+    func loadCoachDocumentExchange(_ id: UUID) async throws -> CoachDocumentExchange.Preview {
+        guard !locked, !isLoading, !isRestoring,
+              let expected = data.coachDocumentReviews?.first(where: { $0.id == id }), expected.exchange != nil else {
+            throw CoachDocumentReviewStore.Failure.stale
+        }
+        for source in expected.packet.sources { _ = try await coachDocumentBytes(source.id); try Task.checkCancellation() }
+        let text = try CoachDocumentExchange.requestText(batch: expected, sources: data.coachDocuments ?? [])
+        guard await flushPendingWrites() else { throw CoachDocumentStorage.Failure.notSaved }
+        guard !locked, !isRestoring, data.coachDocumentReviews?.first(where: { $0.id == id }) == expected else {
+            throw CoachDocumentReviewStore.Failure.stale
+        }
+        return .init(batch: expected, text: text)
+    }
+
+    func receiveCoachDocumentReply(_ bytes: Data, expected: CoachDocumentReviewBatch) async throws -> UUID {
+        guard bytes.count <= 64_000, !locked, !isLoading, !isRestoring,
+              data.coachDocumentReviews?.first(where: { $0.id == expected.id }) == expected else { throw CoachDocumentReviewStore.Failure.stale }
+        for source in expected.packet.sources { _ = try await coachDocumentBytes(source.id); try Task.checkCancellation() }
+        var current = data
+        let id = try CoachDocumentExchange.receive(bytes, expected: expected, data: &current)
+        guard change({ $0.coachDocumentReviews = current.coachDocumentReviews }) else { throw CoachDocumentStorage.Failure.busy }
+        guard await flushPendingWrites() else { throw CoachDocumentStorage.Failure.notSaved }
+        guard !isRestoring, data.coachDocumentReviews?.contains(where: { $0.id == id }) == true else { throw CoachDocumentReviewStore.Failure.stale }
+        return id
     }
 
     func importStudyPDF(_ url: URL) async throws -> StudyDocument {

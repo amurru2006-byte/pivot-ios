@@ -33,6 +33,38 @@ final class CoachPremiumContextTests: XCTestCase {
         XCTAssertFalse(String(decoding: value.encodedRequest, as: UTF8.self).contains("sanitaria"))
         XCTAssertEqual(data.coachState.memories.count, 4)
     }
+    func testLocalAllDayDraftCannotBeSentAsAnAppointmentAtMidnight() throws {
+        var data = fixture()
+        let value = CalendarCreationAllDay(day: PivotDate.key(now), nativeTimeZoneIdentifier: "Etc/UTC")
+        let interval = try XCTUnwrap(value.canonicalInterval)
+        data.coachState.calendarDrafts?[0].draft.start = interval.start
+        data.coachState.calendarDrafts?[0].draft.end = interval.end
+        var options = CalendarCreationOptions(); options.allDay = value
+        data.coachState.calendarDrafts?[0].creationOptions = options
+        data.coachState.focusedCalendarDraftID = data.coachState.calendarDrafts?[0].id
+        let result = try snapshot(data)
+        XCTAssertTrue(result.localDocumentContextExcluded)
+        XCTAssertTrue(result.request.draftContext?.isEmpty == true); XCTAssertTrue(result.request.history.isEmpty)
+        XCTAssertNil(result.focusedDraft); XCTAssertEqual(result.request.historyOmittedCount, 4)
+        XCTAssertEqual(data.coachState.calendarDrafts?[0].creationOptions?.allDay, value)
+        XCTAssertNotNil(data.coachState.focusedCalendarDraftID)
+    }
+    func testDocumentBackedDraftAndHistoryStayLocalEvenIfMessagesWerePreviouslyEligible() throws {
+        var data = fixture(); let bytes = Data("%PDF-1.4\nQA\n%%EOF".utf8)
+        let source = CoachDocumentSource(document: .init(name: "PRIVATE-DOCUMENT-QA.pdf", byteCount: bytes.count),
+            kind: .pdf, pageCount: 1, sha256: CoachDocumentSource.digest(bytes), importedAt: now)
+        data.coachDocuments = [source]
+        data.coachState.calendarDrafts?[0].documentReferences = [.init(sourceID: source.id, pages: [1])]
+        data.coachState.calendarDrafts?[0].draft.notes = "PRIVATE-DOCUMENT-CONTENT-QA"
+        data.coachState.messages[0].text = "PRIVATE-DOCUMENT-HISTORY-QA"
+        data.coachState.focusedCalendarDraftID = data.coachState.calendarDrafts?[0].id
+        let result = try snapshot(data), encoded = String(decoding: result.encodedRequest, as: UTF8.self)
+        XCTAssertTrue(result.localDocumentContextExcluded); XCTAssertNil(result.focusedDraft)
+        XCTAssertTrue(result.request.draftContext?.isEmpty == true); XCTAssertTrue(result.request.history.isEmpty)
+        XCTAssertFalse(encoded.contains("PRIVATE-DOCUMENT")); XCTAssertFalse(encoded.contains(source.id.uuidString))
+        XCTAssertEqual(data.coachState.messages[0].text, "PRIVATE-DOCUMENT-HISTORY-QA")
+        XCTAssertEqual(data.coachState.calendarDrafts?.count, 2)
+    }
     func testRewriteNeverIncludesEvenExplicitlySharedMemories() throws {
         var data = AppData(); data.coachState.memories = [.init(text: "Preferisco la sera", createdAt: now, onlineSharingAllowed: true)]
         XCTAssertTrue(try snapshot(data, purpose: "rewrite").request.memories.isEmpty)

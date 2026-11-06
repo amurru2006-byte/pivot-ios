@@ -14,23 +14,12 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Regressione Core completa e16 nuovi casi esatti
+      - name: Regressione Core completa e72 casi documenti esatti
         run: |
           set -o pipefail
           mkdir -p build
           swift test 2>&1 | tee build/document-core.log
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-          log=Path('build/document-core.log').read_text()
-          assert not re.search(r'Test Case .* (?:failed|skipped)',log)
-          for suite in ['CoachDocumentSourceTests','CoachDocumentLibraryTests']:
-              names=re.findall(r'func (test\w+)\(',Path(f'Tests/PivotCoreTests/{suite}.swift').read_text())
-              assert len(names)==len(set(names))==8
-              for name in names:
-                  assert sum(suite in line and name in line and ' passed ' in line for line in log.splitlines())==1,(suite,name)
-          print('Verified16exactDocumentCoreCasesNoSkips')
-          PY
+          python3 Scripts/document_test_gates.py core build/document-core.log
       - name: Gateway e strumenti esistenti senza rete
         run: |
           node --test Backend/coach-gateway/worker.test.mjs
@@ -50,7 +39,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Prepara strumenti con dipendenze e macro gia fissate
         run: bash Scripts/prepare-ios-ci.sh
-      - name: Otto prove PDFKit e Vision nel solo simulatore
+      - name: Ventotto prove lettura storage risposte e oggetti EventKit non salvati
         run: |
           set -o pipefail
           mkdir -p build
@@ -61,18 +50,7 @@ jobs:
             -derivedDataPath build/DocumentsDerivedData -resultBundlePath build/DocumentTests.xcresult \
             CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=- test \
             2>&1 | tee build/document-native.log
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-          log=Path('build/document-native.log').read_text()
-          assert '** TEST SUCCEEDED **' in log
-          assert not re.search(r'Test Case .* (?:failed|skipped)',log)
-          names=re.findall(r'func (test\w+)\(',Path('IOSTests/CoachDocumentReaderTests.swift').read_text())
-          assert len(names)==len(set(names))==8
-          for name in names:
-              assert sum('CoachDocumentReaderTests' in line and name in line and ' passed ' in line for line in log.splitlines())==1,name
-          print('Verified8exactDocumentNativeCasesNoSkips')
-          PY
+          python3 Scripts/document_test_gates.py native build/document-native.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -80,5 +58,27 @@ jobs:
           path: |
             build/document-native.log
             build/document-selected-simulator.json
+          retention-days: 1
+          if-no-files-found: error
+  eventkit-roundtrip:
+    needs: core
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepara progetto e host sintetico separato
+        run: bash Scripts/prepare-ios-ci.sh
+      - name: Crea simulatore proprio e verifica save read e cleanup EventKit
+        run: python3 Scripts/calendar_roundtrip_simulator.py
+      - name: Verifica entrambi i test reali e la rimozione del solo simulatore creato
+        run: python3 Scripts/document_test_gates.py roundtrip build/calendar-roundtrip.log --ownership-proof build/calendar-roundtrip-owned.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Document-EventKit-roundtrip
+          path: |
+            build/calendar-roundtrip.log
+            build/calendar-roundtrip-owned.json
+            build/CalendarRoundtrip.xcresult
           retention-days: 1
           if-no-files-found: error

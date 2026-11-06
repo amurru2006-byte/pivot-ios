@@ -9,6 +9,7 @@ struct CalendarCreationOptions: Codable, Equatable {
     // A local planning estimate; NOT evidence that Apple's private native
     // travel-time field has been read or written. Legacy separate trips remain.
     var appleCalendarTravel: CalendarCreationTravel? = nil
+    var allDay: CalendarCreationAllDay? = nil
     var plannedTravel: CalendarCreationTravel? { travel ?? appleCalendarTravel }
 
     var isValid: Bool {
@@ -16,9 +17,17 @@ struct CalendarCreationOptions: Codable, Equatable {
             && (alertMinutes.map { [0, 5, 10, 15, 30, 60, 120, 1440].contains($0) } ?? true)
             && (travel?.isValid ?? true) && (appleCalendarTravel?.isValid ?? true)
             && (travel == nil || appleCalendarTravel == nil)
+            && (allDay?.isValid ?? true) && (allDay == nil || (travel == nil && appleCalendarTravel == nil))
     }
-    func problem(draft: CoachCalendarDraft, now: Date, mapsConsent: Bool) -> String? {
+    func problem(draft: CoachCalendarDraft, now: Date, mapsConsent: Bool, nativeTimeZone: TimeZone = .current) -> String? {
         guard isValid else { return "Controlla luogo, avviso e tempo di percorrenza." }
+        if let allDay {
+            guard allDay.matches(draft) else { return "Conferma il giorno dell’evento giornaliero, senza trasformarlo in un appuntamento a mezzanotte." }
+            guard allDay.nativeInterval(currentTimeZone: nativeTimeZone) != nil else {
+                return "Il fuso dell’iPhone è cambiato: verifica nuovamente la data prima di creare l’evento giornaliero."
+            }
+            return nil
+        }
         guard let travel = plannedTravel else { return nil }
         guard let start = draft.start else { return "Imposta prima l’inizio dell’evento." }
         guard !location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -38,9 +47,11 @@ struct CalendarCreationOptions: Codable, Equatable {
     }
     func parts(draft: CoachCalendarDraft, creationID: UUID) -> [CalendarCreationPart] {
         guard isValid, let start = draft.start, let end = draft.end, end > start else { return [] }
+        guard allDay.map({ $0.matches(draft) }) ?? true else { return [] }
         let main = CalendarCreationPart(marker: "pivot://created/" + creationID.uuidString,
             title: draft.title.trimmingCharacters(in: .whitespacesAndNewlines), start: start, end: end,
-            location: location, notes: draft.notes, availability: availability, alertMinutes: alertMinutes, isTravel: false)
+            location: location, notes: draft.notes, availability: availability, alertMinutes: alertMinutes, isTravel: false,
+            isAllDay: allDay != nil)
         guard let travel else { return [main] }
         // ETA departure includes transit waiting; do not subtract only in-vehicle time.
         let departure = travel.estimate?.departure ?? start.addingTimeInterval(-Double(travel.minutes) * 60)
@@ -91,6 +102,7 @@ struct CalendarCreationPart: Equatable {
     let availability: Int
     let alertMinutes: Int?
     let isTravel: Bool
+    var isAllDay = false
 }
 
 enum CalendarCreationBundle {
@@ -109,6 +121,7 @@ enum CalendarCreationBundle {
             part.title == item.title && abs(part.start.timeIntervalSince(item.start)) < 1
                 && abs(part.end.timeIntervalSince(item.end)) < 1
                 && part.location == item.location && part.notes == item.notes
+                && part.isAllDay == item.isAllDay
         }
     }
     static func conflicts(parts: [CalendarCreationPart], events: [CalendarItem]) -> [CalendarItem] {

@@ -56,6 +56,8 @@ struct RootView: View {
     @State private var workoutLink: WorkoutDeepLink?
     @State private var coachSetup: CoachOnlineSetupLink?
     @State private var pendingCoachSetup: CoachOnlineSetupLink?
+    @State private var pendingDocumentURL: URL?
+    @State private var documentDestination: CoachDocumentDestination?
     @State private var workoutPath: [WorkoutRoute] = []
     // EventKit normally pushes changes immediately. This short safety refresh
     // also catches delayed iCloud deletions/moves without blocking the UI.
@@ -126,6 +128,11 @@ struct RootView: View {
         }
         .onReceive(refreshClock) { _ in if scene == .active { requestRefresh(); rebuildAgenda(); reconcileSavings() } }
         .onOpenURL { url in
+            if url.scheme == "pivot", url.host == "document" {
+                pendingDocumentURL = url
+                openPendingDocument()
+                return
+            }
             if let setup = CoachOnlineSetupLink.parse(url, now: Date()) {
                 pendingCoachSetup = setup
                 openPendingCoachSetup()
@@ -138,7 +145,13 @@ struct RootView: View {
             if let link = WorkoutDeepLink.parse(url) { workoutLink = link; openPendingWorkout() }
         }
         .sheet(item: $coachSetup) { setup in NavigationStack { OnlineCoachSettingsView(setup: setup) } }
+        .sheet(item: $documentDestination) { CoachDocumentViewer(destination: $0) }
+        .onChange(of: store.isLoading) { _, _ in openPendingDocument() }
+        .onChange(of: store.isRestoring) { _, _ in openPendingDocument() }
+        .onChange(of: coachSetup?.id) { _, _ in openPendingDocument() }
+        .onChange(of: notifications.route?.id) { _, _ in openPendingDocument() }
         .onChange(of: scene) { _, value in
+            if value == .active { openPendingDocument() }
             if value == .active { requestRefresh(force: true); openPendingCoachSetup(); reconcileRestAudio(); reconcileSavings() }
             else { coachModel.pauseAndUnload() }
             if value == .background { store.saveBeforeBackground() }
@@ -259,6 +272,18 @@ struct RootView: View {
             return
         }
         coachSetup = setup
+    }
+    private func openPendingDocument() {
+        guard let url = pendingDocumentURL, scene == .active, !store.isLoading, !store.isRestoring,
+              !store.locked, coachSetup == nil, notifications.route == nil else { return }
+        pendingDocumentURL = nil
+        guard let value = CoachDocumentLibrary.destination(url, sources: store.data.coachDocuments ?? []) else {
+            store.error = "Il riferimento al documento non è valido o la fonte non è presente in questo archivio."
+            return
+        }
+        // This route can only show a verified local PDF. It cannot create an
+        // event, import a file, open an external page or contact a provider.
+        documentDestination = .init(sourceID: value.source.id, page: value.page)
     }
     private func openPendingWorkout() {
         guard let link = workoutLink, !store.isLoading, !store.isRestoring, !store.locked else { return }

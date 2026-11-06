@@ -1,0 +1,226 @@
+name: Candidata documenti e proposte Pivot 0.8.12
+on:
+  push:
+    branches: ['codex/pivot-documents-release']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pivot-documents-release-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Seleziona strumenti
+        run: |
+          bash -n Scripts/preview-ui.sh Scripts/package-v8-candidate.sh
+          PIVOT_XCODE=$(find /Applications -maxdepth 1 -name 'Xcode_*.app' | sort -V | tail -n 1)
+          if [ -n "$PIVOT_XCODE" ]; then sudo xcode-select -s "$PIVOT_XCODE/Contents/Developer"; fi
+          swift --version
+      - name: Regressione Core completa
+        run: |
+          set -o pipefail
+          mkdir -p build
+          PIVOT_TEST_EXPORT_PATH=build/export-validation.xlsx swift test 2>&1 | tee build/v8-calendar-tests.log
+          python3 Scripts/document_test_gates.py core build/v8-calendar-tests.log --also-ai
+      - name: Sicurezza e quote gateway senza rete
+        run: node --test Backend/coach-gateway/worker.test.mjs
+      - name: Verifica strumenti e copertura UI completa senza rete
+        run: python3 -m unittest discover -s Scripts -p 'test_*.py'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Pivot-V8-test-core
+          path: |
+            build/v8-calendar-tests.log
+            build/export-validation.xlsx
+          retention-days: 1
+          if-no-files-found: error
+  ui:
+    needs: core
+    # Standard free Apple Silicon image, with the same required iOS 26+ floor.
+    # Intel simulator discovery / AX startup failed before executing tests.
+    # Preserve every shard, exact-once gate and existing test timeout.
+    runs-on: macos-15
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [finance, workout, profile, pairing]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepara Xcode, progetto e unica macro approvata
+        run: bash Scripts/prepare-ios-ci.sh
+      - name: Calendario civile del simulatore coerente con Pivot
+        run: |
+          sudo systemsetup -settimezone Europe/Rome
+          swift -e 'import Foundation; guard TimeZone.current.identifier == "Europe/Rome" else { fatalError("Unexpected simulator host timezone") }'
+      - name: Regressione UI, copertura esatta senza duplicati o skip
+        env:
+          PIVOT_UI_ONLY_TESTING: v8-release-${{ matrix.shard }}
+        run: bash Scripts/preview-ui.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Pivot-V8-test-${{ matrix.shard }}
+          path: |
+            build/release-${{ matrix.shard }}-build.log
+            build/release-${{ matrix.shard }}-tests.log
+            build/release-${{ matrix.shard }}-simulator-entitlements.plist
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Pivot-V8-previews-${{ matrix.shard }}
+          path: |
+            build/Previews/Release-${{ matrix.shard }}/
+            !build/Previews/**/*.mp4
+            build/selected-simulator.json
+            build/Pivot-QA-*.pdf
+          retention-days: 1
+          if-no-files-found: ignore
+  build-iphone:
+    # Compile in parallel; this unsigned tar cannot be installed or promoted.
+    needs: core
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepara Xcode, progetto e unica macro approvata
+        run: bash Scripts/prepare-ios-ci.sh
+      - name: Compila app senza firma
+        run: |
+          set -o pipefail
+          xcodebuild -project Pivot.xcodeproj -scheme Pivot -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tee build/build.log
+      - name: Conserva build intermedia con permessi e commit esatti
+        run: |
+          COPYFILE_DISABLE=1 tar -czf build/Pivot-compiled.tar.gz -C build/DerivedData/Build/Products/Release-iphoneos Pivot.app
+          python3 Scripts/compiled_iphone.py create build/Pivot-compiled.tar.gz build/Pivot-compiled-manifest.json --commit "$GITHUB_SHA"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pivot-V8-compiled-iPhone
+          path: |
+            build/Pivot-compiled.tar.gz
+            build/Pivot-compiled-manifest.json
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Pivot-V8-compile-log
+          path: build/build.log
+          retention-days: 1
+          if-no-files-found: ignore
+  release:
+    # All same-run gates must pass before unpacking/signing an installable IPA.
+    needs: [core, ui, build-iphone, document-native, eventkit-roundtrip]
+    runs-on: macos-15-intel
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: Pivot-V8-test-*
+          path: build
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: Pivot-V8-compiled-iPhone
+          path: build
+      - uses: actions/download-artifact@v4
+        with:
+          name: Document-Native-synthetic
+          path: build
+      - uses: actions/download-artifact@v4
+        with:
+          name: Document-EventKit-roundtrip
+          path: build
+      - name: Verifica tutti i risultati UI e la build dello stesso commit
+        run: |
+          python3 Scripts/document_test_gates.py core build/v8-calendar-tests.log --also-ai
+          python3 Scripts/document_test_gates.py native build/document-native.log
+          python3 Scripts/document_test_gates.py roundtrip build/calendar-roundtrip.log --ownership-proof build/calendar-roundtrip-owned.json
+          python3 Scripts/ui_release_shards.py --verify-all-logs build > build/ui-release-verification.json
+          python3 Scripts/compiled_iphone.py verify build/Pivot-compiled.tar.gz build/Pivot-compiled-manifest.json --commit "$GITHUB_SHA"
+          mkdir -p build/DerivedData/Build/Products/Release-iphoneos
+          tar -xzf build/Pivot-compiled.tar.gz -C build/DerivedData/Build/Products/Release-iphoneos
+      - name: Prepara candidata V8 solo dopo tutte le verifiche
+        run: bash Scripts/package-v8-candidate.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pivot-V8-iPhone-candidate
+          path: |
+            build/Pivot-*.*.*.ipa
+            build/Pivot-*.*.*-manifest.json
+            build/packaged-entitlements.plist
+            build/ui-release-verification.json
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Pivot-V8-release-log
+          path: |
+            build/build.log
+            build/ui-release-verification.json
+          retention-days: 1
+          if-no-files-found: ignore
+  document-native:
+    needs: core
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepara strumenti con dipendenze e macro gia fissate
+        run: bash Scripts/prepare-ios-ci.sh
+      - name: Ventotto prove lettura storage risposte e oggetti EventKit non salvati
+        run: |
+          set -o pipefail
+          mkdir -p build
+          xcrun simctl list devices available -j > build/document-devices.json
+          PIVOT_DOCUMENT_SIMULATOR=$(python3 Scripts/select_simulator.py build/document-devices.json --metadata-out build/document-selected-simulator.json)
+          xcodebuild -project Pivot.xcodeproj -scheme PivotDocumentChecks -configuration Debug \
+            -destination "platform=iOS Simulator,id=$PIVOT_DOCUMENT_SIMULATOR" \
+            -derivedDataPath build/DocumentsDerivedData -resultBundlePath build/DocumentTests.xcresult \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=- test \
+            2>&1 | tee build/document-native.log
+          python3 Scripts/document_test_gates.py native build/document-native.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Document-Native-synthetic
+          path: |
+            build/document-native.log
+            build/document-selected-simulator.json
+          retention-days: 1
+          if-no-files-found: error
+  eventkit-roundtrip:
+    needs: core
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepara progetto e host sintetico separato
+        run: bash Scripts/prepare-ios-ci.sh
+      - name: Crea simulatore proprio e verifica save read e cleanup EventKit
+        run: python3 Scripts/calendar_roundtrip_simulator.py
+      - name: Verifica entrambi i test reali e la rimozione del solo simulatore creato
+        run: python3 Scripts/document_test_gates.py roundtrip build/calendar-roundtrip.log --ownership-proof build/calendar-roundtrip-owned.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Document-EventKit-roundtrip
+          path: |
+            build/calendar-roundtrip.log
+            build/calendar-roundtrip-owned.json
+            build/CalendarRoundtrip.xcresult
+          retention-days: 1
+          if-no-files-found: error

@@ -40,10 +40,20 @@ struct CoachCalendarDraftView: View {
     private var suggestion: CoachCalendarRouting.Suggestion {
         CoachCalendarRouting.suggest(title: draft.title, hint: draft.calendarHint, choices: routingChoices, settings: store.data.settings, context: sourceMessage)
     }
-    private var historical: Bool { draft.start.map { $0 < Date().addingTimeInterval(-60) } ?? false }
+    private var historical: Bool {
+        if let allDay = options.allDay { return allDay.canonicalInterval.map { $0.end <= Date() } ?? false }
+        return draft.start.map { $0 < Date().addingTimeInterval(-60) } ?? false
+    }
+    private var alreadyCreated: Bool {
+        guard let savedDraftID else { return false }
+        return store.data.coachState.calendarDrafts?.first(where: { $0.id == savedDraftID })?.createdEventID != nil
+    }
     var body: some View {
         NavigationStack {
             Form {
+                if alreadyCreated {
+                    Section { Label("Questa bozza è già stata creata nel Calendario.", systemImage: "checkmark.circle") }
+                }
                 if needsVerification {
                     Section {
                         Label("Verifica il salvataggio precedente", systemImage: "exclamationmark.triangle")
@@ -68,11 +78,11 @@ struct CoachCalendarDraftView: View {
                         rememberAccount: $rememberAccount, rememberTopic: $rememberTopic, topic: $topic,
                         focusedField: $focusedField, message: preferenceMessage, save: { _ = savePreferences() })
                 }
-                }.disabled(needsVerification)
+                }.disabled(needsVerification || !loaded || alreadyCreated)
                 if let problem { Section { Text(problem).foregroundStyle(PivotTheme.amber) } }
                 Section {
                     Button(busy ? "Verifico…" : "Verifica e prepara il salvataggio") { review() }
-                        .disabled(busy || needsVerification || store.locked || !calendar.hasAccess)
+                        .disabled(!loaded || busy || needsVerification || alreadyCreated || store.locked || !calendar.hasAccess)
                         .accessibilityIdentifier("coach-create-review")
                     if !calendar.hasAccess { Text("Serve l'accesso completo ai calendari nelle Impostazioni di iOS.").font(.caption) }
                 }
@@ -87,7 +97,7 @@ struct CoachCalendarDraftView: View {
                     }
                     ToolbarItem(placement: .confirmationAction) {
                         Button { review() } label: { Image(systemName: "checkmark") }.accessibilityLabel("Verifica e salva")
-                            .disabled(busy || needsVerification || store.locked || !calendar.hasAccess).accessibilityIdentifier("creation-top-save")
+                            .disabled(!loaded || busy || needsVerification || alreadyCreated || store.locked || !calendar.hasAccess).accessibilityIdentifier("creation-top-save")
                     }
                 }
                 .pivotKeyboardToolbar(identifier: "coach-draft-keyboard-done") { focusedField = nil }
@@ -140,6 +150,19 @@ struct CoachCalendarDraftView: View {
                 Label("Registrazione nel passato", systemImage: "clock.arrow.circlepath").foregroundStyle(PivotTheme.accent)
                 Text("Gli orari resteranno quelli indicati, senza spostare la data a domani o cancellare altri impegni.").font(.caption)
             }
+            Toggle("Tutto il giorno", isOn: Binding(get: { options.allDay != nil }, set: setAllDay))
+                .accessibilityIdentifier("creation-all-day")
+            if let allDay = options.allDay, let interval = allDay.canonicalInterval {
+                DatePicker("Giorno", selection: Binding(get: { interval.start }, set: setCivilDay), displayedComponents: .date)
+                    .environment(\.calendar, PivotDate.calendar).environment(\.timeZone, PivotDate.calendar.timeZone)
+                    .accessibilityIdentifier("creation-all-day-date")
+                Text("Giornata intera: non è stato assegnato un orario alla scadenza.").font(.caption)
+                if allDay.nativeTimeZoneIdentifier != TimeZone.current.identifier {
+                    Text("Il fuso dell’iPhone è cambiato. Controlla il giorno prima di preparare il salvataggio.").font(.caption).foregroundStyle(PivotTheme.amber)
+                    Button("Rivedi il giorno nel fuso attuale") { setCivilDay(interval.start) }
+                        .accessibilityIdentifier("creation-all-day-zone-review")
+                }
+            } else {
             if let start = draft.start {
                 DatePicker("Inizio", selection: Binding(get: { draft.start ?? start }, set: { draft.start = $0 }))
                     .accessibilityIdentifier("creation-start")
@@ -156,7 +179,29 @@ struct CoachCalendarDraftView: View {
                     Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
                 }.foregroundStyle(.primary)
             }.accessibilityIdentifier("creation-travel-open")
+            }
         }
+    }
+    private func setAllDay(_ enabled: Bool) {
+        guard loaded, !busy, !needsVerification, !alreadyCreated else { return }
+        if enabled {
+            guard options.plannedTravel == nil else {
+                problem = "Rimuovi prima il tempo di percorrenza: una giornata intera non ha un orario a cui collegare il viaggio."; return
+            }
+            setCivilDay(draft.start ?? Date())
+        } else {
+            options.allDay = nil; draft.start = nil; draft.end = nil; draft.endEstimated = false
+            problem = "Scegli inizio e fine dell’impegno: non ho trasformato la giornata intera in un appuntamento a mezzanotte."
+        }
+    }
+    private func setCivilDay(_ date: Date) {
+        guard loaded, !busy, !needsVerification, !alreadyCreated else { return }
+        let metadata = CalendarCreationAllDay(day: PivotDate.key(date), nativeTimeZoneIdentifier: TimeZone.current.identifier)
+        guard metadata.isValid, let interval = metadata.canonicalInterval else {
+            problem = "Non riesco a verificare questo giorno nel fuso dell’iPhone. Nessun evento è stato creato."; return
+        }
+        options.allDay = metadata; draft.start = interval.start; draft.end = interval.end; draft.endEstimated = false
+        problem = nil
     }
     private var calendarOptionsSection: some View {
         Section("Opzioni") {
@@ -186,7 +231,8 @@ struct CoachCalendarDraftView: View {
     }
     private var confirmationText: String {
         let prefix = historical ? "Stai registrando un evento nel passato. " : ""
-        let count = options.travel == nil ? "Aggiungerò un evento. " : "Aggiungerò due eventi nello stesso calendario: attività e Spostamento. "
+        let count = options.allDay != nil ? "Aggiungerò un evento giornaliero, senza un orario. " :
+            options.travel == nil ? "Aggiungerò un evento. " : "Aggiungerò due eventi nello stesso calendario: attività e Spostamento. "
         let manual = options.appleCalendarTravel == nil ? "" : "La fascia Tempo di percorrenza va completata in Calendario Apple; Pivot non può verificarne il contenuto. "
         let warning = conflicts.isEmpty ? "Nessuna sovrapposizione rilevata nei calendari inclusi per questi orari e la stima scelta. Le fasce di percorrenza Apple non sono leggibili da Pivot." :
             "Si sovrappone a: " + conflicts.map(\.title).joined(separator: ", ") + ". Conferma solo se vuoi mantenere la sovrapposizione."
@@ -203,8 +249,9 @@ struct CoachCalendarDraftView: View {
         }
     }
     private func review() {
+        guard loaded, !busy, !needsVerification, !alreadyCreated else { return }
         guard persistDraft() else { return }
-        if let issue = draft.problem(now: Date(), calendarID: calendarID) { problem = issue; return }
+        if let issue = draft.problem(now: Date(), calendarID: calendarID, allDay: options.allDay) { problem = issue; return }
         if let issue = options.problem(draft: draft, now: Date(), mapsConsent: AppleMapsService.shared.consentGranted) { problem = issue; return }
         busy = true; problem = nil
         Task {
@@ -249,7 +296,8 @@ struct CoachCalendarDraftView: View {
         return CalendarCreationBundle.suggestedOrigin(before: start, events: calendar.events)
     }
     private func save(verifyOnly: Bool = false) {
-        guard !busy, !store.locked, !store.isRestoring, store.beginCalendarMutation() else { return }
+        guard loaded, !busy, !store.locked, !store.isRestoring, !alreadyCreated || verifyOnly,
+              store.beginCalendarMutation() else { return }
         busy = true; problem = nil
         Task {
             defer { busy = false; store.endCalendarMutation() }

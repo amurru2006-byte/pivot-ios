@@ -151,9 +151,14 @@ struct CalendarCreationPreview: View {
             }
             Text(draft.title.isEmpty ? "Nuovo impegno" : draft.title).font(.headline)
             if let start = draft.start, let end = draft.end {
+                if options.allDay != nil {
+                    Label("\(PivotDate.shortDate(start)) \(PivotDate.calendar.component(.year, from: start)) · Tutto il giorno", systemImage: "calendar")
+                        .font(.subheadline).accessibilityIdentifier("creation-all-day-summary")
+                } else {
                 let finalDay = PivotDate.calendar.isDate(start, inSameDayAs: end) ? "" : PivotDate.shortDate(end) + " "
                 Label("\(PivotDate.shortDate(start)) · \(PivotDate.time(start)) – \(finalDay)\(PivotDate.time(end))", systemImage: "clock")
                     .font(.subheadline).accessibilityIdentifier("creation-time-summary")
+                }
             }
             if !options.location.isEmpty { Label(options.location, systemImage: "mappin.and.ellipse").font(.subheadline) }
         }.foregroundStyle(color).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 6)

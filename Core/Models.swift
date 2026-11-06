@@ -413,6 +413,7 @@ struct AppData: Codable {
     // Single local copy; events/drafts hold logical page references, not PDFs.
     var coachDocuments: [CoachDocumentSource]? = nil
     var coachDocumentEventLinks: [CoachDocumentEventLink]? = nil
+    var coachDocumentReviews: [CoachDocumentReviewBatch]? = nil
 }
 
 struct ActivityDraft: Codable {

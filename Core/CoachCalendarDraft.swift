@@ -18,13 +18,18 @@ struct CoachCalendarDraft: Codable, Equatable, Identifiable {
         try value.encode(calendarHint, forKey: .calendarHint); try value.encode(notes, forKey: .notes); try value.encode(endEstimated, forKey: .endEstimated)
     }
 
-    func problem(now: Date, calendarID: String) -> String? {
+    func problem(now: Date, calendarID: String, allDay: CalendarCreationAllDay? = nil) -> String? {
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               title.count <= 160, notes.count <= 3000 else { return "Controlla titolo e note della proposta." }
         guard !calendarID.isEmpty else { return "Scegli il calendario dove salvare l'impegno." }
         guard now.timeIntervalSinceReferenceDate.isFinite,
               let start, let end, start.timeIntervalSinceReferenceDate.isFinite, end.timeIntervalSinceReferenceDate.isFinite,
-              end > start, end.timeIntervalSince(start) <= 86400 else {
+              end > start else {
+            return "Conferma inizio e fine, con la data corretta anche dopo mezzanotte."
+        }
+        if let allDay {
+            guard allDay.matches(self) else { return "Conferma la data completa dell’evento giornaliero." }
+        } else if end.timeIntervalSince(start) > 86400 {
             return "Conferma inizio e fine, con la data corretta anche dopo mezzanotte."
         }
         guard start <= now.addingTimeInterval(366 * 86400) else {
