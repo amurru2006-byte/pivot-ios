@@ -62,7 +62,7 @@ struct RootView: View {
     // EventKit normally pushes changes immediately. This short safety refresh
     // also catches delayed iCloud deletions/moves without blocking the UI.
     private let refreshClock = Timer.publish(every: 20, on: .main, in: .common).autoconnect()
-    var body: some View {
+    private var rootContent: some View {
         Group {
             if !previewReady {
                 ProgressView("Anteprima…")
@@ -97,6 +97,9 @@ struct RootView: View {
             else if PreviewMode.enabled && PreviewMode.screen == "strength-ranks" { NavigationStack { StrengthRanksView() } }
             else { tabs }
         }
+    }
+    private var lifecycleContent: some View {
+        rootContent
         .task {
             #if DEBUG && targetEnvironment(simulator)
             if HealthService.isHealthInteractionFixtureEnabled {
@@ -157,6 +160,9 @@ struct RootView: View {
             if value == .background { store.saveBeforeBackground() }
             if value == .background { coachSetup = nil; pendingCoachSetup = nil }
         }
+    }
+    private var observedContent: some View {
+        lifecycleContent
         .onReceive(NotificationCenter.default.publisher(for: ProcessInfo.thermalStateDidChangeNotification)) { _ in
             if ProcessInfo.processInfo.thermalState == .serious || ProcessInfo.processInfo.thermalState == .critical { coachModel.pauseAndUnload() }
         }
@@ -211,6 +217,9 @@ struct RootView: View {
                 requestRefresh()
             }
         }
+    }
+    private var notificationContent: some View {
+        observedContent
         .onChange(of: calendar.events) { _, _ in rebuildAgenda() }
         .onChange(of: calendar.hasAccess) { _, _ in rebuildAgenda() }
         .onChange(of: agenda.revision) { _, _ in
@@ -246,6 +255,9 @@ struct RootView: View {
                 else { Text("Questo evento è cambiato. Apri la giornata aggiornata.").padding() }
             }.presentationDragIndicator(.visible)
         }
+    }
+    var body: some View {
+        notificationContent
         .alert("Pivot", isPresented: Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })) {
             Button("OK") { store.error = nil }
         } message: { Text(store.error ?? "") }
