@@ -410,6 +410,9 @@ struct AppData: Codable {
     var calendarActivityLinks: [CalendarActivityLink]? = nil
     // Local, explicit place shortcuts/history; absent in older backups.
     var placeLibrary: PlaceLibrary? = nil
+    // Single local copy; events/drafts hold logical page references, not PDFs.
+    var coachDocuments: [CoachDocumentSource]? = nil
+    var coachDocumentEventLinks: [CoachDocumentEventLink]? = nil
 }
 
 struct ActivityDraft: Codable {

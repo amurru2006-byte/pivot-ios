@@ -12,6 +12,7 @@ struct CoachSavedCalendarDraft: Codable, Identifiable {
     var createdEventID: String? = nil
     var creationOptions: CalendarCreationOptions? = nil
     var creationNeedsVerification: Bool? = nil
+    var documentReferences: [CoachDocumentReference]? = nil
 }
 
 enum CoachDraftStore {
@@ -23,6 +24,7 @@ enum CoachDraftStore {
               CalendarCreationBundle.existing(parts: options.parts(draft: saved.draft, creationID: id),
                   items: receipt.travel.map { [$0, receipt.activity] } ?? [receipt.activity]),
               CalendarActivityLinks.capture(id: id, receipt: receipt, options: options, data: &next, now: now),
+              CoachDocumentLibrary.attach(saved.documentReferences ?? [], to: receipt.activity.id, data: &next),
               markCreated(id: id, eventID: receipt.activity.id, calendarID: receipt.activity.calendarIdentifier, data: &next, now: now) else { return false }
         data = next; return true
     }

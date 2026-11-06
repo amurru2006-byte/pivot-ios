@@ -36,13 +36,15 @@ enum StudyFiles {
     }
     static func documents(in data: AppData) -> [StudyDocument] {
         data.records.values.flatMap { $0.study?.documents ?? [] } + (data.training?.plans.compactMap(\.document) ?? [])
+            + (data.coachDocuments ?? []).map(\.document)
     }
     static func url(for id: UUID, directory: URL) -> URL {
         directory.appendingPathComponent(id.uuidString).appendingPathExtension("pdf")
     }
     static func validateBackup(_ data: AppData, requireFiles: Bool = false) throws {
         let documents = documents(in: data)
-        guard data.records.values.allSatisfy({ ($0.study?.documents.count ?? 0) <= maximumDocuments }),
+        guard CoachDocumentLibrary.valid(data),
+              data.records.values.allSatisfy({ ($0.study?.documents.count ?? 0) <= maximumDocuments }),
               documents.allSatisfy({ !$0.name.isEmpty && $0.byteCount > 0 && $0.byteCount <= maximumBytes }),
               Set(documents.map(\.id)).count == documents.count else { throw StudyFileError.invalidBackup }
         guard documents.reduce(0, { $0 + $1.byteCount }) <= maximumLibraryBytes else { throw StudyFileError.libraryFull }
@@ -54,6 +56,9 @@ enum StudyFiles {
         for doc in documents {
             guard let bytes = files[doc.id.uuidString], bytes.count == doc.byteCount else { throw StudyFileError.invalidBackup }
             try validate(bytes)
+            if let source = data.coachDocuments?.first(where: { $0.document.id == doc.id }), !source.matches(bytes) {
+                throw StudyFileError.invalidBackup
+            }
         }
     }
     static func completeBackup(_ data: AppData, directory: URL) throws -> AppData {
@@ -106,6 +111,16 @@ enum StudyFiles {
                 library.plans[index].document?.id = fresh
             }
             restored.training = library
+        }
+        if var sources = restored.coachDocuments {
+            for index in sources.indices {
+                let old = sources[index].document.id
+                guard let bytes = data.studyPDFs?[old.uuidString] else { throw StudyFileError.invalidBackup }
+                let fresh = UUID()
+                try bytes.write(to: url(for: fresh, directory: directory), options: .atomic)
+                sources[index].document.id = fresh
+            }
+            restored.coachDocuments = sources
         }
         restored.studyPDFs = nil
         return restored

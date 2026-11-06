@@ -1,0 +1,84 @@
+name: Lettura documenti locale e backup - solo collaudo sintetico
+on:
+  push:
+    branches: ['codex/pivot-documents-preflight']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pivot-documents-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Regressione Core completa e16 nuovi casi esatti
+        run: |
+          set -o pipefail
+          mkdir -p build
+          swift test 2>&1 | tee build/document-core.log
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          log=Path('build/document-core.log').read_text()
+          assert not re.search(r'Test Case .* (?:failed|skipped)',log)
+          for suite in ['CoachDocumentSourceTests','CoachDocumentLibraryTests']:
+              names=re.findall(r'func (test\w+)\(',Path(f'Tests/PivotCoreTests/{suite}.swift').read_text())
+              assert len(names)==len(set(names))==8
+              for name in names:
+                  assert sum(suite in line and name in line and ' passed ' in line for line in log.splitlines())==1,(suite,name)
+          print('Verified16exactDocumentCoreCasesNoSkips')
+          PY
+      - name: Gateway e strumenti esistenti senza rete
+        run: |
+          node --test Backend/coach-gateway/worker.test.mjs
+          python3 -m unittest discover -s Scripts -p 'test_*.py'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Document-Core-synthetic
+          path: build/document-core.log
+          retention-days: 1
+          if-no-files-found: error
+  native:
+    needs: core
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepara strumenti con dipendenze e macro gia fissate
+        run: bash Scripts/prepare-ios-ci.sh
+      - name: Otto prove PDFKit e Vision nel solo simulatore
+        run: |
+          set -o pipefail
+          mkdir -p build
+          xcrun simctl list devices available -j > build/document-devices.json
+          PIVOT_DOCUMENT_SIMULATOR=$(python3 Scripts/select_simulator.py build/document-devices.json --metadata-out build/document-selected-simulator.json)
+          xcodebuild -project Pivot.xcodeproj -scheme PivotDocumentChecks -configuration Debug \
+            -destination "platform=iOS Simulator,id=$PIVOT_DOCUMENT_SIMULATOR" \
+            -derivedDataPath build/DocumentsDerivedData -resultBundlePath build/DocumentTests.xcresult \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=- test \
+            2>&1 | tee build/document-native.log
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          log=Path('build/document-native.log').read_text()
+          assert '** TEST SUCCEEDED **' in log
+          assert not re.search(r'Test Case .* (?:failed|skipped)',log)
+          names=re.findall(r'func (test\w+)\(',Path('IOSTests/CoachDocumentReaderTests.swift').read_text())
+          assert len(names)==len(set(names))==8
+          for name in names:
+              assert sum('CoachDocumentReaderTests' in line and name in line and ' passed ' in line for line in log.splitlines())==1,name
+          print('Verified8exactDocumentNativeCasesNoSkips')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Document-Native-synthetic
+          path: |
+            build/document-native.log
+            build/document-selected-simulator.json
+          retention-days: 1
+          if-no-files-found: error

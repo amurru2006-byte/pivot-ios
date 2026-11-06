@@ -83,6 +83,19 @@ targets:
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: PIVOT_WIDGET
         APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: YES
+  PivotDocumentNativeTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Core
+      - path: Pivot/Services/CoachDocumentReader.swift
+      - path: IOSTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.pivot.document-native-tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: ""
+        BUNDLE_LOADER: ""
   PivotUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -95,6 +108,13 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.pivot.interaction-tests
         GENERATE_INFOPLIST_FILE: YES
 schemes:
+  PivotDocumentChecks:
+    build:
+      targets:
+        PivotDocumentNativeTests: all
+    test:
+      targets:
+        - PivotDocumentNativeTests
   Pivot:
     build:
       targets:
