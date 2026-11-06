@@ -36,7 +36,8 @@ final class CoachPlanningDurationChoiceTests: XCTestCase {
         XCTAssertEqual(try choice(source, library).activityMinutes, 120)
     }
     func testNoEstimateFromSparseIncompleteOrWrongDayHistory() {
-        for samples in [[], [60], [60, 90]] {
+        let sparseSamples: [[Double]] = [[], [60], [60, 90]]
+        for samples in sparseSamples {
             let (source, library) = fixture(samples: samples)
             XCTAssertThrowsError(try choice(source, library))
         }
