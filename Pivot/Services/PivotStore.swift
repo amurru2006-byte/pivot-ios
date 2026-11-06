@@ -157,6 +157,23 @@ final class PivotStore: ObservableObject {
                     data.ledger = .init(openingCents: [String(PivotDate.calendar.component(.year, from: Date())): 2500])
                 }
             }
+            if !locked, ProcessInfo.processInfo.arguments.contains("--interaction-test"),
+               ProcessInfo.processInfo.arguments.contains("--planning-duration-test"),
+               UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_COACH_ACTION_ID"] ?? "") != nil, data.training == nil {
+                let now = Date()
+                let plan = TrainingPlan(payload: .init(formatVersion: 1, name: "Scheda durata QA", days: [
+                    .init(id: "duration-ui-day-qa", name: "Giorno durata QA", exercises: [
+                        .init(id: "duration-ui-exercise-qa", name: "Esercizio durata QA", sets: 1, reps: "6", restSeconds: 60, coachNotes: "")])]))
+                var library = TrainingLibrary(plans: [plan])
+                for (index, minutes) in [60, 75, 90].enumerated() {
+                    var sample = library.makeSession(plan: plan, day: plan.payload.days[0], eventID: nil,
+                        now: now.addingTimeInterval(-Double(index + 1) * 86400))
+                    sample.end = sample.start.addingTimeInterval(Double(minutes) * 60)
+                    sample.exercises[0].sets[0].kg = 20; sample.exercises[0].sets[0].reps = 6; sample.exercises[0].sets[0].done = true
+                    library.sessions.append(sample)
+                }
+                change { $0.training = library }
+            }
             if !locked, ProcessInfo.processInfo.arguments.contains("--interaction-test"), ProcessInfo.processInfo.arguments.contains("--calendar-mutations-test"),
                UUID(uuidString: ProcessInfo.processInfo.environment["PIVOT_QA_COACH_ACTION_ID"] ?? "") != nil, data.clients.isEmpty {
                 change { data in

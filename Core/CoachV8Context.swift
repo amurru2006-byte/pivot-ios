@@ -164,6 +164,7 @@ struct CoachV8Snapshot {
             focusedPlanning = session
         }
         let continued = try focusedPlanning?.boundEvents(in: canonical, now: now) ?? []
+        if let focusedPlanning { try CoachPlanningLogistics.verify(focusedPlanning, events: canonical, data: data, now: now) }
         var planned = Planner.plannedEvents(events, data: calendarData).filter { purpose != "rewrite" && effectiveScope.contains($0, now: now) }
         let additional = continued.filter { item in !planned.contains { $0.id == item.id } }
         planned.append(contentsOf: additional)
@@ -246,6 +247,7 @@ struct CoachV8Snapshot {
     /// context. Cloud history/memory/count limits must not disable this search.
     static func localPlanning(_ session: CoachPlanningSession, events: [CalendarItem], data: AppData, now: Date) throws -> Self {
         let canonical = EventCoalescer.unique(events, data: data)
+        try CoachPlanningLogistics.verify(session, events: canonical, data: data, now: now)
         let bound = try session.boundEvents(in: canonical, now: now)
         var sources: [String: CalendarItem] = [:]
         let summaries = bound.enumerated().map { index, source -> CoachV8Request.Event in

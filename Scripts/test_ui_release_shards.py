@@ -11,7 +11,7 @@ class UIReleaseShardTests(unittest.TestCase):
         ])
         plan = load_plan()
         self.assertTrue(set(cases) <= set(plan["profile"]))
-        self.assertEqual(sum(map(len, plan.values())), 93)
+        self.assertEqual(sum(map(len, plan.values())), 96)
         log = "\n".join(f"Test Case '-[PivotUITests.{suite} {method}]' passed (1.0 seconds)."
                         for suite, method in (case.split("/") for case in cases))
         self.assertEqual(verify_log(log, cases), 2)
@@ -53,17 +53,17 @@ class UIReleaseShardTests(unittest.TestCase):
         self.assertNotRegex(workflow, r'(?m)^\s*(?:run:\s*)?bash Scripts/package-v8-candidate.sh\s*$')
         self.assertNotIn('build/Pivot-*.*.*.ipa', workflow)
 
-    def test_planning_preflight_requires_all_four_cases_and_keeps_full_release_coverage(self):
+    def test_planning_preflight_requires_all_seven_cases_and_keeps_full_release_coverage(self):
         suites = discover_tests(ROOT)
         cases = planning_preflight(suites)
-        self.assertEqual(len(cases), 4)
+        self.assertEqual(len(cases), 7)
         text = "\n".join(f"Test Case '-[PivotUITests.{suite} {method}]' passed (1.0 seconds)."
                          for suite, method in (case.split("/") for case in cases))
-        self.assertEqual(verify_log(text, cases), 4)
+        self.assertEqual(verify_log(text, cases), 7)
         with self.assertRaises(ValueError): verify_log(text.splitlines()[0], cases)
         suites["PlanningConversationInteractionTests"].append("testUnreviewedDrift")
         with self.assertRaises(ValueError): planning_preflight(suites)
-        self.assertEqual(sum(map(len, load_plan().values())), 93)
+        self.assertEqual(sum(map(len, load_plan().values())), 96)
 
     def test_calendar_control_preflight_requires_routing_audit_and_concern_once(self):
         suites = discover_tests(ROOT)
@@ -75,7 +75,7 @@ class UIReleaseShardTests(unittest.TestCase):
         with self.assertRaises(ValueError): verify_log(text.splitlines()[0], cases)
         suite, method = cases[0].split("/"); suites[suite].remove(method)
         with self.assertRaises(ValueError): calendar_controls_preflight(suites)
-        self.assertEqual(sum(map(len, load_plan().values())), 93)
+        self.assertEqual(sum(map(len, load_plan().values())), 96)
 
     def test_chart_preflight_checks_the_actual_failed_case_without_reducing_full_coverage(self):
         suites = discover_tests(ROOT)
@@ -88,7 +88,7 @@ class UIReleaseShardTests(unittest.TestCase):
         with self.assertRaises(ValueError): verify_log(text + text, cases)
         suites[suite].remove(method)
         with self.assertRaises(ValueError): chart_preflight(suites)
-        self.assertEqual(sum(map(len, load_plan().values())), 93)
+        self.assertEqual(sum(map(len, load_plan().values())), 96)
 
     def test_places_preflight_selects_and_verifies_same_eight_cases(self):
         cases = places_preflight(discover_tests(ROOT))
@@ -121,12 +121,12 @@ class UIReleaseShardTests(unittest.TestCase):
         self.assertEqual(len(cases), 2)
         self.assertTrue(any(case.startswith("SavedPlacesInteractionTests/") for case in cases))
         self.assertTrue(any("testRecoveryDateCorrection" in case for case in cases))
-        self.assertEqual(sum(map(len, load_plan().values())), 93)
+        self.assertEqual(sum(map(len, load_plan().values())), 96)
 
     def test_repository_coverage_is_complete_and_unique(self):
         plan = load_plan()
         self.assertEqual(sum(map(len, plan.values())), sum(map(len, discover_tests(ROOT).values())))
-        self.assertEqual({k: len(v) for k, v in plan.items()}, {"finance": 24, "workout": 22, "profile": 23, "pairing": 24})
+        self.assertEqual({k: len(v) for k, v in plan.items()}, {"finance": 24, "workout": 22, "profile": 23, "pairing": 27})
 
     def fixture(self):
         suites = {"ExampleTests": ["testA", "testB", "testC", "testD"]}

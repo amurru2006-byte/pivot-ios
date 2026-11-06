@@ -42,6 +42,8 @@ struct CoachPlanningSession: Codable, Equatable, Identifiable {
     // Local decisions, keyed by native source identity, never provider aliases.
     // Optional so backups created before this feature remain readable.
     var localPins: [CoachPlanningPin]? = nil
+    var groupSnapshots: [CalendarActivityLink]? = nil
+    var durationChoices: [CoachPlanningDurationChoice]? = nil
     var status: Status = .draft
 
     var isValid: Bool {
@@ -56,7 +58,7 @@ struct CoachPlanningSession: Codable, Equatable, Identifiable {
               [createdAt, updatedAt, anchor].allSatisfy(Self.validDate), createdAt <= anchor, anchor <= updatedAt,
               dayKey == PivotDate.key(anchor), protectedExcludedDays.count <= 7,
               Set(protectedExcludedDays).count == protectedExcludedDays.count,
-              validLocalPins else { return false }
+              validLocalPins, validLogistics else { return false }
         return protectedExcludedDays.allSatisfy { date in
             guard Self.validDate(date), date == PivotDate.calendar.startOfDay(for: date),
                   let offset = Self.offset(of: date, from: anchor) else { return false }
@@ -95,6 +97,10 @@ struct CoachPlanningSession: Codable, Equatable, Identifiable {
             intent: rawIntent, bindings: bindings)
         if let parent { value.id = parent.id }
         value.localPins = parent?.localPins
+        let groups = try CoachPlanningLogistics.capture(sources: selected.sources, events: events, data: data)
+        if let previous = parent?.groupSnapshots, previous != groups { throw Failure.changed }
+        value.groupSnapshots = groups.isEmpty ? nil : groups
+        value.durationChoices = parent?.durationChoices
         let protected = (parent?.protectedExcludedDays ?? []) + value.excludedDays
         value.protectedExcludedDays = Array(Set(protected.filter {
             Self.offset(of: $0, from: value.anchor).map { (0...6).contains($0) } ?? false
@@ -160,6 +166,25 @@ struct CoachPlanningSession: Codable, Equatable, Identifiable {
             && pins.allSatisfy { pin in
                 guard let source = sources.first(where: { $0.id == pin.sourceID }) else { return false }
                 return pin.isValid(for: source)
+            }
+    }
+    private var validLogistics: Bool {
+        let sources = intent.eventIDs.compactMap { bindings[$0] }
+        let groups = groupSnapshots ?? [], durations = durationChoices ?? []
+        let members = groups.flatMap { [$0.activity.id, $0.travel.id] }
+        return groups.count <= sources.count && Set(groups.map(\.id)).count == groups.count
+            && Set(members).count == members.count
+            && groups.allSatisfy { group in
+                group.isValid && !group.deleted
+                    && sources.contains { CalendarSnapshotMatch.revision(group.activity, $0) }
+                    && !sources.contains { CalendarSnapshotMatch.identity(group.travel, $0) }
+            }
+            && durations.count <= sources.count && Set(durations.map(\.sourceID)).count == durations.count
+            && durations.allSatisfy { choice in
+                guard let source = sources.first(where: { $0.id == choice.sourceID }) else { return false }
+                return choice.isValid && source.kind == .workout
+                    && choice.confirmedAt <= updatedAt
+                    && Double(choice.activityMinutes) * 60 >= source.end.timeIntervalSince(source.start)
             }
     }
     private func days(_ offsets: [Int]) -> [Date] {

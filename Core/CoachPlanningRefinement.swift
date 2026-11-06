@@ -98,7 +98,7 @@ enum CoachPlanningRefinement {
         let selection = try CoachPlanningSelection.restore(session, calendarAccess: calendarAccess, events: events, data: data, now: now)
         guard zip(selection.sources, option.moves).allSatisfy({ $0.0 == $0.1.source }),
               CoachPlanningAlternatives.matchesPins(option, session: session),
-              CoachPlanner.validate(option, events: events, data: data, now: now) == nil else { throw Failure.stale }
+              CoachPlanningLogistics.validate(option, session: session, events: events, data: data, now: now) == nil else { throw Failure.stale }
         let candidates = session.allowedDays.filter { PivotDate.calendar.component(.weekday, from: $0) == request.weekday }
         guard candidates.count == 1, let day = candidates.first,
               !session.excludedDays.contains(day), !session.protectedExcludedDays.contains(day) else { throw Failure.excludedDay }

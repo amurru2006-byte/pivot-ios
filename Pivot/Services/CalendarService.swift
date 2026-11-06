@@ -337,6 +337,14 @@ private actor CalendarWorker {
             initial[1].title = "Spostamento"; initial[1].location = "Destinazione QA"
             initial[1].start = initial[0].start.addingTimeInterval(-1200); initial[1].end = initial[0].start
         }
+        if ProcessInfo.processInfo.arguments.contains("--planning-duration-test") {
+            initial[0].kind = .workout
+        }
+        if ProcessInfo.processInfo.arguments.contains("--planning-signals-test") {
+            let now = Date()
+            initial[0].start = now.addingTimeInterval(-600); initial[0].end = now.addingTimeInterval(1800)
+            initial[1].start = now.addingTimeInterval(-300); initial[1].end = now.addingTimeInterval(2700)
+        }
         saveMutationFixture(initial); return initial
     }
     private func saveMutationFixture(_ items: [CalendarItem]) {

@@ -4,11 +4,14 @@ import XCTest
 /// constraint review and local staging UI, not live model understanding.
 final class PlanningConversationInteractionTests: XCTestCase {
     override func tearDown() { attachFailureDiagnostics(name); super.tearDown() }
-    private func launch() -> XCUIApplication {
+    private func launch(logistics: Bool = false, duration: Bool = false, signals: Bool = false) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["--interaction-test", "--online-coach-action-test", "--coach-calendar-create-test",
             "--calendar-mutations-test", "--conversation-continuity-test", "--planning-conversation-test"]
+        if logistics { app.launchArguments += ["--linked-travel-test", "--planning-logistics-test"] }
+        if duration { app.launchArguments.append("--planning-duration-test") }
+        if signals { app.launchArguments += ["--planning-signals-test", "--online-coach-review-test"] }
         app.launchEnvironment["PIVOT_QA_COACH_ACTION_ID"] = UUID().uuidString
         app.launchEnvironment["PIVOT_QA_KEYCHAIN_ID"] = UUID().uuidString
         app.launch(); tap(app.buttons["open-pivot-coach"], app); return app
@@ -141,5 +144,76 @@ private func correctFirstAlternative(_ app: XCUIApplication, text: String) {
         XCTAssertTrue(app.staticTexts["1. Impegno QA 1"].exists)
         XCTAssertTrue(app.staticTexts["coach-planning-days"].exists)
         XCTAssertFalse(app.buttons.matching(identifier: "coach-planning-stage").firstMatch.exists)
+    }
+private func evidence(_ app: XCUIApplication, name: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
+    }
+    func testLinkedPlanningStagesAGroupForExplicitReviewWithoutNativeWrites() {
+        let app = launch(logistics: true)
+        tap(app.buttons["linked-travel-prepare-qa"], app)
+        let link = app.staticTexts["linked-travel-audit"]
+        XCTAssertTrue(link.waitForExistence(timeout: 8)); XCTAssertTrue(link.label.contains("sincronizzato"), link.label)
+        send("Recupera Impegno QA 1 domani pomeriggio", app, authorize: true)
+        openPlan(app)
+        XCTAssertTrue(app.staticTexts["coach-planning-linked-group"].exists)
+        tap(app.switches["coach-planning-preparation"], app); tap(app.buttons["coach-planning-search"], app)
+        let stage = app.buttons.matching(identifier: "coach-planning-stage").firstMatch
+        XCTAssertTrue(stage.waitForExistence(timeout: 15)); XCTAssertFalse(stage.isEnabled)
+        let trip = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Viaggio collegato (stima da verificare)")).firstMatch
+        XCTAssertTrue(trip.exists)
+        evidence(app, name: "ai-planning-linked-group-preview")
+        tap(app.switches.matching(identifier: "coach-planning-route-review").firstMatch, app); tap(stage, app)
+        tap(app.buttons["Apri le conferme per il Calendario"], app)
+        let batch = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "coach-calendar-batch-")).firstMatch
+        tap(batch, app)
+        tap(app.buttons["coach-mutations-review"], app)
+        let included = app.staticTexts["coach-mutations-error"]
+        XCTAssertTrue(included.waitForExistence(timeout: 12)); XCTAssertTrue(included.label.contains("incluso il viaggio collegato"), included.label)
+        let reviewBoth = app.buttons["coach-mutations-review"]
+        scrollControlIntoView(reviewBoth, in: app, maxSwipes: 20)
+        XCTAssertEqual(reviewBoth.label, "Verifica 2 modifiche")
+        XCTAssertFalse(app.buttons["coach-mutations-confirm"].exists)
+        evidence(app, name: "ai-planning-linked-pair-final-review")
+    }
+    func testPersonalDurationNeedsExplicitPlanDayAdoptionAndPreparationReconfirmation() {
+        let app = launch(duration: true)
+        send("Recupera Impegno QA 1 domani pomeriggio", app, authorize: true)
+        openPlan(app)
+        tap(app.switches["coach-planning-preparation"], app)
+        tap(app.buttons["Durata personale · Impegno QA 1"], app)
+        XCTAssertFalse(app.buttons["coach-planning-duration-estimate"].isEnabled)
+        tap(app.buttons["coach-planning-duration-plan"], app); tap(app.buttons["Scheda durata QA"], app)
+        tap(app.buttons["coach-planning-duration-day"], app); tap(app.buttons["Giorno durata QA"], app)
+        tap(app.buttons["coach-planning-duration-estimate"], app)
+        let preview = app.staticTexts["coach-planning-duration-preview"]
+        XCTAssertTrue(preview.waitForExistence(timeout: 15)); XCTAssertTrue(preview.label.contains("75 min"), preview.label)
+        XCTAssertFalse(app.staticTexts["coach-planning-duration-saved"].exists)
+        evidence(app, name: "ai-planning-personal-duration-review")
+        tap(app.buttons["coach-planning-duration-adopt"], app)
+        XCTAssertTrue(app.staticTexts["coach-planning-duration-saved"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["coach-planning-search"].isEnabled)
+        tap(app.switches["coach-planning-preparation"], app); tap(app.buttons["coach-planning-search"], app)
+        XCTAssertTrue(app.buttons.matching(identifier: "coach-planning-stage").firstMatch.waitForExistence(timeout: 15))
+        tap(app.buttons["coach-planning-duration-clear"], app)
+        XCTAssertTrue(app.staticTexts["coach-planning-duration-saved"].waitForNonExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["coach-planning-search"].isEnabled)
+    }
+    func testContextSignalDiscussOnlyFillsComposerWithoutAProviderRequestOrCalendarWrite() {
+        let app = launch(signals: true)
+        let coverage = app.staticTexts["coach-agenda-coverage"]
+        XCTAssertTrue(coverage.waitForExistence(timeout: 10))
+        let requests = app.staticTexts["coach-online-fixture-requests"]
+        XCTAssertTrue(requests.exists); XCTAssertEqual(requests.label, "Richieste sintetiche: 0")
+        let discuss = app.buttons.matching(NSPredicate(format: "label == %@", "Discuti questa situazione")).firstMatch
+        tap(discuss, app)
+        let input = app.descendants(matching: .any)["coach-message-input"]
+        let value = input.value as? String ?? ""
+        XCTAssertTrue(value.contains("Impegno QA 1") && value.contains("Impegno QA 2"), value)
+        XCTAssertEqual(requests.label, "Richieste sintetiche: 0")
+        tap(app.buttons["pivot-keyboard-done"], app)
+        scrollControlIntoView(coverage, in: app, maxSwipes: 20)
+        evidence(app, name: "ai-contextual-signal-local-only")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Nessun impegno è dedotto saltato")).firstMatch.exists)
     }
 }

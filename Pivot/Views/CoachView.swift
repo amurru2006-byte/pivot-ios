@@ -58,15 +58,22 @@ struct CoachView: View {
         PivotScreen {
             PivotHeader(title: "Parla con Pivot", subtitle: "Racconta cosa è cambiato. Decidi tu cosa applicare.")
             onlineStatusCard
-            let agendaSignals = CoachAgendaSignals.make(events: calendar.events, data: store.data, now: Date())
-            if !agendaSignals.isEmpty {
+            let agendaReport = CoachAgendaSignals.report(events: calendar.events, data: store.data, now: Date(), calendarAccess: calendar.hasAccess)
+            if !agendaReport.signals.isEmpty || agendaReport.coverage != .observedToday {
                 PivotCard(tint: PivotTheme.amber) {
                     Label("Da valutare nell’agenda", systemImage: "calendar.badge.exclamationmark").font(.headline)
-                    Text("Osservazioni locali, ricalcolate sull’agenda disponibile. Nessun impegno è considerato saltato e nessuna modifica è stata applicata.")
-                        .font(.caption).foregroundStyle(PivotTheme.muted)
-                    ForEach(agendaSignals) { signal in
+                    Text(agendaReport.disclosure).font(.caption).foregroundStyle(PivotTheme.muted)
+                        .accessibilityIdentifier("coach-agenda-coverage")
+                    if let count = agendaReport.countDisclosure { Text(count).font(.caption).accessibilityIdentifier("coach-agenda-signal-count") }
+                    Text("Nessun impegno è dedotto saltato e nessuna modifica è stata applicata.").font(.caption)
+                    ForEach(agendaReport.signals) { signal in
                         Text(signal.explanation).font(.subheadline)
-                        Button("Discuti questa situazione") { input = signal.prompt; composerFocused = true }
+                        Button("Discuti questa situazione") {
+                            guard CoachAgendaSignals.isCurrent(signal, events: calendar.events, data: store.data, now: Date(), calendarAccess: calendar.hasAccess) else {
+                                message = "L’agenda è cambiata. Controlla le osservazioni aggiornate prima di discuterne."; return
+                            }
+                            input = signal.prompt; composerFocused = true
+                        }
                             .frame(minHeight: 44).disabled(isPlanning || store.locked)
                     }
                 }.accessibilityIdentifier("coach-agenda-signals")
@@ -368,6 +375,10 @@ struct CoachView: View {
         let id = UUID(uuidString: "AAAA0000-0000-0000-0000-000000000002")!
         var next = store.data
         guard CalendarActivityLinks.capture(id: id, receipt: .init(activity: main, travel: trip), options: options, data: &next, now: Date()) else { return }
+        if ProcessInfo.processInfo.arguments.contains("--planning-logistics-test") {
+            _ = store.change { $0.calendarActivityLinks = next.calendarActivityLinks }
+            return
+        }
         let message = CoachMessage(dayKey: PivotDate.key(Date()), role: .coach, text: "Proposta viaggio QA")
         var after = main; after.start = after.start.addingTimeInterval(7200); after.end = after.end.addingTimeInterval(7200)
         let action = CoachCalendarMutation(kind: .update, source: main, after: after)

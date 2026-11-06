@@ -36,8 +36,11 @@ enum CoachPlanningAlternatives {
         guard (1...512).contains(maxNodes) else { throw Failure.invalid }
         guard preparationIncluded else { throw Failure.preparation }
         let selected = try CoachPlanningSelection.restore(session, calendarAccess: calendarAccess, events: events, data: data, now: now)
-        guard selected.unconfirmedTravelIDs.isEmpty, selected.pairedReviewIDs.isEmpty else { throw Failure.logistics }
-        let budgets = try selected.sources.map { try budget(for: $0, data: data) }
+        guard selected.unconfirmedTravelIDs.isEmpty else { throw Failure.logistics }
+        try CoachPlanningLogistics.verify(session, events: events, data: data, now: now)
+        let budgets = try selected.sources.map { try CoachPlanningLogistics.budget($0, session: session, data: data) }
+        let seconds = selected.sources.map { CoachPlanningLogistics.duration($0, session: session) }
+        let availability = CoachPlanningLogistics.availabilityData(events: events, data: data)
         var effectiveFixed = fixedMoves
         var effectiveDays = restrictedDays
         for pin in session.localPins ?? [] {
@@ -49,7 +52,7 @@ enum CoachPlanningAlternatives {
             if let start = pin.start {
                 guard start > now else { throw CoachPlanningRefinement.Failure.savedChoice }
                 let move = PlanMove(source: source, proposedStart: start,
-                    proposedEnd: start.addingTimeInterval(source.end.timeIntervalSince(source.start)))
+                    proposedEnd: start.addingTimeInterval(CoachPlanningLogistics.duration(source, session: session)))
                 if let existing = effectiveFixed.first(where: { $0.source.id == pin.sourceID }) {
                     guard existing.proposedStart == move.proposedStart, existing.proposedEnd == move.proposedEnd else { throw CoachPlanningRefinement.Failure.savedChoice }
                 } else { effectiveFixed.append(move) }
@@ -63,7 +66,7 @@ enum CoachPlanningAlternatives {
               effectiveDays.values.allSatisfy({ CoachPlanningSession.validDate($0) && PivotDate.calendar.startOfDay(for: $0) == $0 }) else { throw Failure.invalid }
         for move in effectiveFixed {
             guard selected.sources.contains(move.source), move.proposedStart > now,
-                  abs(move.proposedEnd.timeIntervalSince(move.proposedStart) - move.source.end.timeIntervalSince(move.source.start)) < 0.001 else { throw Failure.changed }
+                  abs(move.proposedEnd.timeIntervalSince(move.proposedStart) - CoachPlanningLogistics.duration(move.source, session: session)) < 0.001 else { throw Failure.changed }
         }
         guard !selected.allowedIntervals.isEmpty else {
             return .init(options: [], state: isCancelled() ? .cancelled : .notFoundWithinSearch, exploredNodes: 0)
@@ -81,10 +84,10 @@ enum CoachPlanningAlternatives {
             explored += 1
             if index == selected.sources.count {
                 let option = CoachOption(title: "Alternativa \(result.count + 1)",
-                    explanation: moves.map { "\($0.source.title) · \(PivotDate.shortDate($0.proposedStart)) \(PivotDate.time($0.proposedStart))–\(PivotDate.time($0.proposedEnd))" }.joined(separator: "\n"),
-                    consequences: "Durate integrali, nell’ordine mostrato. Cambio e preparazione già inclusi; andata e ritorno da ricontrollare per ogni orario. Nessun altro impegno spostato e nessuna pausa obbligatoria aggiunta.",
+                    explanation: explanation(moves, session: session),
+                    consequences: "Durate integrali o aumentate con la tua scelta, nell’ordine mostrato. Cambio e preparazione già inclusi; andata e ritorno restano stime da verificare per ogni orario. Le coppie attività/viaggio passano insieme nell’anteprima finale. Nessun altro impegno spostato e nessuna pausa obbligatoria aggiunta.",
                     moves: moves, createdAt: now)
-                if CoachPlanner.validate(option, events: events, data: data, now: now) == nil { result.append(option) }
+                if CoachPlanningLogistics.validate(option, session: session, events: events, data: data, now: now) == nil { result.append(option) }
                 return
             }
             let source = selected.sources[index]
@@ -106,13 +109,14 @@ enum CoachPlanningAlternatives {
             for window in windows {
                 if isCancelled() { cancelled = true; return }
                 let move = PlanMove(source: source, proposedStart: window.activityStart,
-                    proposedEnd: window.activityStart.addingTimeInterval(source.end.timeIntervalSince(source.start)))
+                    proposedEnd: window.activityStart.addingTimeInterval(seconds[index]))
                 var next = simulated; next.moves.append(move)
+                if let trip = CoachPlanningLogistics.tripMove(for: move, session: session) { next.moves.append(trip) }
                 visit(index + 1, next, window.occupiedEnd, moves + [move])
                 if result.count == 3 || exhausted || cancelled { break }
             }
         }
-        visit(0, data, now.addingTimeInterval(300), [])
+        visit(0, availability, now.addingTimeInterval(300), [])
         if cancelled { return .init(options: [], state: .cancelled, exploredNodes: explored) }
         return .init(options: result, state: exhausted ? .limitReached : (result.isEmpty ? .notFoundWithinSearch : .optionsFound), exploredNodes: explored)
     }
@@ -125,12 +129,13 @@ enum CoachPlanningAlternatives {
         guard preparationIncluded else { throw Failure.preparation }
         guard routesReviewed, option.createdAt <= now, now.timeIntervalSince(option.createdAt) <= 120 else { throw Failure.changed }
         let selected = try CoachPlanningSelection.restore(session, calendarAccess: calendarAccess, events: events, data: data, now: now)
-        guard selected.unconfirmedTravelIDs.isEmpty, selected.pairedReviewIDs.isEmpty else { throw Failure.logistics }
+        guard selected.unconfirmedTravelIDs.isEmpty else { throw Failure.logistics }
+        try CoachPlanningLogistics.verify(session, events: events, data: data, now: now)
         guard option.moves.count == selected.sources.count, matchesPins(option, session: session) else { throw Failure.invalid }
         var occupiedEnd: Date?
         for (source, move) in zip(selected.sources, option.moves) {
-            guard move.source == source, abs(move.proposedEnd.timeIntervalSince(move.proposedStart) - source.end.timeIntervalSince(source.start)) < 0.001 else { throw Failure.invalid }
-            let value = try budget(for: source, data: data)
+            guard move.source == source, abs(move.proposedEnd.timeIntervalSince(move.proposedStart) - CoachPlanningLogistics.duration(source, session: session)) < 0.001 else { throw Failure.invalid }
+            let value = try CoachPlanningLogistics.budget(source, session: session, data: data)
             let start = move.proposedStart.addingTimeInterval(-Double(value.beforeMinutes) * 60)
             let end = move.proposedStart.addingTimeInterval(Double(value.activityMinutes + value.afterMinutes) * 60)
             guard occupiedEnd.map({ start >= $0 }) ?? true,
@@ -138,8 +143,12 @@ enum CoachPlanningAlternatives {
             occupiedEnd = end
         }
         var next = data
-        guard CoachPlanner.accept(option, events: events, data: &next, now: now) == nil,
-              let index = next.coachState.planningSessions?.firstIndex(where: { $0.id == session.id }) else { throw Failure.changed }
+        if CoachPlanningLogistics.hasSpecialReview(session) {
+            try CoachPlanningLogistics.stage(option, session: session, events: events, data: &next, now: now)
+        } else {
+            guard CoachPlanner.accept(option, events: events, data: &next, now: now) == nil else { throw Failure.changed }
+        }
+        guard let index = next.coachState.planningSessions?.firstIndex(where: { $0.id == session.id }) else { throw Failure.changed }
         next.coachState.planningSessions?[index].status = .staged
         if next.coachState.focusedPlanningSessionID == session.id { next.coachState.focusedPlanningSessionID = nil }
         guard CoachPlanningStore.valid(next.coachState) else { throw Failure.invalid }
@@ -153,11 +162,13 @@ enum CoachPlanningAlternatives {
                 && (pin.start.map { $0 == move.proposedStart } ?? true)
         }
     }
-    private static func budget(for source: CalendarItem, data: AppData) throws -> CalendarTimeBudget {
-        let seconds = source.end.timeIntervalSince(source.start)
-        guard seconds.isFinite, seconds > 0, seconds <= 86400,
-              let value = CalendarTimeBudget.confirmed(activityMinutes: Int(ceil(seconds / 60)),
-                rule: EventRule.effective(for: source, data: data), preparationMinutes: 0) else { throw Failure.logistics }
-        return value
+    private static func explanation(_ moves: [PlanMove], session: CoachPlanningSession) -> String {
+        moves.map { move in
+            var line = "\(move.source.title) · \(PivotDate.shortDate(move.proposedStart)) \(PivotDate.time(move.proposedStart))–\(PivotDate.time(move.proposedEnd))"
+            if let trip = CoachPlanningLogistics.tripMove(for: move, session: session) {
+                line += "\nViaggio collegato (stima da verificare): \(PivotDate.time(trip.proposedStart))–\(PivotDate.time(trip.proposedEnd))"
+            }
+            return line
+        }.joined(separator: "\n")
     }
 }

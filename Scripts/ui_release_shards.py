@@ -114,6 +114,9 @@ def planning_preflight(suites):
         "testAlternativeRequiresDurationAndRouteReviewAndStagesWithoutCalendarWrites",
         "testExactTitleAndClockCorrectionSurvivesRelaunchAndRequiresNewRouteReview",
         "testUnrecognizedCorrectionDoesNotSaveChoicesAndExplicitRemovalKeepsPlan",
+        "testLinkedPlanningStagesAGroupForExplicitReviewWithoutNativeWrites",
+        "testPersonalDurationNeedsExplicitPlanDayAdoptionAndPreparationReconfirmation",
+        "testContextSignalDiscussOnlyFillsComposerWithoutAProviderRequestOrCalendarWrite",
     ]
     discovered = suites.get("PlanningConversationInteractionTests", [])
     if len(discovered) != len(methods) or set(discovered) != set(methods):

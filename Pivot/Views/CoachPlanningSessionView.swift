@@ -23,6 +23,13 @@ struct CoachPlanningSessionView: View {
                         if let source = session.bindings[alias] {
                             Text("\(index + 1). \(source.title)").font(.headline)
                             Text("\(PivotDate.shortDate(source.start)) · \(source.durationMinutes) min").font(.subheadline)
+                            if let group = session.groupSnapshots?.first(where: { $0.activity.id == source.id }) {
+                                Text("Viaggio collegato: \(group.travel.title) · \(group.settings.minutes) min. Sarà incluso nella revisione finale; il tempo va verificato al nuovo orario.")
+                                    .font(.caption).accessibilityIdentifier("coach-planning-linked-group")
+                            }
+                            if source.kind == .workout, CardioKind.suggested(source.title) == nil, session.status == .draft {
+                                CoachPlanningDurationReview(sessionID: sessionID, source: source)
+                            }
                             NavigationLink("Controlla attività e tragitti") {
                                 EventDetailView(event: source, initial: store.record(for: source), rule: store.rule(for: source))
                             }.frame(minHeight: 44)
@@ -62,6 +69,12 @@ struct CoachPlanningSessionView: View {
                         Button("Confermo di reincludere questi giorni") { readmit(session) }
                             .frame(minHeight: 44).disabled(store.locked).accessibilityIdentifier("coach-planning-readmit")
                     } else {
+                        if session.groupSnapshots == nil,
+                           session.bindings.values.contains(where: { CalendarActivityLinks.requiresPairedReview($0, data: store.data) }) {
+                            Text("Verifica l’associazione salvata di attività e viaggio prima della ricerca. Le due parti saranno revisionate insieme.").font(.caption)
+                            Button("Verifica e conserva il gruppo") { reviewGroups(session) }.frame(minHeight: 44)
+                                .disabled(planning || store.locked).accessibilityIdentifier("coach-planning-verify-group")
+                        }
                         Toggle("Le durate comprendono cambio e preparazione necessari", isOn: $preparationIncluded)
                             .accessibilityIdentifier("coach-planning-preparation")
                         Button("Cerca alternative") { search(session) }.buttonStyle(PivotPrimaryButton())
@@ -86,17 +99,20 @@ struct CoachPlanningSessionView: View {
                             .frame(minHeight: 44).disabled(planning || store.locked || (corrections[option.id] ?? "").isEmpty)
                             .accessibilityIdentifier("coach-planning-refine")
                         ForEach(option.moves) { move in
-                            if !move.source.location.isEmpty {
+                            if session.groupSnapshots?.contains(where: { $0.activity.id == move.source.id }) == true {
+                                Text("Il viaggio di ‘\(move.source.title)’ si verifica insieme all’attività nell’anteprima finale, con un tempo manuale o Maps per il nuovo orario.")
+                                    .font(.caption).foregroundStyle(PivotTheme.muted)
+                            } else if !move.source.location.isEmpty {
                                 NavigationLink { TravelCalculatorView(destination: move.source.location, date: move.proposedStart, timing: .arriveBy,
                                     nextStart: move.proposedStart, context: .init(events: [move.source])) } label: {
                                     Label("Controlla tragitto: " + move.source.title, systemImage: "map")
                                 }.frame(minHeight: 44)
                             }
                         }
-                        Toggle("Confermo ordine, durate e tragitti per questi orari", isOn: Binding(get: { reviewed.contains(option.id) }, set: {
+                        Toggle((session.groupSnapshots ?? []).isEmpty ? "Confermo ordine, durate e tragitti per questi orari" : "Confermo ordine, durate e stime di viaggio da verificare", isOn: Binding(get: { reviewed.contains(option.id) }, set: {
                             if $0 { reviewed.insert(option.id) } else { reviewed.remove(option.id) }
                         })).accessibilityIdentifier("coach-planning-route-review")
-                        Button("Scegli questa alternativa in Pivot") { stage(option, session: session) }.buttonStyle(PivotPrimaryButton())
+                        Button(CoachPlanningLogistics.hasSpecialReview(session) ? "Prepara l’anteprima finale" : "Scegli questa alternativa in Pivot") { stage(option, session: session) }.buttonStyle(PivotPrimaryButton())
                             .disabled(store.locked || !reviewed.contains(option.id)).accessibilityIdentifier("coach-planning-stage")
                     }
                 }
@@ -116,6 +132,8 @@ struct CoachPlanningSessionView: View {
                 if preservedUpdate == value { preservedUpdate = nil } else { invalidate() }
             }
             .onChange(of: calendar.events) { _, _ in invalidate() }
+            .onChange(of: session?.durationChoices) { _, _ in preparationIncluded = false; invalidate() }
+            .onChange(of: session?.groupSnapshots) { _, _ in preparationIncluded = false; invalidate() }
             .onDisappear { task?.cancel(); planning = false }
     }
     private func invalidate() { task?.cancel(); planning = false; options = []; reviewed = []; corrections = [:]; preservedUpdate = nil }
@@ -139,7 +157,7 @@ struct CoachPlanningSessionView: View {
                     guard data.updatedAt == store.data.updatedAt, events == calendar.events, !store.locked,
                           !store.isRestoring, calendar.hasAccess, options.contains(where: { $0.id == option.id }),
                           Date().timeIntervalSince(revised.option.createdAt) <= 120,
-                          CoachPlanner.validate(revised.option, events: calendar.events, data: store.data, now: Date()) == nil else {
+                          CoachPlanningLogistics.validate(revised.option, session: revised.session, events: calendar.events, data: store.data, now: Date()) == nil else {
                         message = "L’agenda o i permessi sono cambiati: nessuna correzione salvata. Cerca nuovamente."; return
                     }
                     var failure: String?
@@ -167,6 +185,19 @@ struct CoachPlanningSessionView: View {
             guard store.change({ $0.coachState = state }) else { message = "Non riesco a salvare la modifica."; return }
             invalidate()
             message = "Rimosse soltanto le scelte locali di giorno e orario. Giorni esclusi, ordine, durate e Calendario restano invariati."
+        } catch { message = error.localizedDescription }
+    }
+    private func reviewGroups(_ value: CoachPlanningSession) {
+        guard !store.locked, !store.isRestoring, !planning, calendar.hasAccess else { return }
+        do {
+            let now = Date(); _ = try value.boundEvents(in: calendar.events, now: now)
+            var next = value
+            next.groupSnapshots = try CoachPlanningLogistics.capture(sources: value.intent.eventIDs.compactMap { value.bindings[$0] },
+                events: calendar.events, data: store.data)
+            next.updatedAt = now
+            var state = store.data.coachState; try CoachPlanningStore.save(next, in: &state)
+            guard store.change({ $0.coachState = state }) else { message = "Non riesco a salvare la verifica."; return }
+            message = "Gruppo conservato nel piano. Verifica di nuovo preparazione e tragitti prima di scegliere gli orari."
         } catch { message = error.localizedDescription }
     }
     private func readmit(_ value: CoachPlanningSession) {
