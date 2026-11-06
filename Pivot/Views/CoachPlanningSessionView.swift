@@ -27,7 +27,7 @@ struct CoachPlanningSessionView: View {
                                 Text("Viaggio collegato: \(group.travel.title) · \(group.settings.minutes) min. Sarà incluso nella revisione finale; il tempo va verificato al nuovo orario.")
                                     .font(.caption).accessibilityIdentifier("coach-planning-linked-group")
                             }
-                            if source.kind == .workout, CardioKind.suggested(source.title) == nil, session.status == .draft {
+                            if CoachPlanningDurationChoice.isEligible(source), session.status == .draft {
                                 CoachPlanningDurationReview(sessionID: sessionID, source: source)
                             }
                             NavigationLink("Controlla attività e tragitti") {

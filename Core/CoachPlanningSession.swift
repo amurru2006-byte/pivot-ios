@@ -182,7 +182,7 @@ struct CoachPlanningSession: Codable, Equatable, Identifiable {
             && durations.count <= sources.count && Set(durations.map(\.sourceID)).count == durations.count
             && durations.allSatisfy { choice in
                 guard let source = sources.first(where: { $0.id == choice.sourceID }) else { return false }
-                return choice.isValid && source.kind == .workout
+                return choice.isValid && CoachPlanningDurationChoice.isEligible(source)
                     && choice.confirmedAt <= updatedAt
                     && Double(choice.activityMinutes) * 60 >= source.end.timeIntervalSince(source.start)
             }

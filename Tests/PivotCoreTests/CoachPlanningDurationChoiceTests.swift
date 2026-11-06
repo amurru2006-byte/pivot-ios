@@ -54,8 +54,14 @@ final class CoachPlanningDurationChoiceTests: XCTestCase {
         XCTAssertThrowsError(try choice(source, duplicate))
         var other = source; other.kind = .study
         XCTAssertThrowsError(try choice(other, library))
-        other = source; other.title = "Corsa"
+        for title in ["Corsa", "Palestra · cardio", "Running", "Nuoto", "Bici: cycling", "Camminata", "Escursione", "Tapis roulant"] {
+            other = source; other.title = title
+            XCTAssertFalse(CoachPlanningDurationChoice.isEligible(other), title)
+            XCTAssertThrowsError(try choice(other, library), title)
+        }
+        other = source; other.isAllDay = true
         XCTAssertThrowsError(try choice(other, library))
+        XCTAssertTrue(CoachPlanningDurationChoice.isEligible(source))
     }
     func testChangedWorkloadOrNewComparableHistoryRequiresAnotherReview() throws {
         let (source, initial) = fixture()

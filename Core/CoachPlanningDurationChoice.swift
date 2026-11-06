@@ -38,11 +38,24 @@ struct CoachPlanningDurationChoice: Codable, Equatable {
             }
         }
     }
+    /// An explicit plan/day choice is still required. A workout-calendar label
+    /// alone cannot turn a clearly named cardio activity into strength history.
+    /// Keep the existing global CardioKind classification unchanged.
+    static func isEligible(_ source: CalendarItem) -> Bool {
+        guard source.kind == .workout, !source.isAllDay,
+              CardioKind.suggested(source.title) == nil else { return false }
+        let title = source.title.folding(options: [.caseInsensitive, .diacriticInsensitive],
+            locale: Locale(identifier: "it_IT"))
+        let words = Set(title.components(separatedBy: CharacterSet.alphanumerics.inverted))
+        let cardio: Set<String> = ["corsa", "running", "run", "cardio", "nuoto", "swim", "swimming",
+            "ciclismo", "cycling", "bike", "bicicletta", "cyclette", "spinning"]
+        return words.isDisjoint(with: cardio)
+    }
     static func make(source: CalendarItem, planID: UUID, dayID: String,
                      library: TrainingLibrary, now: Date) throws -> Self {
         let plans = library.plans.filter { $0.id == planID }
         guard CalendarEventBackup.valid(source), source.writable, !source.isAllDay,
-              source.kind == .workout, CardioKind.suggested(source.title) == nil,
+              isEligible(source),
               plans.count == 1, let plan = plans.first,
               CoachPlanningSession.validDate(now), source.end > source.start,
               source.end.timeIntervalSince(source.start) <= 86400 else { throw Failure.selection }
