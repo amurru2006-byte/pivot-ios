@@ -33,6 +33,7 @@ struct PivotApp: App {
                 .preferredColorScheme(.dark)
                 .tint(PivotTheme.accent)
                 .environment(\.locale, Locale(identifier: "it_IT"))
+                .modifier(SignatureRenewalReminder())
                 .environment(\.timeZone, PivotDate.calendar.timeZone)
         }
     }
