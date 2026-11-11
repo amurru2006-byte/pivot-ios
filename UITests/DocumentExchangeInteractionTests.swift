@@ -18,6 +18,18 @@ final class DocumentExchangeInteractionTests: XCTestCase {
         tap(row, app); tap(app.buttons["coach-document-exchange-open"], app)
         XCTAssertTrue(app.navigationBars["Scambio manuale"].waitForExistence(timeout: 15))
     }
+    private func assertExportAvailability(_ enabled: Bool, in app: XCUIApplication) {
+        let form = app.collectionViews.firstMatch
+        for identifier in ["coach-exchange-save-file", "coach-exchange-share"] {
+            let button = app.buttons[identifier]
+            for _ in 0..<8 {
+                if button.exists { break }
+                form.swipeUp(velocity: .slow)
+            }
+            guard button.exists else { XCTFail("Export button missing: \(identifier)"); return }
+            XCTAssertEqual(button.isEnabled, enabled, identifier)
+        }
+    }
     private func launchAndRead() -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test"]
@@ -38,16 +50,15 @@ final class DocumentExchangeInteractionTests: XCTestCase {
     }
     func testExportRequiresExplicitApprovalAgainAfterRelaunchAndRequestIsDurable() {
         let app = launchAndRead()
-        XCTAssertFalse(app.buttons["coach-exchange-save-file"].isEnabled)
-        XCTAssertFalse(app.buttons["coach-exchange-share"].isEnabled)
+        assertExportAvailability(false, in: app)
         let audit = app.staticTexts["coach-exchange-request-audit"]
         scrollControlIntoView(audit, in: app, maxSwipes: 24); let nonce = audit.label; XCTAssertFalse(nonce.isEmpty)
         let consent = app.switches["coach-exchange-approve-export"]
         scrollControlIntoView(consent, in: app, maxSwipes: 24); tapVisibleSwitchOnce(consent, to: true, in: app)
-        XCTAssertTrue(app.buttons["coach-exchange-save-file"].isEnabled)
+        assertExportAvailability(true, in: app)
         app.terminate(); app.launch(); openLibrary(app); openExchange(app)
         XCTAssertTrue(app.textViews["coach-exchange-preview"].waitForExistence(timeout: 30))
-        XCTAssertFalse(app.buttons["coach-exchange-save-file"].isEnabled)
+        assertExportAvailability(false, in: app)
         scrollControlIntoView(app.staticTexts["coach-exchange-request-audit"], in: app, maxSwipes: 24)
         XCTAssertEqual(app.staticTexts["coach-exchange-request-audit"].label, nonce)
     }
@@ -65,6 +76,8 @@ final class DocumentExchangeInteractionTests: XCTestCase {
         XCTAssertEqual(app.staticTexts["coach-document-review-audit"].label, "1 proposte · 0 bozze preparate")
         XCTAssertFalse(app.alerts["Creare questo impegno nel Calendario?"].exists)
         app.terminate(); app.launch(); openLibrary(app)
-        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "coach-document-review-")).count, 2)
+        let reviews = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "coach-document-review-"))
+        scrollControlIntoView(reviews.element(boundBy: 1), in: app, maxSwipes: 24)
+        XCTAssertEqual(reviews.count, 2)
     }
 }

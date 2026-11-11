@@ -16,6 +16,7 @@ struct CoachDocumentsView: View {
     @State private var packet: CoachDocumentPacket?
     @State private var viewer: CoachDocumentDestination?
     @FocusState private var instructionFocused: Bool
+    @FocusState private var focusedPageSource: UUID?
     private var sources: [CoachDocumentSource] { store.data.coachDocuments ?? [] }
     private var unavailable: Bool { busy || store.locked || store.isLoading || store.isRestoring || store.isImportingCoachDocument }
 
@@ -67,6 +68,7 @@ struct CoachDocumentsView: View {
                             TextField("Pagine, ad esempio 1-3, 5", text: Binding(get: { selections[source.id] ?? "" }, set: {
                                 selections[source.id] = $0; packet = nil
                             })).textInputAutocapitalization(.never).autocorrectionDisabled().disabled(unavailable)
+                                .focused($focusedPageSource, equals: source.id)
                                 .accessibilityIdentifier("coach-document-pages-" + source.id.uuidString)
                             if CoachDocumentPageSelection.parse(selections[source.id] ?? "", pageCount: source.pageCount) == nil {
                                 Text("Indica pagine esistenti, senza sovrapposizioni: per esempio 1-3, 5. Massimo 40.").font(.caption).foregroundStyle(.orange)
@@ -130,7 +132,10 @@ struct CoachDocumentsView: View {
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
-                Button("Fine") { instructionFocused = false }.accessibilityIdentifier("coach-document-keyboard-done")
+                Button("Fine") {
+                    focusedPageSource = nil
+                    instructionFocused = false
+                }.accessibilityIdentifier("coach-document-keyboard-done")
             }
         }
         .fileImporter(isPresented: $filePicker, allowedContentTypes: [.pdf, .image], allowsMultipleSelection: true) { result in

@@ -31,6 +31,7 @@ final class DocumentProposalInteractionTests: XCTestCase {
         scrollControlIntoView(select, in: app, maxSwipes: 24); tapVisibleSwitchOnce(select, to: true, in: app)
         let pageField = app.textFields.matching(NSPredicate(format: "identifier BEGINSWITH %@", "coach-document-pages-")).firstMatch
         tap(pageField, app); pageField.typeText(XCUIKeyboardKey.delete.rawValue + pages)
+        tap(app.buttons["coach-document-keyboard-done"], app)
         let instruction = app.descendants(matching: .any).matching(identifier: "coach-document-instruction").firstMatch
         tap(instruction, app); instruction.typeText("Prepara le esperienze QA dalle pagine selezionate")
         tap(app.buttons["coach-document-keyboard-done"], app); tap(app.buttons["coach-document-read"], app)

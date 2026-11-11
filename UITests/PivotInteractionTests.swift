@@ -871,9 +871,16 @@ final class PivotInteractionTests: XCTestCase {
         app.buttons["Timer facoltativo"].tap()
         let start = app.buttons["Inizia attività"]
         XCTAssertTrue(start.waitForExistence(timeout: 3))
+        // Disclosure existence alone does not establish a stable touch target.
+        // Keep one real tap, after the shared viewport/layout and hittability
+        // guards; keep the original three-second behavioural assertion below.
+        scrollControlIntoView(start, in: app)
+        XCTAssertTrue(start.isEnabled); XCTAssertTrue(start.isHittable)
         start.tap()
         let finish = app.buttons["Termina attività"]
         XCTAssertTrue(finish.waitForExistence(timeout: 3))
+        scrollControlIntoView(finish, in: app)
+        XCTAssertTrue(finish.isEnabled); XCTAssertTrue(finish.isHittable)
         finish.tap()
         XCTAssertTrue(app.buttons["Inizia attività"].waitForExistence(timeout: 3))
         // Also verify the foreground lifecycle path, which requests another refresh.
