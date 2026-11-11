@@ -51,11 +51,17 @@ final class DocumentExchangeInteractionTests: XCTestCase {
     func testExportRequiresExplicitApprovalAgainAfterRelaunchAndRequestIsDurable() {
         let app = launchAndRead()
         assertExportAvailability(false, in: app)
+        let consent = app.switches["coach-exchange-approve-export"]
+        let form = app.collectionViews.firstMatch
+        for _ in 0..<8 {
+            if consent.exists { break }
+            form.swipeDown(velocity: .slow)
+        }
+        XCTAssertTrue(consent.exists)
+        tapVisibleSwitchOnce(consent, to: true, in: app)
+        assertExportAvailability(true, in: app)
         let audit = app.staticTexts["coach-exchange-request-audit"]
         scrollControlIntoView(audit, in: app, maxSwipes: 24); let nonce = audit.label; XCTAssertFalse(nonce.isEmpty)
-        let consent = app.switches["coach-exchange-approve-export"]
-        scrollControlIntoView(consent, in: app, maxSwipes: 24); tapVisibleSwitchOnce(consent, to: true, in: app)
-        assertExportAvailability(true, in: app)
         app.terminate(); app.launch(); openLibrary(app); openExchange(app)
         XCTAssertTrue(app.textViews["coach-exchange-preview"].waitForExistence(timeout: 30))
         assertExportAvailability(false, in: app)

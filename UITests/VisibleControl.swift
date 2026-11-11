@@ -18,11 +18,11 @@ extension XCTestCase {
             while let node = pending.popLast() { nodes.append(node); pending.append(contentsOf: node.children) }
             return nodes
         }
+        let locateInApp = useAppCoordinates || snapshot.identifier == "backup-password-saved"
         let thumb: CGRect
-        if useAppCoordinates {
-            // Only the routing Form opts into app coordinates. Its targeted
-            // snapshot can omit the native child; resolve that child from
-            // the full app hierarchy without changing other controls' path.
+        if locateInApp {
+            // The routing Form and backup acknowledgement expose a separate
+            // native switch in the full hierarchy. Resolve it before tapping.
             guard let appSnapshot = try? app.snapshot() else {
                 XCTFail("Cannot capture the visible switch hierarchy", file: file, line: line); return
             }
@@ -37,7 +37,7 @@ extension XCTestCase {
                   }).min(by: { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height })?.frame,
                   native.width <= native.height * 3,
                   snapshot.frame.width > 0, snapshot.frame.height > 0 else {
-                XCTFail("Cannot locate the native switch thumb in the routing Form", file: file, line: line); return
+                XCTFail("Cannot locate the native switch in the app hierarchy", file: file, line: line); return
             }
             thumb = native
         } else {
@@ -57,16 +57,17 @@ extension XCTestCase {
         guard dx.isFinite, dy.isFinite, (0...1).contains(dx), (0...1).contains(dy) else {
             XCTFail("Switch thumb is outside its visible wrapper", file: file, line: line); return
         }
-        if useAppCoordinates {
+        if locateInApp {
             let screen = app.frame
             guard screen.contains(thumb) else {
                 XCTFail("Native switch must be inside the current app viewport", file: file, line: line); return
             }
-            // Opt-in only for the routing Form's wrapper. A sheet can use a
-            // different app-coordinate origin; do not change other controls'
-            // previously verified element-relative native thumb touch.
+            // Touch the knob on its current side of the native switch track.
+            // The track center can be near the edge of the knob.
+            let knobInset = min(thumb.width / 2, thumb.height * 0.75)
+            let x = enabled ? thumb.minX + knobInset : thumb.maxX - knobInset
             app.coordinate(withNormalizedOffset: .zero)
-                .withOffset(CGVector(dx: thumb.midX - screen.minX, dy: thumb.midY - screen.minY)).tap()
+                .withOffset(CGVector(dx: x - screen.minX, dy: thumb.midY - screen.minY)).tap()
         } else {
             element.coordinate(withNormalizedOffset: CGVector(dx: dx, dy: dy)).tap()
         }
