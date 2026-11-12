@@ -19,7 +19,9 @@ final class PredictionInteractionTests: XCTestCase {
         XCTAssertTrue(stage.waitForExistence(timeout: 8)); XCTAssertFalse(stage.isEnabled)
         screenshot("recovery-alternatives-before-review", app)
         let review = app.switches.matching(identifier: "prediction-recovery-review").firstMatch
-        tap(review, app); XCTAssertTrue(stage.isEnabled); tap(stage, app)
+        tapVisibleSwitchOnce(review, to: true, in: app)
+        XCTAssertTrue(stage.isEnabled)
+        tap(stage, app)
         XCTAssertTrue(app.staticTexts["prediction-recovery-message"].label.contains("Il Calendario non è ancora cambiato"))
         tap(app.buttons["prediction-recovery-open-coach"], app)
         XCTAssertTrue(app.staticTexts["Da applicare al Calendario"].waitForExistence(timeout: 5))

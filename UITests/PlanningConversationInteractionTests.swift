@@ -163,7 +163,10 @@ private func evidence(_ app: XCUIApplication, name: String) {
         let trip = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Viaggio collegato (stima da verificare)")).firstMatch
         XCTAssertTrue(trip.exists)
         evidence(app, name: "ai-planning-linked-group-preview")
-        tap(app.switches.matching(identifier: "coach-planning-route-review").firstMatch, app); tap(stage, app)
+        let routeReview = app.switches.matching(identifier: "coach-planning-route-review").firstMatch
+        tapVisibleSwitchOnce(routeReview, to: true, in: app)
+        XCTAssertTrue(stage.isEnabled)
+        tap(stage, app)
         tap(app.buttons["Apri le conferme per il Calendario"], app)
         let batch = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "coach-calendar-batch-")).firstMatch
         tap(batch, app)
