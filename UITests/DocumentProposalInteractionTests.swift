@@ -28,7 +28,16 @@ final class DocumentProposalInteractionTests: XCTestCase {
         let finished = expectation(for: NSPredicate(format: "label CONTAINS %@", "salvato senza duplicati"), evaluatedWith: app.staticTexts["coach-document-status"])
         wait(for: [finished], timeout: 30)
         let select = app.switches.matching(NSPredicate(format: "identifier BEGINSWITH %@", "coach-document-select-")).firstMatch
-        scrollControlIntoView(select, in: app, maxSwipes: 24); tapVisibleSwitchOnce(select, to: true, in: app)
+        scrollControlIntoView(select, in: app, maxSwipes: 24)
+        XCTAssertEqual(select.value as? String, "0")
+        // The document row includes a separate native switch. Use its
+        // current activation point rather than coordinates in the row.
+        let native = select.descendants(matching: .switch).firstMatch
+        XCTAssertTrue(native.exists && native.isEnabled && native.isHittable)
+        XCTAssertEqual(native.value as? String, "0")
+        native.tap()
+        let selected = expectation(for: NSPredicate(format: "value == %@", "1"), evaluatedWith: select)
+        wait(for: [selected], timeout: 8)
         let pageField = app.textFields.matching(NSPredicate(format: "identifier BEGINSWITH %@", "coach-document-pages-")).firstMatch
         tap(pageField, app); pageField.typeText(XCUIKeyboardKey.delete.rawValue + pages)
         tap(app.buttons["coach-document-keyboard-done"], app)
