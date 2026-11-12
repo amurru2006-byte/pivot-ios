@@ -32,12 +32,19 @@ final class SavingsInteractionTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["savings-free-total"].label.contains("350,00"))
         app.terminate(); app.launch(); openSavings(in: app); tap("savings-weekly-open")
         XCTAssertEqual(app.switches["weekly-automatic"].value as? String, "1")
-        tap("weekly-delete")
         let alert = app.alerts["Eliminare il piano?"]
-        XCTAssertTrue(alert.waitForExistence(timeout: 5)); alert.buttons["Annulla"].tap()
+        let delete = app.buttons["weekly-delete"]
+        func openDeleteConfirmation() {
+            scrollControlIntoView(delete, in: app)
+            XCTAssertTrue(delete.isEnabled)
+            delete.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            XCTAssertTrue(alert.waitForExistence(timeout: 5))
+        }
+        openDeleteConfirmation()
+        alert.buttons["Annulla"].tap()
         XCTAssertTrue(alert.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.buttons["weekly-delete"].exists)
-        tap("weekly-delete")
+        openDeleteConfirmation()
         // The alert exposes a wrapper and native button with the same bounds,
         // identifier and action. This is one visible destructive control.
         alert.buttons.matching(identifier: "weekly-delete-confirm").firstMatch.tap()

@@ -11,26 +11,48 @@ final class EventKitRoundtripInteractionTests: XCTestCase {
         app.launch(); XCTAssertTrue(app.buttons["calendar-native-run"].waitForExistence(timeout: 20))
         return app
     }
+    private func fullAccessButton(in alert: XCUIElement) -> XCUIElement? {
+        let owned = alert.label.contains("Pivot Calendar QA")
+            || alert.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Pivot Calendar QA")).firstMatch.exists
+        guard owned else { return nil }
+        let labels = ["Allow Full Access", "Allow Access to All Events", "Consenti accesso completo"]
+        return labels.map { alert.buttons[$0] }.first(where: { $0.exists })
+    }
     private func run(_ app: XCUIApplication, attempt: Int) {
+        var approved = false
+        // XCTest can intercept a late prompt during the next action and use
+        // its default denial before the test can inspect SpringBoard.
+        let monitor = addUIInterruptionMonitor(withDescription: "Owned Calendar host prompt") { alert in
+            guard !approved, let allow = self.fullAccessButton(in: alert) else { return false }
+            approved = true
+            allow.tap()
+            return true
+        }
+        defer { removeUIInterruptionMonitor(monitor) }
         app.buttons["calendar-native-run"].tap()
         let system = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let alert = system.alerts.firstMatch
-        if alert.waitForExistence(timeout: 8) {
-            let owned = alert.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Pivot Calendar QA")).firstMatch.exists
-                || alert.label.contains("Pivot Calendar QA")
-            XCTAssertTrue(owned, "Only the isolated host's Calendar prompt may be approved")
-            guard owned else { return }
-            let candidates = ["Allow Full Access", "Allow Access to All Events", "Consenti accesso completo"]
-            guard let allow = candidates.map({ alert.buttons[$0] }).first(where: { $0.exists }) else {
-                let shot = XCTAttachment(screenshot: system.screenshot()); shot.name = "synthetic-calendar-permission"; shot.lifetime = .keepAlways; add(shot)
-                return XCTFail("No full-access action on the owned synthetic Calendar prompt")
-            }
-            allow.tap()
-        }
         let report = app.staticTexts["calendar-native-result"]
-        let completed = expectation(for: NSPredicate(format: "label == %@", "PASS \(attempt): spring23 autumn25 timed45 cleanupOK"), evaluatedWith: report)
-        wait(for: [completed], timeout: 40)
-        XCTAssertEqual(report.label, "PASS \(attempt): spring23 autumn25 timed45 cleanupOK",
+        let expected = "PASS \(attempt): spring23 autumn25 timed45 cleanupOK"
+        let deadline = Date().addingTimeInterval(75)
+        var result = ""
+        repeat {
+            if !approved && alert.exists {
+                guard let allow = fullAccessButton(in: alert) else {
+                    let shot = XCTAttachment(screenshot: system.screenshot())
+                    shot.name = "synthetic-calendar-permission"; shot.lifetime = .keepAlways; add(shot)
+                    return XCTFail("Unexpected prompt or missing full-access button for the isolated host")
+                }
+                approved = true
+                allow.tap()
+            }
+            if report.exists {
+                result = report.label
+                if result.hasPrefix("PASS \(attempt):") || result.hasPrefix("FAIL \(attempt):") { break }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        } while Date() < deadline
+        XCTAssertEqual(result, expected,
                        "The isolated host must report the committed reread and verified cleanup")
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "owned-eventkit-roundtrip-\(attempt)"; shot.lifetime = .keepAlways; add(shot)
     }

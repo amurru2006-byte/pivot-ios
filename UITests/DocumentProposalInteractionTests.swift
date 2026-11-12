@@ -39,11 +39,7 @@ final class DocumentProposalInteractionTests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 30)); openReview(app)
         return app
     }
-    func testSavedReadingAndSeparateAllDayProposalsSurviveRelaunchWithoutStaging() {
-        let app = launchAndRead()
-        XCTAssertEqual(app.staticTexts["coach-document-review-audit"].label, "2 proposte · 0 bozze preparate")
-        XCTAssertTrue(app.staticTexts["Tutto il giorno · 2030-01-14"].exists)
-        XCTAssertTrue(app.staticTexts["Tutto il giorno · 2030-01-15"].exists)
+    private func assertStagingDisabled(_ app: XCUIApplication) {
         let stage = app.buttons["coach-document-stage"]
         let form = app.collectionViews.firstMatch
         for _ in 0..<8 {
@@ -52,6 +48,13 @@ final class DocumentProposalInteractionTests: XCTestCase {
         }
         XCTAssertTrue(stage.exists)
         XCTAssertFalse(stage.isEnabled)
+    }
+    func testSavedReadingAndSeparateAllDayProposalsSurviveRelaunchWithoutStaging() {
+        let app = launchAndRead()
+        XCTAssertEqual(app.staticTexts["coach-document-review-audit"].label, "2 proposte · 0 bozze preparate")
+        XCTAssertTrue(app.staticTexts["Tutto il giorno · 2030-01-14"].exists)
+        XCTAssertTrue(app.staticTexts["Tutto il giorno · 2030-01-15"].exists)
+        assertStagingDisabled(app)
         app.terminate(); app.launch(); openLibrary(app); openReview(app)
         XCTAssertEqual(app.staticTexts["coach-document-review-audit"].label, "2 proposte · 0 bozze preparate")
         XCTAssertEqual(app.switches.matching(NSPredicate(format: "identifier BEGINSWITH %@", "coach-document-proposal-select-")).count, 2)
@@ -72,7 +75,7 @@ final class DocumentProposalInteractionTests: XCTestCase {
         XCTAssertEqual(app.staticTexts["coach-document-review-audit"].label, "2 proposte · 2 bozze preparate")
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "coach-document-open-draft-")).count, 2)
         XCTAssertEqual(selectors.count, 0)
-        XCTAssertFalse(app.buttons["coach-document-stage"].isEnabled)
+        assertStagingDisabled(app)
     }
     func testTimedProposalKeepsTimeZoneQuestionAndCannotStageWithoutClarification() {
         let app = launchAndRead(timed: true, pages: "1")

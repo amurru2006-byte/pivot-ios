@@ -2,7 +2,7 @@ import XCTest
 @testable import PivotCore
 
 final class CoachDocumentExchangeTests: XCTestCase {
-    private let now = Date(timeIntervalSince1970: 1_790_000_000)
+    private let now = Date(timeIntervalSince1970: 1_790_000_000.375)
     private func sample() throws -> (AppData, CoachDocumentReviewBatch) {
         var data = AppData(); let bytes = Data("%PDF-1.4\nSYNTHETIC EXCHANGE QA\n%%EOF".utf8)
         let source = CoachDocumentSource(document: .init(name: "PRIVATE FILENAME QA.pdf", byteCount: bytes.count), kind: .pdf,
@@ -32,10 +32,38 @@ final class CoachDocumentExchangeTests: XCTestCase {
         XCTAssertTrue(data.coachState.messages.isEmpty); XCTAssertNil(data.coachState.calendarDrafts)
     }
     func testNonceSurvivesLocalEncodingAndIsNeverAProviderCredential() throws {
-        let (_, batch) = try sample()
+        var (data, batch) = try sample()
         let raw = try JSONEncoder().encode(batch), decoded = try JSONDecoder().decode(CoachDocumentReviewBatch.self, from: raw)
         XCTAssertEqual(decoded, batch); XCTAssertTrue(decoded.exchange?.isValid(for: decoded) == true)
         XCTAssertFalse(String(decoding: raw, as: UTF8.self).contains("access_token"))
+
+        let client = Client(name: "Cliente sintetico", rateCents: 1500)
+        let income = IncomeEntry(clientID: client.id, clientName: client.name, date: now, minutes: 60, amountCents: 1500, paidCents: 500)
+        data.clients.append(client)
+        data.income.append(income)
+        data.payments.append(.init(incomeID: income.id, clientName: client.name, date: now, amountCents: 500))
+
+        let archives = try [BackupCodec.encodeCompact(data), BackupCodec.encode(data)]
+        for archive in archives {
+            var restored = try BackupCodec.decode(archive)
+            let persisted = try XCTUnwrap(restored.coachDocumentReviews?.first)
+            XCTAssertNotEqual(persisted.packet.createdAt, batch.packet.createdAt)
+            XCTAssertEqual(persisted.exchange?.id, batch.exchange?.id)
+            XCTAssertEqual(restored.income.first?.outstandingCents, 1000)
+            XCTAssertEqual(restored.payments.first?.amountCents, 500)
+            let sources = try XCTUnwrap(restored.coachDocuments)
+            XCTAssertEqual(try CoachDocumentExchange.requestText(batch: persisted, sources: sources),
+                           try CoachDocumentExchange.requestText(batch: batch, sources: data.coachDocuments ?? []))
+
+            var tampered = restored
+            tampered.coachDocumentReviews?[0].events[0].title = "Titolo sintetico modificato"
+            let changed = try BackupCodec.encodeCompact(tampered)
+            XCTAssertThrowsError(try BackupCodec.decode(changed))
+
+            _ = try CoachDocumentExchange.receive(response(batch), expected: persisted, data: &restored, now: now)
+            XCTAssertEqual(restored.coachDocumentReviews?.count, 2)
+            XCTAssertNil(restored.coachState.calendarDrafts)
+        }
     }
     func testValidatedReplyAddsSeparateReviewAndPreservesTheLocalInterpretation() throws {
         var (data, batch) = try sample()

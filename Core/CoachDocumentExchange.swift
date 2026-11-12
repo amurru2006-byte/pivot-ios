@@ -22,7 +22,11 @@ enum CoachDocumentExchange {
         var parent: UUID?
     }
     static func revision(_ batch: CoachDocumentReviewBatch) -> String? {
-        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        // Hash the same date representation used by BackupCodec on disk.
+        // Subsecond precision is lost when the archive is reopened.
+        encoder.dateEncodingStrategy = .iso8601
         guard let bytes = try? encoder.encode(Content(packet: batch.packet, events: batch.events,
             questions: batch.questions, staged: batch.stagedProposalIDs, parent: batch.parentReviewID)) else { return nil }
         return CoachDocumentSource.digest(bytes)

@@ -71,6 +71,12 @@ final class OnlineCoachInteractionTests: XCTestCase {
     private func savedDraftCard(in app: XCUIApplication) -> XCUIElement {
         app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "coach-saved-draft-")).firstMatch
     }
+    private func conversationDayButton(in app: XCUIApplication) -> XCUIElement {
+        app.buttons.matching(NSPredicate(
+            format: "label MATCHES %@",
+            #"\d{1,2} (gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)"#
+        )).firstMatch
+    }
     private func closeDraft(in app: XCUIApplication) {
         app.buttons["coach-create-close"].tap()
         XCTAssertTrue(app.navigationBars["Nuovo impegno"].waitForNonExistence(timeout: 10),
@@ -96,8 +102,19 @@ final class OnlineCoachInteractionTests: XCTestCase {
         scrollControlIntoView(card, in: app, maxSwipes: 15); XCTAssertTrue(card.exists); card.tap()
         XCTAssertTrue(title.waitForExistence(timeout: 8)); XCTAssertEqual(title.value as? String, "Titolo modificato QA")
         closeDraft(in: app)
+        let dayButton = conversationDayButton(in: app)
+        scrollControlIntoView(dayButton, in: app)
+        let savedDay = dayButton.label
         XCUIDevice.shared.press(.home); app.activate(); app.terminate(); app.launch()
         XCTAssertTrue(app.buttons["open-pivot-coach"].waitForExistence(timeout: 15)); app.buttons["open-pivot-coach"].tap()
+        scrollControlIntoView(dayButton, in: app)
+        if dayButton.label != savedDay {
+            dayButton.tap()
+            let previousDay = app.buttons["Giorno precedente"]
+            scrollControlIntoView(previousDay, in: app)
+            previousDay.tap()
+        }
+        XCTAssertEqual(dayButton.label, savedDay)
         scrollControlIntoView(card, in: app, maxSwipes: 15); card.tap()
         XCTAssertTrue(title.waitForExistence(timeout: 8)); XCTAssertEqual(title.value as? String, "Titolo modificato QA")
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Impegno creato nel Calendario:")).firstMatch.exists)

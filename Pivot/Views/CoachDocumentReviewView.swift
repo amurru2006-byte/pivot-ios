@@ -10,6 +10,7 @@ struct CoachDocumentReviewView: View {
     @State private var savedDraft: CoachSavedCalendarDraft?
     @State private var busy = false
     @State private var message: String?
+    @State private var rereadError: String?
     private var batch: CoachDocumentReviewBatch? { store.data.coachDocumentReviews?.first { $0.id == (activeID ?? batchID) } }
     private var sourcesCurrent: Bool { batch?.packet.isCurrent(in: store.data.coachDocuments ?? []) == true }
     var body: some View {
@@ -32,6 +33,7 @@ struct CoachDocumentReviewView: View {
                     if !sourcesCurrent {
                         Text("Le fonti hanno una nuova copia locale. Le vecchie letture restano consultabili; prima di preparare bozze devi rileggerle.").foregroundStyle(.orange)
                         Button("Rileggi queste pagine") { Task { await reread(batch) } }.disabled(busy)
+                        if let rereadError { Text(rereadError).foregroundStyle(.orange) }
                     }
                 }
                 if !batch.questions.isEmpty {
@@ -69,6 +71,8 @@ struct CoachDocumentReviewView: View {
                     }
                 }
                 Section {
+                    if busy { ProgressView("Salvataggio…") }
+                    if let message { Text(message).accessibilityIdentifier("coach-document-review-status") }
                     Text("Prepara soltanto bozze in Pivot. Per ciascuna sceglierai il Calendario e confermerai separatamente la creazione. I riferimenti ai documenti saranno nelle note.")
                         .font(.caption).foregroundStyle(.secondary)
                     Button("Prepara \(selected.count) bozze selezionate") { Task { await stage(batch) } }
@@ -89,8 +93,6 @@ struct CoachDocumentReviewView: View {
                     }
                 }
             } else { Text("Questa lettura non è più presente nell’archivio.") }
-            if busy { ProgressView("Salvataggio…") }
-            if let message { Text(message).accessibilityIdentifier("coach-document-review-status") }
         }
         .navigationTitle("Proposte da documenti")
         .sheet(item: $viewer) { CoachDocumentViewer(destination: $0) }
@@ -122,9 +124,9 @@ struct CoachDocumentReviewView: View {
         } catch { message = error.localizedDescription }
     }
     @MainActor private func reread(_ expected: CoachDocumentReviewBatch) async {
-        busy = true; message = nil; defer { busy = false }
+        busy = true; message = nil; rereadError = nil; defer { busy = false }
         do { activeID = try await store.rereadCoachDocumentReview(expected); selected.removeAll() }
-        catch { message = error.localizedDescription }
+        catch { rereadError = error.localizedDescription }
     }
 }
 
