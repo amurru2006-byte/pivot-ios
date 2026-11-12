@@ -66,4 +66,80 @@ final class TrainingCompletionTests: XCTestCase {
         TrainingSetTemplate.rescaleWarmups(in: &skippedWarmup, workingLoad: 80)
         XCTAssertEqual(skippedWarmup[0].kg, 10)
     }
+
+    func testSeriesTargetKeepsNumberedLoadAndRepetitionsDistinctFromDraftValues() throws {
+        var exercise = bench
+        exercise.reps = "S1: 6–8; S2: 4"
+        exercise.coachNotes = "Carico prescritto: S1: 42,5; S2: 45 kg. Recupero non specificato."
+        let log = TrainingExerciseLog(exercise: exercise, sets: [
+            .init(number: 1, kind: .warmup, isAdditional: true),
+            .init(number: 2, kg: 40, reps: 7, isAdditional: false),
+            .init(number: 3, isAdditional: false),
+            .init(number: 4, isAdditional: true)
+        ])
+        XCTAssertNil(TrainingSetEntry.target(for: 0, in: log))
+        XCTAssertEqual(try XCTUnwrap(TrainingSetEntry.target(for: 1, in: log)).label, "6–8 rip. · 42,5 kg")
+        XCTAssertEqual(TrainingSetEntry.target(for: 1, in: log)?.quickReps, [6, 7, 8])
+        XCTAssertEqual(TrainingSetEntry.target(for: 2, in: log)?.label, "4 rip. · 45 kg")
+        XCTAssertNil(TrainingSetEntry.target(for: 3, in: log))
+        XCTAssertEqual(log.sets[1].kg, 40)
+        XCTAssertNil(log.sets[2].kg)
+    }
+
+    func testTimedAndAmbiguousTargetsStayInTheirOwnUnits() {
+        let hold = TrainingExerciseLog(exercise: plank, sets: [.init(number: 1)])
+        XCTAssertEqual(TrainingSetEntry.target(for: 0, in: hold)?.label, "30 s")
+        XCTAssertEqual(TrainingSetEntry.target(for: 0, in: hold)?.quickReps, [])
+        var exercise = bench
+        exercise.reps = "8 per lato"
+        exercise.coachNotes = "Provare 50 kg"
+        let log = TrainingExerciseLog(exercise: exercise, sets: [.init(number: 1)])
+        XCTAssertEqual(TrainingSetEntry.target(for: 0, in: log)?.label, "8 per lato")
+        XCTAssertEqual(TrainingSetEntry.target(for: 0, in: log)?.quickReps, [])
+    }
+
+    func testPreviousComparableSeriesDoesNotShiftWhenASetWasSkipped() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        var older = session(bench, sets: [
+            .init(number: 1, kg: 25, reps: 6, done: true),
+            .init(number: 2, kg: 26, reps: 7, done: true)
+        ])
+        older.start = now.addingTimeInterval(-3600); older.end = now.addingTimeInterval(-3000)
+        var recent = session(bench, sets: [
+            .init(number: 1, kg: 15, reps: 6, done: true, kind: .warmup),
+            .init(number: 2, skipped: true),
+            .init(number: 3, kg: 30, reps: 8, done: true)
+        ])
+        recent.start = now.addingTimeInterval(-1800); recent.end = now.addingTimeInterval(-1200)
+        var current = session(bench, sets: [.init(number: 1, note: "Nota locale"), .init(number: 2)])
+        current.start = now
+        let matches = TrainingSetEntry.previousSets(for: current.exercises[0], session: current,
+                                                    library: TrainingLibrary(sessions: [recent, older]))
+        let first = try XCTUnwrap(matches[current.exercises[0].sets[0].id])
+        XCTAssertEqual(first.kg, 25)
+        XCTAssertEqual(matches[current.exercises[0].sets[1].id]?.kg, 30)
+        TrainingSetEntry.usePrevious(first, at: 0, in: &current.exercises[0])
+        XCTAssertEqual(current.exercises[0].sets[0].kg, 25)
+        XCTAssertEqual(current.exercises[0].sets[0].note, "Nota locale")
+        XCTAssertNil(current.exercises[0].sets[1].kg)
+        XCTAssertFalse(current.exercises[0].sets[0].done)
+        XCTAssertNil(current.rest)
+        XCTAssertEqual(TrainingCompletion.toggle(in: &current, exerciseIndex: 0, setIndex: 0, now: now), .performed)
+        XCTAssertEqual(current.rest?.setID, current.exercises[0].sets[0].id)
+    }
+
+    func testSetNotesSurviveBackupsButDoNotBecomePartOfTheNextWorkout() throws {
+        let recorded = TrainingSet(number: 1, kg: 35, reps: 6, done: true, note: "Presa diversa")
+        var data = AppData()
+        data.training = TrainingLibrary(sessions: [session(bench, sets: [recorded, .init(number: 2)])])
+        let restored = try BackupCodec.decode(BackupCodec.encodeCompact(data))
+        let log = try XCTUnwrap(restored.training?.sessions.first?.exercises.first)
+        XCTAssertEqual(log.sets[0].note, "Presa diversa")
+        XCTAssertNil(log.sets[1].note)
+        XCTAssertNil(TrainingSetTemplate.next(previous: log, prescribedWorkingSets: 2)[0].note)
+        XCTAssertNil(TrainingSetEntry.note("  \n "))
+        XCTAssertEqual(TrainingSetEntry.note(String(repeating: "a", count: 501))?.count, 500)
+        data.training?.sessions[0].exercises[0].sets[0].note = String(repeating: "a", count: 501)
+        XCTAssertThrowsError(try BackupCodec.decode(BackupCodec.encodeCompact(data)))
+    }
 }

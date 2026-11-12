@@ -296,8 +296,16 @@ final class PivotInteractionTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Serie 7 pronta"].waitForExistence(timeout: 5))
         let url = URL(string: "pivot://workout/11111111-1111-4111-8111-111111111111?set=22222222-2222-4222-8222-222222222222")!
         app.open(url)
+        let target = app.staticTexts["set-target-s7-bench-0"]
+        XCTAssertTrue(target.waitForExistence(timeout: 8))
+        XCTAssertTrue(target.label.contains("4–6"))
+        XCTAssertTrue(app.staticTexts["set-previous-s7-bench-0"].label.contains("40"))
+        let quick = app.buttons.matching(identifier: "set-quick-reps-6").firstMatch
+        scrollControlIntoView(quick, in: app); quick.tap()
         let done = app.buttons["set-done-s7-bench-0"]
-        XCTAssertTrue(done.waitForExistence(timeout: 8)); done.tap()
+        XCTAssertTrue(done.waitForExistence(timeout: 8))
+        XCTAssertEqual(done.value as? String, "Da fare")
+        scrollControlIntoView(done, in: app); done.tap()
         let close = app.buttons["close-workout-achievement"]
         XCTAssertTrue(close.waitForExistence(timeout: 3), app.debugDescription)
         XCTAssertTrue(app.staticTexts["Nuovo massimale stimato!"].exists)
@@ -306,8 +314,23 @@ final class PivotInteractionTests: XCTestCase {
         let recordRow = app.descendants(matching: .any)["set-row-s7-bench-0"].firstMatch
         XCTAssertEqual(recordRow.value as? String, "Record personale")
         XCTAssertTrue(app.buttons["set-type-0-0"].label.contains("Serie 1"))
+        let record = app.buttons["set-record-22222222-2222-4222-8222-222222222222"]
+        scrollControlIntoView(record, in: app); record.tap()
+        XCTAssertTrue(app.staticTexts["set-record-estimate"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["set-record-comparison"].label.contains("Precedente"))
+        let options = app.buttons["set-options-s7-bench-0"]
+        scrollControlIntoView(options, in: app); options.tap()
+        let editor = app.descendants(matching: .any)["set-note-editor"].firstMatch
+        scrollControlIntoView(editor, in: app); editor.tap(); editor.typeText("Presa diversa QA")
+        let toolbar = app.navigationBars["Serie 1"]
+        toolbar.buttons["Fine"].tap()
+        XCTAssertTrue(toolbar.waitForNonExistence(timeout: 10))
+        let note = app.descendants(matching: .any)["set-note-s7-bench-0"].firstMatch
+        XCTAssertTrue(note.waitForExistence(timeout: 5))
         app.terminate(); app.open(url)
         XCTAssertTrue(app.navigationBars["Allenamento"].waitForExistence(timeout: 15))
+        XCTAssertTrue(note.waitForExistence(timeout: 8))
+        XCTAssertTrue(note.label.contains("Presa diversa QA"))
         XCTAssertFalse(app.buttons["close-workout-achievement"].exists)
     }
     func testSerie7DeepLinkReplacesWorkoutPageAndZeroHoldIsSkipped() {

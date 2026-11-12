@@ -66,6 +66,118 @@ enum TrainingIsometry {
     }
 }
 
+enum TrainingSetEntry {
+    static let noteLimit = 500
+
+    static func note(_ text: String) -> String? {
+        let value = String(text.prefix(noteLimit))
+        return value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : value
+    }
+
+    private struct Position: Hashable {
+        var kind: TrainingSetKind
+        var additional: Bool
+        var failure: Bool
+    }
+
+    private static func positions(_ log: TrainingExerciseLog) -> [Position: [TrainingSet]] {
+        Dictionary(grouping: TrainingSetTemplate.markingOrigins(log.sets, prescribedWorkingSets: log.exercise.sets)) {
+            Position(kind: $0.resolvedKind, additional: $0.isAdditional == true, failure: $0.reachesFailure)
+        }
+    }
+
+    static func previousSets(for log: TrainingExerciseLog, session: TrainingSession, library: TrainingLibrary) -> [UUID: TrainingSet] {
+        let current = positions(log)
+        let earlier = library.sessions.filter { candidate in
+            candidate.id != session.id && candidate.end.map { $0 <= session.start } == true
+        }.sorted { lhs, rhs in
+            lhs.start == rhs.start ? lhs.id.uuidString < rhs.id.uuidString : lhs.start > rhs.start
+        }
+        var matches: [UUID: TrainingSet] = [:]
+        for candidate in earlier {
+            guard let old = candidate.exercises.first(where: {
+                $0.skipped != true && TrainingRepProgression.sameIdentity($0.exercise, log.exercise)
+                    && ($0.exercise.weightedHold == true) == (log.exercise.weightedHold == true)
+            }) else { continue }
+            let previous = positions(old)
+            for (position, rows) in current {
+                for (row, saved) in zip(rows, previous[position] ?? []) where matches[row.id] == nil && saved.done && saved.canComplete(old.exercise) {
+                    matches[row.id] = saved
+                }
+            }
+            if matches.count == log.sets.count { break }
+        }
+        return matches
+    }
+
+    struct Target {
+        let label: String
+        let quickReps: [Int]
+    }
+
+    static func target(for index: Int, in log: TrainingExerciseLog) -> Target? {
+        let exercise = log.exercise
+        guard log.sets.indices.contains(index), log.sets[index].resolvedKind != .warmup,
+              log.sets[index].isAdditional != true else { return nil }
+        let position = log.sets[..<index].filter { $0.resolvedKind != .warmup && $0.isAdditional != true }.count
+        guard position < exercise.sets else { return nil }
+        let target = prescribedValue(exercise.reps, position: position, count: exercise.sets)
+        let simpleRange = target.flatMap(TrainingRepRange.init)
+        let range = exercise.usesDuration ? nil : simpleRange
+        let quick = range.flatMap { $0.upper - $0.lower < 5 ? Array($0.lower...$0.upper) : nil } ?? []
+        let units = exercise.usesDuration ? "s" : "rip."
+        var parts: [String] = []
+        if let simpleRange {
+            let count = simpleRange.lower == simpleRange.upper ? "\(simpleRange.lower)" : "\(simpleRange.lower)–\(simpleRange.upper)"
+            parts.append("\(count) \(units)")
+        } else if let target { parts.append(target) }
+        // The existing private plan converter emits this exact label and
+        // numbered fields. Free-form notes never become suggested weights.
+        if let start = exercise.coachNotes.range(of: "Carico prescritto: "),
+           let end = exercise.coachNotes[start.upperBound...].range(of: " kg."),
+           let load = prescribedValue(String(exercise.coachNotes[start.upperBound..<end.lowerBound]), position: position, count: exercise.sets),
+           load.range(of: #"^[0-9]+(?:[.,][0-9]+)?$"#, options: .regularExpression) != nil,
+           let kilograms = Double(load.replacingOccurrences(of: ",", with: ".")), (0...2000).contains(kilograms) {
+            parts.append("\(load) kg")
+        }
+        return parts.isEmpty ? nil : Target(label: parts.joined(separator: " · "), quickReps: quick)
+    }
+
+    private static func prescribedValue(_ text: String, position: Int, count: Int) -> String? {
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, value != "-", value != "—" else { return nil }
+        if !value.hasPrefix("S1:") { return value }
+        let entries = value.components(separatedBy: "; ")
+        guard entries.count == count,
+              entries.enumerated().allSatisfy({ $0.element.hasPrefix("S\($0.offset + 1): ") }) else { return nil }
+        let selected = String(entries[position].dropFirst("S\(position + 1): ".count))
+        return selected.isEmpty || ["-", "—"].contains(selected) ? nil : selected
+    }
+
+    static func usePrevious(_ previous: TrainingSet, at index: Int, in log: inout TrainingExerciseLog) {
+        guard log.sets.indices.contains(index), !log.sets[index].isResolved,
+              previous.resolvedKind == log.sets[index].resolvedKind, previous.reachesFailure == log.sets[index].reachesFailure,
+              previous.done, previous.canComplete(log.exercise) else { return }
+        var set = log.sets[index]
+        if log.exercise.usesDuration {
+            set.durationSeconds = previous.durationSeconds
+            set.leftSeconds = previous.leftSeconds
+            set.rightSeconds = previous.rightSeconds
+            if log.exercise.weightedHold == true { set.kg = previous.kg }
+        } else {
+            set.kg = previous.kg
+            set.reps = previous.reps
+            if set.resolvedKind == .warmup {
+                set.loadFraction = nil
+                if let kg = set.kg, let workingLoad = TrainingSetTemplate.workingLoad(log.sets), kg / workingLoad <= 1.5 {
+                    set.loadFraction = kg / workingLoad
+                }
+            }
+        }
+        log.sets[index] = set
+    }
+}
+
 enum TrainingReports {
     static func week(containing date: Date) -> DateInterval { StudentPayments.week(containing: date) }
     static func performed(in interval: DateInterval, library: TrainingLibrary) -> [TrainingSession] {

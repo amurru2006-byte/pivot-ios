@@ -118,6 +118,7 @@ struct TrainingSet: Codable, Identifiable, Equatable {
     var legacyKG: Double? = nil
     var legacyReps: Int? = nil
     var skipped: Bool? = nil
+    var note: String? = nil
     var isResolved: Bool { done || skipped == true }
     func explicitlySkippedHold(_ exercise: TrainingExercise) -> Bool {
         guard exercise.usesDuration else { return false }
@@ -308,6 +309,7 @@ struct TrainingLibrary: Codable {
                           && ([set.durationSeconds, set.leftSeconds, set.rightSeconds].allSatisfy { $0.map { (0...86400).contains($0) } ?? true })
                           && (set.restSeconds.map { (0...3600).contains($0) } ?? true)
                           && (set.actualRestSeconds.map { $0 >= 0 } ?? true)
+                          && (set.note?.count ?? 0) <= TrainingSetEntry.noteLimit
                           && !(set.done && set.skipped == true)
                           && (!set.done || set.canComplete(log.exercise) || (set.holdTotal == 0 && set.kg != nil && set.reps != nil)) }) else { throw TrainingError.invalidPlan }
             }
