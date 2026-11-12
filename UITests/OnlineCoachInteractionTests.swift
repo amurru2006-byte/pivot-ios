@@ -140,8 +140,17 @@ final class OnlineCoachInteractionTests: XCTestCase {
         let account = app.switches["coach-routing-remember-account"]
         tapVisibleSwitchOnce(account, to: true, in: app, useAppCoordinates: true)
         let remember = app.switches["coach-routing-remember-topic"]
-        tapVisibleSwitchOnce(remember, to: true, in: app, useAppCoordinates: true)
+        scrollControlIntoView(remember, in: app)
+        XCTAssertEqual(remember.value as? String, "0")
+        // The SwiftUI row contains a separate native switch. Target its
+        // current XCTest activation point within the sheet.
+        let native = remember.descendants(matching: .switch).firstMatch
+        XCTAssertTrue(native.exists && native.isEnabled && native.isHittable)
+        XCTAssertEqual(native.value as? String, "0")
+        native.tap()
         let topic = app.textFields["coach-routing-topic"]
+        XCTAssertTrue(topic.waitForExistence(timeout: 8))
+        XCTAssertEqual(remember.value as? String, "1")
         scrollControlIntoView(topic, in: app); topic.tap(); let current = topic.value as? String ?? ""
         topic.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count) + "Persona QA")
         let done = app.buttons["coach-draft-keyboard-done"]
