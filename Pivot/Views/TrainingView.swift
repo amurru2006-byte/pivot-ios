@@ -722,8 +722,12 @@ struct TrainingSessionView: View {
                     quickSetEntry(exerciseIndex: exerciseIndex, setIndex: setIndex, target: target, previous: previous)
                 }
                 if let note = set.note, !note.isEmpty {
-                    Label(note, systemImage: "note.text").font(.caption).foregroundStyle(PivotTheme.muted)
-                        .lineLimit(2).accessibilityIdentifier("set-note-\(exercise.id)-\(setIndex)")
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        Image(systemName: "note.text").accessibilityHidden(true)
+                        Text(note).lineLimit(2)
+                            .accessibilityIdentifier("set-note-\(exercise.id)-\(setIndex)")
+                    }
+                    .font(.caption).foregroundStyle(PivotTheme.muted)
                 }
                 if let record {
                     recordDetails(record, set: set, exercise: exercise)

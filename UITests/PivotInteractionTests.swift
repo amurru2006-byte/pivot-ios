@@ -320,17 +320,19 @@ final class PivotInteractionTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["set-record-comparison"].label.contains("Precedente"))
         let options = app.buttons["set-options-s7-bench-0"]
         scrollControlIntoView(options, in: app); options.tap()
-        let editor = app.descendants(matching: .any)["set-note-editor"].firstMatch
+        let editor = app.textFields["set-note-editor"]
         scrollControlIntoView(editor, in: app); editor.tap(); editor.typeText("Presa diversa QA")
+        XCTAssertEqual(editor.value as? String, "Presa diversa QA")
         let toolbar = app.navigationBars["Serie 1"]
         toolbar.buttons["Fine"].tap()
         XCTAssertTrue(toolbar.waitForNonExistence(timeout: 10))
-        let note = app.descendants(matching: .any)["set-note-s7-bench-0"].firstMatch
+        let note = app.staticTexts["set-note-s7-bench-0"]
         XCTAssertTrue(note.waitForExistence(timeout: 5))
+        XCTAssertEqual(note.label, "Presa diversa QA")
         app.terminate(); app.open(url)
         XCTAssertTrue(app.navigationBars["Allenamento"].waitForExistence(timeout: 15))
         XCTAssertTrue(note.waitForExistence(timeout: 8))
-        XCTAssertTrue(note.label.contains("Presa diversa QA"))
+        XCTAssertEqual(note.label, "Presa diversa QA")
         XCTAssertFalse(app.buttons["close-workout-achievement"].exists)
     }
     func testSerie7DeepLinkReplacesWorkoutPageAndZeroHoldIsSkipped() {
