@@ -921,6 +921,17 @@ struct TrainingSessionView: View {
                             Label("Guida vocale", systemImage: "speaker.wave.2")
                         }
                         .accessibilityIdentifier("workout-voice-guide")
+                        if ["squat", "back squat", "squat con bilanciere"].contains(exercise.name
+                            .trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) {
+                            NavigationLink {
+                                SquatCameraView { count in
+                                    applyCameraReps(count, setID: set.id, previous: set.reps)
+                                }
+                            } label: {
+                                Label("Conta squat con fotocamera", systemImage: "camera")
+                            }
+                            .accessibilityIdentifier("workout-squat-camera")
+                        }
                     }
                 }
                 Section("Schermata di blocco") {
@@ -965,6 +976,17 @@ struct TrainingSessionView: View {
             return
         }
         if setOptions?.id == setID { setOptions = nil }
+    }
+    private func applyCameraReps(_ count: Int, setID: UUID, previous: Int?) -> Bool {
+        guard hasStarted, !removed, !finishing, !store.locked, !store.isRestoring,
+              session.end == nil, setOptions?.id == setID, let index = setLocation(setID),
+              (1...999).contains(count) else { return false }
+        let log = session.exercises[index.exercise]
+        let set = log.sets[index.set]
+        guard log.skipped != true, !set.isResolved, !log.exercise.usesDuration,
+              set.reps == previous else { return false }
+        session.exercises[index.exercise].sets[index.set].reps = count
+        return true
     }
     private func setTypeMenu(exerciseIndex: Int, setIndex: Int, expanded: Bool = false) -> some View {
         let set = session.exercises[exerciseIndex].sets[setIndex]
