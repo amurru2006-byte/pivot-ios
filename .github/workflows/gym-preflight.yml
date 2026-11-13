@@ -27,9 +27,13 @@ jobs:
           path: build/gym-core.log
           retention-days: 3
           if-no-files-found: error
-  workout:
+  interface:
     runs-on: macos-15
     timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [workout, profile]
     steps:
       - uses: actions/checkout@v4
       - run: bash Scripts/prepare-ios-ci.sh
@@ -37,16 +41,16 @@ jobs:
         run: |
           sudo systemsetup -settimezone Europe/Rome
           swift -e 'import Foundation; guard TimeZone.current.identifier == "Europe/Rome" else { fatalError("Unexpected simulator host timezone") }'
-      - name: Regressione Palestra con copertura esatta
+      - name: Regressione interfaccia con copertura esatta
         env:
-          PIVOT_UI_ONLY_TESTING: v8-release-workout
+          PIVOT_UI_ONLY_TESTING: v8-release-${{ matrix.shard }}
         run: bash Scripts/preview-ui.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Pivot-gym-workout
+          name: Pivot-gym-${{ matrix.shard }}
           path: |
-            build/release-workout-build.log
-            build/release-workout-tests.log
+            build/release-${{ matrix.shard }}-build.log
+            build/release-${{ matrix.shard }}-tests.log
           retention-days: 3
           if-no-files-found: error

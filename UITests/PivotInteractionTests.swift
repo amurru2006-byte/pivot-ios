@@ -385,8 +385,7 @@ final class PivotInteractionTests: XCTestCase {
         scrollControlIntoView(day, in: app); day.tap()
         XCTAssertTrue(app.buttons["Inizia allenamento"].waitForExistence(timeout: 5)); app.buttons["Inizia allenamento"].tap()
         let addSet = app.buttons["add-set-test-exercise"]
-        for _ in 0..<10 { if addSet.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(addSet.isHittable)
+        XCTAssertTrue(addSet.waitForExistence(timeout: 10))
         fullyRevealRow(app.descendants(matching: .any)["set-row-test-exercise-0"].firstMatch, in: app)
         let firstType = app.buttons["set-type-0-0"]
         firstType.tap()
@@ -397,7 +396,8 @@ final class PivotInteractionTests: XCTestCase {
         app.descendants(matching: .any)["set-row-test-exercise-0"].firstMatch.swipeLeft()
         XCTAssertFalse(app.buttons["delete-set-test-exercise-0"].exists)
         firstType.tap(); app.buttons["1 · Working"].tap()
-        addSet.tap(); app.buttons["W · Warm-up"].tap()
+        scrollControlIntoView(addSet, in: app); addSet.tap()
+        app.buttons["W · Warm-up"].tap()
         XCTAssertTrue(app.textFields["weight-test-exercise-4"].waitForExistence(timeout: 5))
         let compact = XCTAttachment(screenshot: app.screenshot())
         compact.name = "training-compact-set-table"; compact.lifetime = .keepAlways; add(compact)
