@@ -24,9 +24,12 @@ struct TravelCalculatorView: View {
     @State private var choosingOrigin = false
     @State private var choosingDestination = false
     @State private var savingPlace: SavedPlace?
+    @FocusState private var focusedPlace: PlaceField?
     private let nextStart: Date?
     private let context: TravelEventContext?
     private let onUse: ((TravelEstimate) -> Void)?
+
+    private enum PlaceField: Hashable { case origin, destination }
 
     init(origin: String = "", destination: String = "", mode: ClientTravelMode = .transit,
          date: Date = Date().addingTimeInterval(300), timing: TravelTiming = .departAt,
@@ -114,6 +117,9 @@ struct TravelCalculatorView: View {
         let results = isOrigin ? originResults : destinationResults
         TextField(isOrigin ? "Luogo di partenza" : "Destinazione", text: isOrigin ? $originText : $destinationText)
             .textInputAutocapitalization(.words).autocorrectionDisabled()
+            .focused($focusedPlace, equals: isOrigin ? .origin : .destination)
+            .submitLabel(.done)
+            .onSubmit { focusedPlace = nil }
             .accessibilityIdentifier(isOrigin ? "travel-origin" : "travel-destination")
         Button {
             invalidate()

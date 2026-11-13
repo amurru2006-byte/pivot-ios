@@ -29,6 +29,18 @@ final class CalendarCreationInteractionTests: XCTestCase {
         let button = app.buttons[id]; XCTAssertTrue(button.waitForExistence(timeout: 5)); button.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
     }
+    private func enterRoutePlace(_ value: String, fieldID: String, in app: XCUIApplication) {
+        let route = app.navigationBars["Tragitti"]
+        XCTAssertTrue(route.waitForExistence(timeout: 8))
+        let field = app.textFields[fieldID]
+        tap(field, app)
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 8))
+        field.typeText(value + "\n")
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 8))
+        XCTAssertTrue(route.exists)
+        XCTAssertEqual(field.value as? String, value)
+    }
     private func shot(_ name: String, _ app: XCUIApplication) {
         let file = XCTAttachment(screenshot: app.screenshot()); file.name = name; file.lifetime = .keepAlways; add(file)
     }
@@ -104,11 +116,9 @@ final class CalendarCreationInteractionTests: XCTestCase {
         XCTAssertTrue(app.buttons["travel-consent"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.staticTexts["travel-test-count"].label, "Richieste sintetiche: 0")
         tap(app.buttons["travel-consent"], app)
-        tap(app.textFields["travel-origin"], app); app.textFields["travel-origin"].typeText("Partenza QA")
-        if app.buttons["Fine"].waitForExistence(timeout: 3) { app.buttons["Fine"].tap() }
+        enterRoutePlace("Partenza QA", fieldID: "travel-origin", in: app)
         tap(app.buttons["travel-search-origin"], app); tap(app.buttons["travel-place-origin-Luogo QA A"], app)
-        tap(app.textFields["travel-destination"], app); app.textFields["travel-destination"].typeText("Arrivo QA")
-        if app.buttons["Fine"].waitForExistence(timeout: 3) { app.buttons["Fine"].tap() }
+        enterRoutePlace("Arrivo QA", fieldID: "travel-destination", in: app)
         tap(app.buttons["travel-search-destination"], app); tap(app.buttons["travel-place-destination-Luogo QA B"], app)
         tap(app.buttons["travel-calculate"], app)
         XCTAssertTrue(app.staticTexts["travel-result"].waitForExistence(timeout: 8))
