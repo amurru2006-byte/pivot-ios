@@ -912,6 +912,17 @@ struct TrainingSessionView: View {
                     .accessibilityIdentifier("set-note-editor")
                     .disabled(!hasStarted || store.locked || store.isRestoring)
                 }
+                if hasStarted && session.end == nil && !exercise.usesDuration && !set.isResolved
+                    && session.exercises[exerciseIndex].skipped != true && !store.locked && !store.isRestoring {
+                    Section {
+                        NavigationLink {
+                            WorkoutVoiceGuideView(exercise: exercise.name, setNumber: setIndex + 1, suggestedReps: set.reps)
+                        } label: {
+                            Label("Guida vocale", systemImage: "speaker.wave.2")
+                        }
+                        .accessibilityIdentifier("workout-voice-guide")
+                    }
+                }
                 Section("Schermata di blocco") {
                     Button("Usa questa serie nei controlli") {
                         guard save() else { return }

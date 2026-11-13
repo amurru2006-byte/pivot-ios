@@ -32,7 +32,8 @@
     "PivotInteractionTests/testTrainingPDFUsesActualRendererAndSyntheticWeeklyData",
     "PivotInteractionTests/testTrainingPDFImportSetLoggingAndPersistence",
     "PivotInteractionTests/testTrainingRevisionStatisticsAndOfflineExtraPickerAreReachable",
-    "PivotInteractionTests/testAlarmProbeIsExplicitAndDoesNotStartOnOpening"
+    "PivotInteractionTests/testAlarmProbeIsExplicitAndDoesNotStartOnOpening",
+    "PivotInteractionTests/testWorkoutVoiceGuideDoesNotCompleteTheSet"
   ],
   "profile": [
     "HealthRefreshInteractionTests",

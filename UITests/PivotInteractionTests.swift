@@ -335,6 +335,52 @@ final class PivotInteractionTests: XCTestCase {
         XCTAssertEqual(note.label, "Presa diversa QA")
         XCTAssertFalse(app.buttons["close-workout-achievement"].exists)
     }
+    func testWorkoutVoiceGuideDoesNotCompleteTheSet() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--interaction-test", "--serie7-test"]
+        app.launch()
+        let training = app.tabBars.buttons["Palestra"]
+        XCTAssertTrue(training.waitForExistence(timeout: 15))
+        training.tap()
+        let fixture = app.buttons["serie7-fixture"]
+        scrollControlIntoView(fixture, in: app)
+        fixture.tap()
+        XCTAssertTrue(app.staticTexts["Serie 7 pronta"].waitForExistence(timeout: 5))
+        let link = URL(string: "pivot://workout/11111111-1111-4111-8111-111111111111?set=22222222-2222-4222-8222-222222222222")!
+        app.open(link)
+        let complete = app.buttons["set-done-s7-bench-0"]
+        XCTAssertTrue(complete.waitForExistence(timeout: 8))
+        XCTAssertEqual(complete.value as? String, "Da fare")
+        let reps = app.textFields["reps-s7-bench-0"]
+        let originalReps = reps.value as? String
+        let options = app.buttons["set-options-s7-bench-0"]
+        scrollControlIntoView(options, in: app)
+        options.tap()
+        let guide = app.buttons["workout-voice-guide"]
+        scrollControlIntoView(guide, in: app)
+        guide.tap()
+        let guideBar = app.navigationBars["Guida vocale"]
+        XCTAssertTrue(guideBar.waitForExistence(timeout: 8))
+        let start = app.buttons["workout-voice-start"]
+        scrollControlIntoView(start, in: app)
+        start.tap()
+        let pause = app.buttons["workout-voice-pause"]
+        scrollControlIntoView(pause, in: app)
+        pause.tap()
+        XCTAssertTrue(app.buttons["workout-voice-resume"].waitForExistence(timeout: 5))
+        let reset = app.buttons["workout-voice-reset"]
+        scrollControlIntoView(reset, in: app)
+        reset.tap()
+        XCTAssertTrue(start.waitForExistence(timeout: 5))
+        guideBar.buttons.firstMatch.tap()
+        let series = app.navigationBars["Serie 1"]
+        XCTAssertTrue(series.waitForExistence(timeout: 5))
+        series.buttons["Fine"].tap()
+        XCTAssertTrue(series.waitForNonExistence(timeout: 10))
+        XCTAssertEqual(complete.value as? String, "Da fare")
+        XCTAssertEqual(reps.value as? String, originalReps)
+    }
     func testSerie7DeepLinkReplacesWorkoutPageAndZeroHoldIsSkipped() {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--interaction-test", "--serie7-test"]; app.launch()

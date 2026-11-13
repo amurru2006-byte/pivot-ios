@@ -1,0 +1,56 @@
+name: Collaudo guida vocale Pivot
+on:
+  push:
+    branches: ['codex/pivot-voice-preflight']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pivot-voice-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Regressione Core
+        run: |
+          set -o pipefail
+          mkdir -p build
+          swift test 2>&1 | tee build/gym-core.log
+          python3 Scripts/document_test_gates.py core build/gym-core.log --also-ai
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Pivot-gym-core
+          path: build/gym-core.log
+          retention-days: 3
+          if-no-files-found: error
+  interface:
+    runs-on: macos-15
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [workout, profile]
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash Scripts/prepare-ios-ci.sh
+      - name: Configura il fuso del simulatore
+        run: |
+          sudo systemsetup -settimezone Europe/Rome
+          swift -e 'import Foundation; guard TimeZone.current.identifier == "Europe/Rome" else { fatalError("Unexpected simulator host timezone") }'
+      - name: Regressione interfaccia con copertura esatta
+        env:
+          PIVOT_UI_ONLY_TESTING: v8-release-${{ matrix.shard }}
+        run: bash Scripts/preview-ui.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Pivot-gym-${{ matrix.shard }}
+          path: |
+            build/release-${{ matrix.shard }}-build.log
+            build/release-${{ matrix.shard }}-tests.log
+          retention-days: 3
+          if-no-files-found: error
